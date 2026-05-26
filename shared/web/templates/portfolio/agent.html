@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+
+{% block title %}Portfolio Agent · {{ app_name }}{% endblock %}
+{% block main_class %}main-wide dash-main{% endblock %}
+{% block body_class %}page-dashboard page-agent{% endblock %}
+
+{% block head %}
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+{% endblock %}
+
+{% block content %}
+<div class="dash">
+  <header class="dash-hero dash-hero--compact">
+    <div class="dash-hero-top">
+      <div class="dash-hero-copy">
+        <p class="dash-eyebrow">AI guidance</p>
+        <h1 class="dash-title">Portfolio Agent</h1>
+        <p class="dash-lead">Buy / sell / rebalance ideas, red flags, and themes — grounded in your holdings when you click Ask.</p>
+      </div>
+      <div class="dash-hero-actions">
+        <a href="/portfolio" class="dash-btn dash-btn-ghost js-show-loader">← Dashboard</a>
+      </div>
+    </div>
+  </header>
+
+  <section class="dash-panel dash-panel--agent dash-panel--agent-page">
+    {% include "portfolio/_portfolio_agent.html" %}
+  </section>
+</div>
+
+{% if trading_enabled %}
+{% include "portfolio/_trade_modal.html" %}
+<script src="/static/js/trade-order.js"></script>
+{% endif %}
+{% endblock %}

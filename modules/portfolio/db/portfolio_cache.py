@@ -62,6 +62,16 @@ def init_db() -> None:
                 ON agent_messages(thread_id, created_at);
             """
         )
+        _migrate_agent_threads(conn)
+
+
+def _migrate_agent_threads(conn: sqlite3.Connection) -> None:
+    """Add columns to agent_threads when upgrading existing DBs."""
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(agent_threads)").fetchall()}
+    if "last_recommendations_json" not in cols:
+        conn.execute(
+            "ALTER TABLE agent_threads ADD COLUMN last_recommendations_json TEXT"
+        )
 
 
 def get_snapshot(cache_key: str) -> tuple[float, dict[str, Any]] | None:

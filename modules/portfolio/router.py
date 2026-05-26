@@ -32,6 +32,7 @@ from modules.portfolio.services.holdings_view import (
     holdings_financials_map,
     prepare_holdings_view,
 )
+from modules.portfolio.services.agent_threads import get_thread, list_sessions
 from modules.portfolio.services.portfolio_agent import (
     agent_status,
     ask_portfolio_agent,
@@ -286,6 +287,19 @@ def portfolio_dashboard(
     )
 
 
+@router.get("/portfolio/agent")
+def portfolio_agent_page(request: Request):
+    """Dedicated Portfolio Agent tab."""
+    return templates.TemplateResponse(
+        request,
+        "portfolio/agent.html",
+        {
+            "active_module": "agent",
+            "trading_enabled": _trading_enabled(),
+        },
+    )
+
+
 @router.get("/portfolio/account/{account_ref}")
 def portfolio_account(
     request: Request,
@@ -510,6 +524,33 @@ def api_place_order(payload: PlaceOrderPayload):
 def portfolio_agent_status():
     """JSON API — portfolio agent LLM configuration."""
     return agent_status()
+
+
+@router.get("/api/portfolio/agent/sessions")
+def portfolio_agent_sessions():
+    """List saved agent chat sessions (threads with messages), newest first."""
+    return {"sessions": list_sessions()}
+
+
+@router.get("/api/portfolio/agent/sessions/{thread_id}")
+def portfolio_agent_session(thread_id: str):
+    """Load a single agent session for revisiting in the UI."""
+    thread = get_thread(thread_id)
+    if not thread:
+        raise HTTPException(status_code=404, detail="Session not found or expired")
+    bubbles = [
+        {"role": m["role"], "text": m["content"]}
+        for m in thread.get("messages") or []
+        if m.get("content")
+    ]
+    return {
+        "thread_id": thread["thread_id"],
+        "title": thread.get("title") or "Portfolio chat",
+        "created_at": thread["created_at"],
+        "updated_at": thread["updated_at"],
+        "bubbles": bubbles,
+        "recommendations": thread.get("recommendations"),
+    }
 
 
 @router.post("/api/portfolio/agent/ask")

@@ -61,15 +61,6 @@
   </td>
   <td class="col-signal">
     {% include "portfolio/_rating_cell_compact.html" %}
-    {% if trading_enabled and h.asset_class != 'mf' and h.exchange != 'US' and h.broker != 'sarwa' %}
-    {% set row_trade_accounts = trade_accounts_for_holding(h) %}
-    {% if row_trade_accounts %}
-    <span class="holding-trade-inline">
-      <button type="button" class="btn btn-xs btn-primary js-trade-open" data-side="BUY" data-symbol="{{ h.symbol }}" data-trade-accounts='{{ row_trade_accounts | tojson }}'>Buy</button>
-      <button type="button" class="btn btn-xs btn-ghost js-trade-open" data-side="SELL" data-symbol="{{ h.symbol }}" data-trade-accounts='{{ row_trade_accounts | tojson }}'>Sell</button>
-    </span>
-    {% endif %}
-    {% endif %}
   </td>
   <td class="col-weight text-right cell-muted">{{ format_na_compact(h.pct_of_portfolio, "%") }}</td>
   <td class="col-qty col-hide-sm text-right">{{ h.quantity | int }}</td>

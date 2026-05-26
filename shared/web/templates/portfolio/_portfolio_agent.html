@@ -1,6 +1,17 @@
 <section class="portfolio-agent" id="portfolio-agent" aria-labelledby="portfolio-agent-title">
+  <div class="portfolio-agent-layout">
+    <aside class="agent-sessions" id="agent-sessions" aria-label="Chat sessions">
+      <div class="agent-sessions-header">
+        <h3 class="agent-sessions-title">Chats</h3>
+        <button type="button" class="btn btn-ghost btn-sm" id="agent-sessions-new-btn">New</button>
+      </div>
+      <p class="agent-sessions-empty" id="agent-sessions-empty" hidden>No chats yet — ask a question to start.</p>
+      <ul class="agent-sessions-list" id="agent-sessions-list" role="list"></ul>
+    </aside>
+
+    <div class="portfolio-agent-main">
   <div class="portfolio-agent-header">
-    <h2 class="section-title" id="portfolio-agent-title">Portfolio agent</h2>
+    <h2 class="section-title" id="portfolio-agent-title">Portfolio Agent</h2>
     <span class="agent-status-pill" id="agent-status-pill" hidden></span>
   </div>
   <p class="agent-intro">
@@ -64,6 +75,8 @@
       </div>
     </div>
   </details>
+    </div>
+  </div>
 </section>
 
 <script src="/static/js/portfolio-agent.js"></script>

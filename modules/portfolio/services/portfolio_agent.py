@@ -9,7 +9,12 @@ import urllib.request
 from collections.abc import Iterator
 from typing import Any
 
-from modules.portfolio.services.agent_threads import append_message, create_thread, get_thread
+from modules.portfolio.services.agent_threads import (
+    append_message,
+    create_thread,
+    get_thread,
+    save_thread_recommendations,
+)
 from modules.portfolio.services.portfolio_context import build_portfolio_context
 
 _SYSTEM_PROMPT = """You are a personal portfolio advisor for an Indian equity investor.
@@ -281,6 +286,7 @@ def stream_portfolio_agent(
             "assistant",
             _assistant_history_text(recommendations, full_text),
         )
+        save_thread_recommendations(active_thread_id, recommendations)
 
         yield _format_sse(
             "done",
