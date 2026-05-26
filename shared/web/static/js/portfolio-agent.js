@@ -256,20 +256,96 @@
 
     sessions.forEach((session) => {
       const li = document.createElement("li");
+      li.className = "agent-session-row";
       li.setAttribute("role", "listitem");
+
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "agent-session-item";
       if (session.thread_id === threadId) btn.classList.add("is-active");
+      if (session.important) btn.classList.add("is-important");
       btn.dataset.threadId = session.thread_id;
       btn.innerHTML = `
-        <span class="agent-session-title">${escapeHtml(session.title || "Portfolio chat")}</span>
-        <span class="agent-session-meta">${escapeHtml(formatSessionTime(session.updated_at))}${session.message_count ? ` · ${session.message_count} msgs` : ""}</span>
+        <span class="agent-session-title">${session.important ? '<span class="agent-session-star-mark" aria-hidden="true">★ </span>' : ""}${escapeHtml(session.title || "Portfolio chat")}</span>
+        <span class="agent-session-meta">${escapeHtml(formatSessionTime(session.updated_at))}${session.message_count ? ` · ${session.message_count} msgs` : ""}${session.important ? " · saved" : ""}</span>
       `;
       btn.addEventListener("click", () => loadSession(session.thread_id));
+
+      const actions = document.createElement("div");
+      actions.className = "agent-session-actions";
+
+      const starBtn = document.createElement("button");
+      starBtn.type = "button";
+      starBtn.className = "agent-session-action agent-session-action-star";
+      if (session.important) starBtn.classList.add("is-on");
+      starBtn.setAttribute(
+        "aria-label",
+        session.important ? "Unmark as important" : "Mark as important"
+      );
+      starBtn.title = session.important ? "Unmark important" : "Mark important (keeps chat longer)";
+      starBtn.textContent = "★";
+      starBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        toggleSessionImportant(session.thread_id, !session.important);
+      });
+
+      const deleteBtn = document.createElement("button");
+      deleteBtn.type = "button";
+      deleteBtn.className = "agent-session-action agent-session-action-delete";
+      deleteBtn.setAttribute("aria-label", "Delete chat");
+      deleteBtn.title = "Delete chat";
+      deleteBtn.textContent = "×";
+      deleteBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        deleteSession(session.thread_id, session.title);
+      });
+
+      actions.appendChild(starBtn);
+      actions.appendChild(deleteBtn);
       li.appendChild(btn);
+      li.appendChild(actions);
       sessionsList.appendChild(li);
     });
+  }
+
+  async function toggleSessionImportant(id, important) {
+    if (!id || busy) return;
+    try {
+      const res = await fetch(`/api/portfolio/agent/sessions/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ important }),
+      });
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error(errBody.detail || `Could not update session (${res.status})`);
+      }
+      await loadSessions();
+    } catch (err) {
+      showError(err.message || "Could not update chat.");
+    }
+  }
+
+  async function deleteSession(id, title) {
+    if (!id || busy) return;
+    const label = (title || "this chat").trim();
+    if (!window.confirm(`Delete "${label}"? This cannot be undone.`)) return;
+
+    try {
+      const res = await fetch(`/api/portfolio/agent/sessions/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error(errBody.detail || `Could not delete session (${res.status})`);
+      }
+      if (threadId === id) {
+        clearConversation();
+      }
+      await loadSessions();
+    } catch (err) {
+      showError(err.message || "Could not delete chat.");
+    }
   }
 
   async function loadSessions() {
@@ -443,7 +519,7 @@
       if (data.available) {
         statusPill.textContent = `${data.provider} · ${data.model}`;
         statusPill.className = "agent-status-pill is-ready";
-        if (hint) hint.textContent = "Chats are saved for 4 hours · pick one on the left or start new";
+        if (hint) hint.textContent = "Chats last 4h · ★ keeps them · delete with × on the left";
       } else {
         statusPill.textContent = "API key required";
         statusPill.className = "agent-status-pill is-off";

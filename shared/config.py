@@ -13,7 +13,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 APP_NAME = os.getenv("APP_NAME", "Talk to My Portfolio")
 APP_TAGLINE = os.getenv(
     "APP_TAGLINE",
-    "Zerodha · Groww · Sarwa · ask your portfolio",
+    "Consolidate brokers · talk to your portfolio",
 )
 
 # Optional links to sibling apps (separate repos / ports).

@@ -1,12 +1,14 @@
 <p align="center">
   <strong>Talk to My Portfolio</strong><br>
-  <sub>One dashboard for every demat account in the family — with optional AI.</sub>
+  <sub>See every holding in one place — then <em>ask</em> what to buy, sell, trim, or hold.</sub>
 </p>
 
 <p align="center">
   <a href="https://github.com/ab9bhatia/talk-to-my-portfolio">GitHub</a>
   ·
-  <a href="docs/broker-api-keys.md">Broker setup guide</a>
+  <a href="#talk-to-your-portfolio">Portfolio agent</a>
+  ·
+  <a href="docs/broker-api-keys.md">Broker setup</a>
   ·
   <a href="#quick-start">Quick start</a>
 </p>
@@ -21,23 +23,70 @@
 
 ## Why this exists
 
-Managing money across **Zerodha**, **Groww**, **Sarwa**, and ad‑hoc spreadsheets means jumping between apps, exports, and mental math. This project gives you a **single self‑hosted view**: consolidated holdings, fundamentals-style metrics, weekly history, and an optional **“talk to my portfolio”** agent — without sending your data to a third‑party SaaS.
+Indian families often hold stocks and funds across **Zerodha**, **Groww**, **Sarwa**, and offline sheets — but decisions still happen in fragments: one app for prices, another for news, gut feel for trim vs hold.
 
-Everything runs on **your machine**. Secrets stay in `.env`; account names live in `accounts.json` (both gitignored).
+**Talk to My Portfolio** is built around a simple idea: **consolidate first, then converse**. You get a unified dashboard *and* an integrated **portfolio agent** that reads your real holdings (sector, industry, signals, concentration) and answers in plain language — what to add, what to trim, what to watch, and how long to hold.
+
+Everything runs **on your machine**. Broker data stays local; only the questions you explicitly send to the agent use your configured LLM API key.
 
 ---
 
-## What you get
+## Talk to your portfolio
+
+The agent is **built into the dashboard**, not a separate product. After your brokers are linked, open the **Portfolio agent** panel on [`/portfolio`](http://127.0.0.1:8000/portfolio), ask a question, and get a structured advisory reply streamed in real time.
+
+### What it helps with
+
+| Area | Examples |
+|------|----------|
+| **Buy / add** | Which names to initiate, add to, or watch — with rationale |
+| **Sell / trim** | Overweight positions, trim vs exit, concentration risks |
+| **Hold horizon** | Time horizon guidance per idea (e.g. 3y+ core holdings) |
+| **Portfolio view** | Overall stance, XIRR outlook vs your goals, macro read |
+| **Themes** | Sector/theme opportunities aligned to your actual book |
+| **Red flags** | Governance, concentration, or mix issues surfaced from context |
+| **Follow-ups** | Multi-turn chat — “what if I drop X and add Y?” |
+
+It uses **your** JSON context: live holdings, sector/industry labels, business summaries, deterministic flags, and dashboard signals (e.g. upside where available) — not ticker guesswork.
+
+### Example questions
+
+- *Should I trim banking and add to infrastructure themes?*
+- *Which holdings are weakest vs my 15% return goal?*
+- *What would you exit in the next rebalance given current weights?*
+- *Any red flags in my top ten positions by value?*
+
+### How it works (privacy-first)
+
+```mermaid
+flowchart TB
+  B[Zerodha / Groww / Sarwa / Custom] --> C[Local holdings + metrics]
+  C --> D[Dashboard]
+  C --> E[Portfolio context JSON]
+  U[You click Ask] --> E
+  E --> L[Your LLM API]
+  L --> R[Buy · Sell · Hold · Horizon · Stance]
+  R --> D
+```
+
+- **No LLM calls on page load** — only when you click **Ask** (or send a follow-up).
+- **Threaded chats** — sessions saved locally for continuity.
+- **Not financial advice** — personal decision support using data you already trust; you stay in control of every trade.
+
+Enable with `OPENAI_API_KEY` (or `PORTFOLIO_OPENAI_API_KEY`) in `.env`. See [Enable the agent](#enable-the-agent).
+
+---
+
+## What else is included
 
 | | |
 |---|---|
-| **Unified dashboard** | Family P&amp;L, filters by account (AB / RB / HB…), sector, cap bucket, signals |
-| **Account hub** | Add, edit, and reconnect brokers in the browser — no hand-editing JSON for day‑to‑day changes |
-| **Brokers** | Zerodha (Kite OAuth), Groww (Trade API), Sarwa (weekly USD), **Custom** (CSV / Excel / screenshot) |
-| **Smart cache** | Stale-first SQLite snapshots; background refresh so the UI stays fast |
-| **Weekly history** | Exportable snapshots in `portfolio_history.db` |
-| **Portfolio agent** | Ask questions on demand (OpenAI) — never on page load by default |
-| **Trading** | Optional live Buy/Sell (Zerodha CNC + Groww) when `TRADING_ENABLED=true` |
+| **Unified dashboard** | Family P&amp;L, filters by account, sector, cap bucket, 52W, upside, signals |
+| **Account hub** | Add, edit, reconnect brokers; import CSV / Excel / screenshots |
+| **Brokers** | Zerodha (Kite), Groww (Trade API), Sarwa (USD), Custom portfolios |
+| **Smart cache** | Stale-first SQLite + background refresh |
+| **Weekly history** | Snapshots export from `portfolio_history.db` |
+| **Optional trading** | Live Buy/Sell when `TRADING_ENABLED=true` |
 
 ---
 
@@ -45,35 +94,14 @@ Everything runs on **your machine**. Secrets stay in `.env`; account names live 
 
 | Route | Purpose |
 |-------|---------|
-| [`/portfolio`](http://127.0.0.1:8000/portfolio) | Main dashboard — holdings, filters, summary |
-| [`/portfolio/setup`](http://127.0.0.1:8000/portfolio/setup) | **Connect accounts** — add/edit brokers, upload files, update `.env` |
+| [`/portfolio`](http://127.0.0.1:8000/portfolio) | Dashboard + **Portfolio agent** |
+| [`/portfolio/setup`](http://127.0.0.1:8000/portfolio/setup) | Connect & edit accounts |
 | [`/docs`](http://127.0.0.1:8000/docs) | Swagger API |
-| `GET /api/portfolio` | Family portfolio JSON |
-
-```mermaid
-flowchart LR
-  subgraph inputs [Your brokers]
-    Z[Zerodha Kite]
-    G[Groww API]
-    S[Sarwa / Custom]
-  end
-  subgraph app [Local app]
-    H[FastAPI + SQLite cache]
-    D[Dashboard]
-    A[Portfolio agent]
-  end
-  Z --> H
-  G --> H
-  S --> H
-  H --> D
-  H -. optional .-> A
-```
+| `POST /api/portfolio/agent/ask` | Agent (SSE stream) |
 
 ---
 
 ## Quick start
-
-**~5 minutes** to a running server (broker keys come right after).
 
 ```bash
 git clone https://github.com/ab9bhatia/talk-to-my-portfolio.git
@@ -84,88 +112,55 @@ source .venv/bin/activate
 pip install -r requirements.txt
 
 bash scripts/init_local_config.sh
-uvicorn main:app --reload --host 127.0.0.1:8000
+uvicorn main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-Then open:
-
-1. **[http://127.0.0.1:8000/portfolio/setup](http://127.0.0.1:8000/portfolio/setup)** — add Zerodha / Groww / custom portfolio (recommended)
-2. **[http://127.0.0.1:8000/portfolio](http://127.0.0.1:8000/portfolio)** — view consolidated holdings
-
-> Prefer files? Copy `accounts.example.json` → `accounts.json` and `.env-example` → `.env`, then follow [Configure brokers](#configure-brokers) below.
+1. **[Connect accounts](http://127.0.0.1:8000/portfolio/setup)** — Zerodha, Groww, or custom import  
+2. **[Portfolio](http://127.0.0.1:8000/portfolio)** — review holdings, scroll to **Portfolio agent**, ask your first question  
 
 ---
 
 ## Configure brokers
 
-Two local files must agree on each account **`"id"`**:
+Two gitignored files must share the same account `"id"`:
 
 | File | Role |
 |------|------|
-| `modules/portfolio/accounts.json` | *Who* — labels, short codes (`AB`, `HB`), enabled flags |
-| `.env` | *Secrets* — API keys named from that `id` |
+| `modules/portfolio/accounts.json` | Who — labels, codes (`AB`, `HB`), enabled |
+| `.env` | Secrets — `ZERODHA_API_KEY_<ID>`, `GROWW_*`, etc. |
 
-### Naming rule
-
-`accounts.json` `"id": "primary"` → `.env` keys `ZERODHA_API_KEY_PRIMARY`, `ZERODHA_API_SECRET_PRIMARY`, …
+`"id": "primary"` → `ZERODHA_API_KEY_PRIMARY`, …
 
 <details>
-<summary><strong>Zerodha</strong> — one Kite app per login</summary>
+<summary><strong>Zerodha, Groww, Sarwa, Custom</strong> — setup steps</summary>
 
-1. Create an app at [developers.kite.trade](https://developers.kite.trade/)
-2. Redirect URL: `http://127.0.0.1:8000/auth/zerodha/callback`
-3. Add keys to `.env`; add a row in `accounts.json`
-4. On the dashboard, click **Connect Zerodha** (re-login daily ~6 AM IST)
+- **Zerodha** — [developers.kite.trade](https://developers.kite.trade/), redirect `http://127.0.0.1:8000/auth/zerodha/callback`, then **Connect** on the dashboard  
+- **Groww** — [groww.in/trade-api](https://groww.in/trade-api), TOTP or API keys in `.env`  
+- **Sarwa / Custom** — weekly or file import via **Connect accounts**  
 
-Same redirect URL for every family member; **separate** API key/secret per person.
-
-</details>
-
-<details>
-<summary><strong>Groww</strong> — Trade API</summary>
-
-1. Subscribe at [groww.in/trade-api](https://groww.in/trade-api)
-2. Use **TOTP** (recommended) or API key + secret in `.env`
-3. Enable the account in `accounts.json`
+Full guide: **[docs/broker-api-keys.md](docs/broker-api-keys.md)**
 
 </details>
-
-<details>
-<summary><strong>Sarwa &amp; Custom</strong></summary>
-
-- **Sarwa** — no API; weekly snapshot or screenshot import (vision needs `OPENAI_API_KEY`)
-- **Custom** — CSV/Excel or broker screenshot; shows as its own account on the dashboard
-
-Both can be created from **Connect accounts** in the UI.
-
-</details>
-
-Full walkthrough: **[docs/broker-api-keys.md](docs/broker-api-keys.md)**
-
-### Example `accounts.json` (Zerodha)
-
-```json
-{
-  "id": "primary",
-  "code": "AB",
-  "label": "My Zerodha",
-  "user_id": "YOUR_KITE_CLIENT_ID",
-  "enabled": true,
-  "redirect_url": "http://127.0.0.1:8000/auth/zerodha/callback"
-}
-```
 
 ---
 
-## OpenAI (optional)
+## Enable the agent
 
-Nothing calls OpenAI until you opt in:
+Add to `.env`:
 
-| Feature | Trigger | Config |
-|---------|---------|--------|
-| Portfolio agent | Click **Ask** | `OPENAI_API_KEY` |
-| Sarwa / custom screenshot | Upload image | `OPENAI_API_KEY` |
-| Sector / buy thesis on refresh | `?refresh=1` | `SECTOR_LLM_ON_ENRICH`, `BUY_THESIS_*` (off by default) |
+```text
+OPENAI_API_KEY=sk-...
+# optional:
+PORTFOLIO_LLM_MODEL=gpt-4o-mini
+```
+
+The agent is the **primary** OpenAI use case. Other LLM features are separate and off by default:
+
+| Feature | When it runs | Default |
+|---------|----------------|---------|
+| **Portfolio agent** | You click **Ask** | On once key is set |
+| Sarwa / screenshot import | File upload | Needs same key |
+| Sector / buy thesis on refresh | `?refresh=1` | Off |
 
 ---
 
@@ -173,35 +168,31 @@ Nothing calls OpenAI until you opt in:
 
 ```text
 talk-to-my-portfolio/
-├── main.py                 # FastAPI entry
-├── .env-example
-├── modules/portfolio/
-│   ├── accounts.example.json
-│   ├── accounts.json       # gitignored — your accounts
-│   ├── data/               # gitignored — caches & tokens
-│   └── services/           # brokers, agent, holdings
-├── shared/web/             # dashboard & setup UI
+├── main.py
+├── modules/portfolio/services/
+│   ├── portfolio_agent.py    # talk-to-your-portfolio brain
+│   ├── portfolio_context.py  # holdings → agent context
+│   └── portfolio.py          # broker fetch + cache
+├── shared/web/               # dashboard + agent UI
 └── docs/
-    └── broker-api-keys.md
 ```
 
 ---
 
 ## Requirements
 
-- **Python** 3.11+ (3.12+ recommended)
-- **OS** macOS or Linux
-- **Zerodha** — [Kite Connect](https://developers.kite.trade/) per login
-- **Groww** — [Trade API](https://groww.in/trade-api) (optional)
-- **OpenAI** — [API key](https://platform.openai.com/api-keys) (optional)
+- Python 3.11+, macOS or Linux  
+- Zerodha Kite app(s) per login  
+- Groww Trade API (optional)  
+- **OpenAI API key** — to use the portfolio agent (and optional screenshot import)
 
 ---
 
 ## Security
 
-- Never commit `.env`, `accounts.json`, or `modules/portfolio/data/`
-- Prefer a **private** GitHub repo if the codebase is personal
-- Rotate keys if they were ever exposed
+- Never commit `.env`, `accounts.json`, or `modules/portfolio/data/`  
+- Agent sends **portfolio context + your question** to your chosen LLM provider when you ask — nothing automatic in the background  
+- Prefer a private GitHub repo for personal forks  
 
 ---
 
@@ -209,11 +200,9 @@ talk-to-my-portfolio/
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/portfolio` | HTML dashboard |
-| `GET` | `/portfolio/setup` | Account hub |
-| `GET` | `/api/portfolio` | Family JSON |
-| `POST` | `/api/portfolio/agent/ask` | Agent (SSE stream) |
-| `GET` | `/docs` | OpenAPI / Swagger |
+| `GET` | `/portfolio` | Dashboard + agent UI |
+| `POST` | `/api/portfolio/agent/ask` | Stream advisory JSON (SSE) |
+| `GET` | `/api/portfolio` | Family holdings JSON |
 
 ---
 
@@ -224,7 +213,7 @@ git remote add origin https://github.com/YOUR_USER/talk-to-my-portfolio.git
 git push -u origin main
 ```
 
-Upstream: **[github.com/ab9bhatia/talk-to-my-portfolio](https://github.com/ab9bhatia/talk-to-my-portfolio)**
+**[github.com/ab9bhatia/talk-to-my-portfolio](https://github.com/ab9bhatia/talk-to-my-portfolio)**
 
 ---
 

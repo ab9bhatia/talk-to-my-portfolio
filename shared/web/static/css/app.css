@@ -2510,12 +2510,24 @@ body.month-drill-open { overflow: hidden; }
   flex: 1;
 }
 
+.agent-session-row {
+  display: flex;
+  align-items: stretch;
+  gap: 0.15rem;
+  margin-bottom: 0.2rem;
+  border-radius: 8px;
+}
+
+.agent-session-row:hover .agent-session-actions {
+  opacity: 1;
+}
+
 .agent-session-item {
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   display: block;
   text-align: left;
-  padding: 0.55rem 0.6rem;
-  margin-bottom: 0.2rem;
+  padding: 0.55rem 0.45rem 0.55rem 0.6rem;
   border: none;
   border-radius: 8px;
   background: transparent;
@@ -2532,6 +2544,61 @@ body.month-drill-open { overflow: hidden; }
 .agent-session-item.is-active {
   background: var(--accent-soft);
   color: var(--text);
+}
+
+.agent-session-item.is-important .agent-session-title {
+  color: var(--text);
+}
+
+.agent-session-star-mark {
+  color: var(--warning);
+}
+
+.agent-session-actions {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.1rem;
+  padding-right: 0.25rem;
+  opacity: 0.55;
+  transition: opacity 0.12s ease;
+}
+
+.agent-session-action {
+  width: 1.65rem;
+  height: 1.65rem;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.agent-session-action:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+}
+
+.agent-session-action-star.is-on {
+  color: var(--warning);
+}
+
+.agent-session-action-star.is-on:hover {
+  color: var(--warning);
+}
+
+.agent-session-action-delete {
+  font-size: 1.1rem;
+  font-weight: 500;
+}
+
+.agent-session-action-delete:hover {
+  color: #f87171;
+  background: rgba(248, 113, 113, 0.12);
 }
 
 .agent-session-title {

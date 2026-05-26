@@ -72,6 +72,10 @@ def _migrate_agent_threads(conn: sqlite3.Connection) -> None:
         conn.execute(
             "ALTER TABLE agent_threads ADD COLUMN last_recommendations_json TEXT"
         )
+    if "is_important" not in cols:
+        conn.execute(
+            "ALTER TABLE agent_threads ADD COLUMN is_important INTEGER NOT NULL DEFAULT 0"
+        )
 
 
 def get_snapshot(cache_key: str) -> tuple[float, dict[str, Any]] | None:

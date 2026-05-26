@@ -32,7 +32,12 @@ from modules.portfolio.services.holdings_view import (
     holdings_financials_map,
     prepare_holdings_view,
 )
-from modules.portfolio.services.agent_threads import get_thread, list_sessions
+from modules.portfolio.services.agent_threads import (
+    delete_thread,
+    get_thread,
+    list_sessions,
+    set_thread_important,
+)
 from modules.portfolio.services.portfolio_agent import (
     agent_status,
     ask_portfolio_agent,
@@ -65,6 +70,10 @@ class PortfolioAgentAskPayload(BaseModel):
     thread_id: str | None = Field(default=None, max_length=64)
     refresh: bool = False
     new_thread: bool = False
+
+
+class PortfolioAgentSessionPatchPayload(BaseModel):
+    important: bool
 
 
 class PlaceOrderPayload(BaseModel):
@@ -548,9 +557,26 @@ def portfolio_agent_session(thread_id: str):
         "title": thread.get("title") or "Portfolio chat",
         "created_at": thread["created_at"],
         "updated_at": thread["updated_at"],
+        "important": thread.get("important", False),
         "bubbles": bubbles,
         "recommendations": thread.get("recommendations"),
     }
+
+
+@router.patch("/api/portfolio/agent/sessions/{thread_id}")
+def portfolio_agent_session_patch(thread_id: str, payload: PortfolioAgentSessionPatchPayload):
+    """Mark or unmark a session as important (kept past the usual 4h TTL)."""
+    if not set_thread_important(thread_id, important=payload.important):
+        raise HTTPException(status_code=404, detail="Session not found or expired")
+    return {"ok": True, "thread_id": thread_id, "important": payload.important}
+
+
+@router.delete("/api/portfolio/agent/sessions/{thread_id}")
+def portfolio_agent_session_delete(thread_id: str):
+    """Delete a saved agent session."""
+    if not delete_thread(thread_id):
+        raise HTTPException(status_code=404, detail="Session not found or expired")
+    return {"ok": True, "thread_id": thread_id}
 
 
 @router.post("/api/portfolio/agent/ask")
