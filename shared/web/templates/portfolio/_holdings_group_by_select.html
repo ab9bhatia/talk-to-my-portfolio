@@ -1,0 +1,7 @@
+{# Shared group-by dropdown (family dashboard + single-account page). #}
+<option value="" {% if not holdings_view.group_by %}selected{% endif %}>None</option>
+<option value="cap" {% if holdings_view.group_by == 'cap' %}selected{% endif %}>Cap</option>
+<option value="sector" {% if holdings_view.group_by == 'sector' %}selected{% endif %}>Sector</option>
+<option value="account" {% if holdings_view.group_by == 'account' %}selected{% endif %}>Accounts</option>
+<option value="signal" {% if holdings_view.group_by == 'signal' %}selected{% endif %}>Signal</option>
+<option value="asset_class" {% if holdings_view.group_by == 'asset_class' %}selected{% endif %}>Class</option>

@@ -1,0 +1,58 @@
+{# Account page toolbar (dashboard uses _portfolio_filters_bar). #}
+<div class="portfolio-toolbar portfolio-toolbar-compact">
+  <div class="toolbar-line toolbar-assets">
+    <span class="toolbar-label">Show</span>
+    <button type="button" class="filter-chip filter-chip-all js-filter-select-all" data-filter-group="asset" title="Show all asset types">All</button>
+    <label class="filter-chip filter-chip-type">
+      <input type="checkbox" class="js-asset-filter" value="equity" checked>
+      <span>Equity</span>
+    </label>
+    <label class="filter-chip filter-chip-type">
+      <input type="checkbox" class="js-asset-filter" value="us_stocks" checked>
+      <span>US stocks</span>
+    </label>
+    <label class="filter-chip filter-chip-type">
+      <input type="checkbox" class="js-asset-filter" value="metals" checked>
+      <span>Metals</span>
+    </label>
+    <label class="filter-chip filter-chip-type">
+      <input type="checkbox" class="js-asset-filter" value="crypto" checked>
+      <span>Crypto</span>
+    </label>
+    <label class="filter-chip filter-chip-type">
+      <input type="checkbox" class="js-asset-filter" value="mf" checked>
+      <span>Mutual funds</span>
+    </label>
+  </div>
+</div>
+<form class="holdings-controls" method="get" action="{{ controls_action }}" id="holdings-controls-form">
+  {% if refresh %}<input type="hidden" name="refresh" value="1">{% endif %}
+  {% if holdings_view.sort %}<input type="hidden" name="sort" value="{{ holdings_view.sort }}">{% endif %}
+  {% if holdings_view.order %}<input type="hidden" name="order" value="{{ holdings_view.order }}">{% endif %}
+
+  <label class="control-field control-search">
+    <span>Symbol search</span>
+    <div class="search-autocomplete">
+      <input
+        type="search"
+        id="symbol-search"
+        list="symbol-suggestions-list"
+        placeholder="Type to filter holdings…"
+        autocomplete="off"
+      >
+      <datalist id="symbol-suggestions-list">
+        {% for symbol in symbol_suggestions %}
+        <option value="{{ symbol }}"></option>
+        {% endfor %}
+      </datalist>
+      <ul id="symbol-suggestions" class="search-suggestions" hidden></ul>
+    </div>
+  </label>
+
+  <label class="control-field">
+    <span>Group by</span>
+    <select name="group_by" class="js-group-by-select">
+      {% include "portfolio/_holdings_group_by_select.html" %}
+    </select>
+  </label>
+</form>

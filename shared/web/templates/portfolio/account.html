@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block title %}{{ portfolio.account_label }} · Portfolio{% endblock %}
+{% block main_class %}main-wide dash-main{% endblock %}
+{% block body_class %}page-dashboard{% endblock %}
+
+{% block head %}
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header-row">
+    <div>
+      <h1>{{ portfolio.account_label }}</h1>
+      <p><span class="account-code-badge">{{ portfolio.account_code }}</span> · {{ portfolio.user_id }} · {% if portfolio.broker == 'groww' %}Groww{% else %}Zerodha{% endif %} · {{ portfolio.summary.holdings_count }} holdings</p>
+    </div>
+    {% if cached_at %}
+    <div class="cache-bar">
+      <span class="cache-meta">
+        Updated {{ format_cache_time(cached_at) }}{% if from_cache %} · cached{% endif %}
+      </span>
+      <a href="/portfolio/account/{{ portfolio.account_code }}?refresh=1&amp;sort={{ holdings_view.sort }}&amp;order={{ holdings_view.order }}{% if holdings_view.group_by %}&amp;group_by={{ holdings_view.group_by }}{% endif %}" class="btn btn-ghost btn-sm js-show-loader">Refresh</a>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{% with summary=portfolio.summary %}
+{% include "portfolio/_portfolio_summary.html" %}
+{% endwith %}
+
+<div class="toolbar">
+  <a href="/portfolio" class="btn btn-ghost">← Back to dashboard</a>
+</div>
+
+{% if portfolio.holdings %}
+{% include "portfolio/_holdings_controls.html" %}
+{% with show_account=False %}
+  {% include "portfolio/_holdings_table.html" %}
+{% endwith %}
+{% endif %}
+
+{% if trading_enabled %}
+{% include "portfolio/_trade_modal.html" %}
+<script src="/static/js/trade-order.js"></script>
+{% endif %}
+{% endblock %}

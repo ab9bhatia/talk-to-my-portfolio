@@ -1,0 +1,196 @@
+{% extends "base.html" %}
+
+{% block title %}Connect accounts · {{ app_name }}{% endblock %}
+{% block main_class %}main-wide setup-main{% endblock %}
+{% block body_class %}page-setup{% endblock %}
+
+{% block head %}
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+{% endblock %}
+
+{% block content %}
+<div class="setup-page">
+  <header class="setup-hero">
+    <div class="setup-hero-glow" aria-hidden="true"></div>
+    <div class="setup-hero-inner">
+      <div class="setup-hero-copy">
+        <p class="setup-eyebrow">Account hub</p>
+        <h1 class="setup-title">Connect, edit &amp; import<br><em>all in one place</em></h1>
+        <p class="setup-lead">Add brokers, update API keys in <code class="setup-inline-code">.env</code>, and refresh holdings from CSV, Excel, or screenshots. Changes apply to your dashboard immediately.</p>
+        <div class="setup-hero-actions">
+          <button type="button" class="setup-btn setup-btn-primary" id="setup-add-btn">
+            <span class="setup-btn-icon" aria-hidden="true">+</span>
+            Add account
+          </button>
+          <a href="/portfolio" class="setup-btn setup-btn-ghost js-show-loader">View portfolio</a>
+        </div>
+      </div>
+      <div class="setup-hero-stats">
+        <div class="setup-stat">
+          <span class="setup-stat-value">{{ setup_stats.linked }}</span>
+          <span class="setup-stat-label">Linked</span>
+        </div>
+        <div class="setup-stat">
+          <span class="setup-stat-value">{{ setup_stats.ready }}</span>
+          <span class="setup-stat-label">Ready</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <section class="setup-callback" aria-labelledby="setup-callback-title">
+    <div class="setup-callback-icon" aria-hidden="true">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+    </div>
+    <div class="setup-callback-body">
+      <h2 id="setup-callback-title" class="setup-callback-title">Zerodha redirect URL</h2>
+      <p class="setup-callback-desc">Saved to <code class="setup-inline-code">.env</code> when you add or edit Zerodha accounts.</p>
+      <div class="setup-callback-row">
+        <code id="setup-callback-display" class="setup-callback-url">{{ default_callback_url }}</code>
+        <button type="button" class="setup-btn setup-btn-copy" id="setup-copy-callback"><span>Copy</span></button>
+      </div>
+    </div>
+  </section>
+
+  <section class="setup-accounts-section" aria-labelledby="setup-accounts-title">
+    <div class="setup-section-head">
+      <h2 id="setup-accounts-title" class="setup-section-title">Your accounts</h2>
+      <p class="setup-section-sub">Click a card to edit credentials or upload new holdings.</p>
+    </div>
+
+    <div id="setup-accounts-list" class="setup-accounts-grid" aria-live="polite">
+      {% for acc in accounts %}
+      <article
+        class="setup-card setup-card--{{ acc.broker }}{% if acc.connected %} is-live{% elif acc.credentials_ok %} is-pending{% endif %} setup-card--interactive"
+        data-broker="{{ acc.broker }}"
+        data-id="{{ acc.id }}"
+        tabindex="0"
+        role="button"
+        aria-label="Edit {{ acc.label }}"
+      >
+        <div class="setup-card-top">
+          <div class="setup-card-avatar" aria-hidden="true">{{ acc.code }}</div>
+          <div class="setup-card-badges">
+            <span class="setup-broker-tag setup-broker-tag--{{ acc.broker }}">{{ acc.broker }}</span>
+            {% if acc.connected %}
+            <span class="setup-status setup-status--ok"><span class="setup-status-dot"></span>Live</span>
+            {% elif acc.credentials_ok and acc.broker == 'zerodha' %}
+            <span class="setup-status setup-status--warn"><span class="setup-status-dot"></span>Login</span>
+            {% elif acc.credentials_ok %}
+            <span class="setup-status setup-status--ok"><span class="setup-status-dot"></span>Configured</span>
+            {% else %}
+            <span class="setup-status setup-status--muted"><span class="setup-status-dot"></span>Setup</span>
+            {% endif %}
+          </div>
+        </div>
+        <h3 class="setup-card-name">{{ acc.label }}</h3>
+        <p class="setup-card-detail">
+          {% if acc.broker == 'zerodha' %}
+            {% if acc.connected %}Session active{% elif acc.credentials_ok %}Keys in .env — tap to edit or reconnect{% else %}Missing API keys{% endif %}
+          {% elif acc.broker == 'groww' %}
+            {% if acc.credentials_ok %}Credentials in .env{% else %}Add TOTP or API keys{% endif %}
+          {% elif acc.broker == 'custom' %}
+            {% if acc.connected %}{{ acc.holdings_count }} positions · tap to re-import{% else %}Import CSV, Excel, or screenshot{% endif %}
+          {% elif acc.broker == 'sarwa' %}
+            {% if acc.connected %}{{ acc.holdings_count|default('—') }} positions{% else %}Upload weekly screenshot{% endif %}
+          {% else %}{{ acc.broker|title }}{% endif %}
+        </p>
+        <div class="setup-card-actions">
+          <span class="setup-card-edit-hint">Edit →</span>
+        </div>
+      </article>
+      {% else %}
+      <div class="setup-empty-state">
+        <div class="setup-empty-visual" aria-hidden="true"><span></span><span></span><span></span></div>
+        <h3>No accounts linked yet</h3>
+        <p>Add Zerodha or Groww, or import a custom portfolio file.</p>
+        <button type="button" class="setup-btn setup-btn-primary" id="setup-add-btn-empty">Add your first account</button>
+      </div>
+      {% endfor %}
+
+      <button type="button" class="setup-card setup-card--add" id="setup-add-card" aria-label="Add account">
+        <span class="setup-card-add-icon">+</span>
+        <span class="setup-card-add-text">Link another account</span>
+      </button>
+    </div>
+  </section>
+</div>
+
+<dialog id="setup-dialog" class="setup-modal">
+  <div class="setup-modal-panel">
+    <header class="setup-modal-header">
+      <div>
+        <p class="setup-eyebrow" id="setup-modal-eyebrow">New connection</p>
+        <h2 class="setup-modal-title" id="setup-modal-title">Add account</h2>
+      </div>
+      <button type="button" class="setup-modal-close" id="setup-dialog-close" aria-label="Close">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+      </button>
+    </header>
+
+    <form id="setup-form" class="setup-modal-form">
+      <input type="hidden" name="edit_mode" id="setup-edit-mode" value="0">
+      <input type="hidden" name="edit_broker" id="setup-edit-broker" value="">
+      <input type="hidden" name="edit_id" id="setup-edit-id" value="">
+
+      <fieldset class="setup-broker-picker" id="setup-broker-picker">
+        <legend class="setup-field-label">Choose provider</legend>
+        <div id="setup-broker-tiles" class="setup-broker-tiles" role="radiogroup"></div>
+        <select name="broker" id="setup-broker-select" class="setup-broker-select-native" required tabindex="-1" aria-hidden="true"></select>
+      </fieldset>
+
+      <div id="setup-broker-panel" class="setup-broker-panel" hidden>
+        <div class="setup-guide" id="setup-guide">
+          <p id="setup-broker-intro" class="setup-guide-intro"></p>
+          <ol id="setup-broker-steps" class="setup-guide-steps"></ol>
+          <p id="setup-broker-links" class="setup-guide-link"></p>
+        </div>
+
+        <div id="setup-fields" class="setup-form-grid"></div>
+
+        <label class="setup-field setup-field--checkbox" id="setup-enabled-wrap" hidden>
+          <input type="checkbox" name="enabled" id="setup-enabled" checked>
+          <span>Include on family dashboard</span>
+        </label>
+
+        <div id="setup-import-section" class="setup-file-panel" hidden>
+          <p class="setup-import-heading">Holdings data</p>
+          <p class="setup-import-desc" id="setup-import-desc">Upload replaces current positions for this account.</p>
+          <div class="setup-dropzone setup-dropzone--modal" id="setup-dropzone">
+            <input type="file" name="import_file" id="setup-import-file" hidden>
+            <div class="setup-dropzone-inner">
+              <svg class="setup-dropzone-icon" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              <p class="setup-dropzone-title" id="setup-dropzone-title">Drop file here</p>
+              <p class="setup-dropzone-hint" id="setup-dropzone-hint">CSV, Excel, or screenshot</p>
+              <button type="button" class="setup-btn setup-btn-sm setup-btn-ghost" id="setup-browse-file">Browse files</button>
+            </div>
+            <p class="setup-file-name" id="setup-file-name" hidden></p>
+          </div>
+          {% if not vision_available %}
+          <p class="setup-vision-warn">Screenshot parsing needs <code class="setup-inline-code">OPENAI_API_KEY</code> in .env.</p>
+          {% endif %}
+        </div>
+      </div>
+
+      <footer class="setup-modal-footer">
+        <div class="setup-modal-footer-left">
+          <a href="#" class="setup-btn setup-btn-sm setup-btn-ghost setup-connect-link" id="setup-connect-link" hidden>Connect Zerodha ↗</a>
+        </div>
+        <div class="setup-modal-footer-right">
+          <button type="button" class="setup-btn setup-btn-ghost" id="setup-cancel-btn">Cancel</button>
+          <button type="button" class="setup-btn setup-btn-ghost" id="setup-import-btn" hidden>Upload holdings only</button>
+          <button type="submit" class="setup-btn setup-btn-primary" id="setup-save-btn" disabled>Save</button>
+        </div>
+      </footer>
+    </form>
+  </div>
+</dialog>
+
+<div id="setup-toast" class="setup-toast" role="status" hidden></div>
+
+<script>
+  window.__SETUP_CALLBACK__ = "{{ default_callback_url }}";
+  window.__SETUP_VISION__ = {% if vision_available %}true{% else %}false{% endif %};
+</script>
+<script src="/static/js/portfolio-setup.js"></script>
+{% endblock %}

@@ -1,0 +1,60 @@
+{# Live trading modal — shown when TRADING_ENABLED=true #}
+<dialog id="trade-order-dialog" class="trade-dialog">
+  <form method="dialog" id="trade-order-form" class="trade-dialog-form">
+    <header class="trade-dialog-header">
+      <h3 id="trade-dialog-title">Place order</h3>
+      <button type="button" class="btn btn-ghost btn-sm trade-dialog-close" aria-label="Close">✕</button>
+    </header>
+
+    <p class="trade-dialog-warning">
+      This sends a <strong>real</strong> order to your broker (delivery / CNC). Double-check account, symbol, and quantity.
+    </p>
+    <p class="trade-session-hint alert alert-info" id="trade-session-hint" hidden></p>
+
+    <div class="trade-field">
+      <label for="trade-account">Account</label>
+      <select id="trade-account" required></select>
+    </div>
+
+    <div class="trade-field-row">
+      <div class="trade-field">
+        <label for="trade-exchange">Exchange</label>
+        <select id="trade-exchange">
+          <option value="NSE">NSE</option>
+          <option value="BSE">BSE</option>
+        </select>
+      </div>
+      <div class="trade-field">
+        <label for="trade-order-type">Order type</label>
+        <select id="trade-order-type">
+          <option value="MARKET">Market</option>
+          <option value="LIMIT">Limit</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="trade-field">
+      <label for="trade-quantity">Quantity</label>
+      <input type="number" id="trade-quantity" min="1" step="1" required />
+      <span class="trade-hint" id="trade-max-hint"></span>
+    </div>
+
+    <div class="trade-field" id="trade-price-wrap" hidden>
+      <label for="trade-price">Limit price (₹)</label>
+      <input type="number" id="trade-price" min="0.05" step="0.05" />
+    </div>
+
+    <label class="trade-confirm-check">
+      <input type="checkbox" id="trade-confirm-check" />
+      I understand this places a live order at the broker.
+    </label>
+
+    <p class="trade-error alert alert-warning" id="trade-error" hidden></p>
+    <p class="trade-success alert alert-info" id="trade-success" hidden></p>
+
+    <footer class="trade-dialog-actions">
+      <button type="button" class="btn btn-ghost trade-dialog-close">Cancel</button>
+      <button type="submit" class="btn btn-primary" id="trade-submit-btn" disabled>Place order</button>
+    </footer>
+  </form>
+</dialog>

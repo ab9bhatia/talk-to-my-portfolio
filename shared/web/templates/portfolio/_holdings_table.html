@@ -1,0 +1,59 @@
+{# Shared holdings table. Set show_account=True on family dashboard. #}
+{% set table_col_count = 13 if show_account else 12 %}
+{% set page_size = holdings_view.page_size | default(50) %}
+{% set gb = holdings_view.group_by %}
+
+{% include "portfolio/_holdings_loader.html" %}
+
+{% if holdings_financials_json is defined %}
+<script id="holdings-financials-data" type="application/json">{{ holdings_financials_json | safe }}</script>
+{% endif %}
+
+{% if holdings_view.mode == 'grouped' and holdings_view.groups %}
+  {% include "portfolio/_holdings_grouped.html" %}
+{% else %}
+<div class="holdings-scroll">
+  <table
+    class="holdings-table"
+    id="holdings-table"
+    data-symbols="{{ symbol_suggestions | join(',') }}"
+    data-page-size="{{ page_size }}"
+    data-total-count="{{ holdings_view.total_count | default(0) }}"
+    data-col-resizable="true"
+  >
+    {% include "portfolio/_holdings_colgroup.html" %}
+    {% include "portfolio/_holdings_table_head.html" %}
+    <tbody>
+      {% for h in holdings_view.holdings %}
+      {% include "portfolio/_holding_row.html" %}
+      {% else %}
+      <tr>
+        <td colspan="{{ table_col_count }}" class="empty-cell">No holdings found.</td>
+      </tr>
+      {% endfor %}
+      <tr id="holdings-no-match" hidden>
+        <td colspan="{{ table_col_count }}" class="empty-cell">No holdings match your search.</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% if holdings_view.mode != 'grouped' %}
+<nav class="holdings-pagination" id="holdings-pagination" aria-label="Holdings pages" data-page-size="{{ page_size }}" hidden></nav>
+{% endif %}
+
+<p class="table-footnote">
+  <strong>Cap (India):</strong> AMFI/SEBI ranks (top 100 Large · 101–250 Mid · 251+ Small); live mcap vs AMFI cutoffs when not on list; thematic ETFs = Multi-cap.
+  <strong>MF cap:</strong> from scheme category (Large / Mid / Small / Multi-cap); debt funds ungrouped.
+  <strong>Equity:</strong> 52W Δ and signal from Yahoo (price vs 52W high, analysts). <strong>SW (US):</strong> same source; ETFs use fund AUM for cap and 52W-based signal when analysts are absent.
+  <strong>MF:</strong> same columns use NAV vs 52W high; upside = room to 52W NAV high; signal from NAV momentum.
+  % of total = portfolio weight. Sort via headers ▲▼.
+  <span class="table-footnote-resize">Drag the <strong>⋮⋮</strong> grip on the right edge of any column header to resize; <button type="button" class="btn-link" id="reset-col-widths">reset widths</button>.</span>
+</p>
+<div class="table-actions">
+  <a href="{{ export_url }}" class="btn btn-primary btn-sm">Download Excel</a>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="/static/js/holdings.js"></script>

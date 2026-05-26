@@ -1,0 +1,128 @@
+{# Grouped view: one overview allocation chart + accordion groups (no per-group pies). #}
+{% set gb = holdings_view.group_by %}
+{% if gb == 'cap' %}
+  {% set gb_title = 'Market cap' %}
+  {% set gb_hint = 'AMFI Large / Mid / Small, Multi-cap ETFs, MF by scheme type, debt MF unclassified.' %}
+{% elif gb == 'sector' %}
+  {% set gb_title = 'Sector' %}
+  {% set gb_hint = 'Sector weights — expand a row to see holdings in that sector.' %}
+{% elif gb == 'account' %}
+  {% set gb_title = 'Account' %}
+  {% set gb_hint = 'Per family account (AB, RB, SB, HB) — values are that account’s slice only.' %}
+{% elif gb == 'signal' %}
+  {% set gb_title = 'Signal' %}
+  {% set gb_hint = 'Separate groups: B+, B, H, S, S+, and Unrated (no Yahoo signal).' %}
+{% elif gb == 'asset_class' %}
+  {% set gb_title = 'Asset class' %}
+  {% set gb_hint = 'Indian equity, US stocks (SW), metals, crypto, and mutual funds in demat.' %}
+{% else %}
+  {% set gb_title = gb | title %}
+  {% set gb_hint = 'Portfolio allocation by group.' %}
+{% endif %}
+
+<div class="grouped-overview card">
+  <div class="grouped-overview-header">
+    <div>
+      <h3>Allocation by {{ gb_title }}</h3>
+      <p class="cell-muted">{{ gb_hint }}</p>
+    </div>
+    <span class="grouped-overview-badge" id="grouped-overview-badge">{{ holdings_view.groups | length }} groups</span>
+  </div>
+  <div
+    class="grouped-overview-chart grouped-overview-chart-bar"
+    style="--group-count: {{ holdings_view.groups | length }}"
+  >
+    <canvas id="portfolio-groups-chart" data-chart="{{ holdings_view.overview_chart_json }}" data-chart-kind="bar"></canvas>
+  </div>
+</div>
+
+<div class="holdings-groups" id="holdings-groups" data-group-by="{{ gb }}">
+  {% for group in holdings_view.groups %}
+  {% set pct = group.summary.pct_of_portfolio %}
+  {% set color_idx = loop.index0 % 8 %}
+  <section
+    class="holdings-group"
+    data-group-label="{{ group.label }}"
+    style="--group-accent: {{ ['#60a5fa','#34d399','#fbbf24','#f472b6','#a78bfa','#22d3ee','#fb923c','#94a3b8'][color_idx] }}"
+  >
+    <article class="group-card">
+      <header class="group-card-header">
+        <button
+          type="button"
+          class="group-expander"
+          aria-expanded="false"
+          aria-label="Show holdings in {{ group.label }}"
+        >▸</button>
+
+        <div class="group-card-body">
+          <div class="group-card-title-row">
+            {% if gb == 'cap' and group.label in ['Large', 'Mid', 'Small', 'Multi-cap', 'Unclassified', 'ETF'] %}
+            <span class="cap-badge {{ cap_badge_class(group.label) }}">{{ group.label }}</span>
+            {% elif gb == 'signal' %}
+            <h3 class="group-card-title">
+              <span class="rating-badge rating-badge-compact rating-{{ signal_group_slug(group.label) }}">{{ group.label }}</span>
+            </h3>
+            {% elif gb == 'asset_class' %}
+            <h3 class="group-card-title">{{ group.label }}</h3>
+            {% else %}
+            <h3 class="group-card-title">{{ group.label }}</h3>
+            {% endif %}
+            <span class="group-card-meta" data-group-count>{{ group.summary.holdings_count }} holdings</span>
+          </div>
+
+          <div class="group-allocation-row">
+            <div class="group-allocation-track" aria-hidden="true">
+              <div class="group-allocation-fill" data-group-fill style="width: {{ [pct, 100] | min }}%"></div>
+            </div>
+            <span class="group-allocation-pct" data-group-pct>{{ pct }}% of portfolio</span>
+          </div>
+
+          {% if group.holdings %}
+          <div class="group-top-holdings" aria-label="Largest holdings in group">
+            {% for h in group.holdings[:6] %}
+            <span class="group-holding-chip" title="{{ h.fund_name or h.symbol }}">
+              {% if h.asset_class == 'mf' and h.fund_name %}{{ h.fund_name[:22] }}{% if h.fund_name|length > 22 %}…{% endif %}{% else %}{{ h.symbol }}{% endif %}
+            </span>
+            {% endfor %}
+            {% if group.holdings | length > 6 %}
+            <span class="group-holding-chip group-holding-more">+{{ group.holdings | length - 6 }}</span>
+            {% endif %}
+          </div>
+          {% endif %}
+        </div>
+
+        <div class="group-card-metrics">
+          <div class="group-metric">
+            <span class="group-metric-label">Value</span>
+            <span class="group-metric-value" data-group-value>{{ format_inr(group.summary.total_current_value) }}</span>
+          </div>
+          <div class="group-metric">
+            <span class="group-metric-label">P&amp;L</span>
+            <span class="group-metric-value {{ pnl_class(group.summary.total_pnl) }}" data-group-pnl>
+              {{ format_inr(group.summary.total_pnl) }}
+              <span class="cell-sub">({{ format_pct(group.summary.total_pnl_pct) }})</span>
+            </span>
+          </div>
+        </div>
+      </header>
+    </article>
+
+    <div class="group-holdings-panel" hidden>
+      <div class="holdings-scroll">
+        <table class="holdings-table holdings-table-nested" data-page-size="{{ holdings_view.page_size | default(50) }}" data-col-resizable="true">
+          {% include "portfolio/_holdings_colgroup.html" %}
+          {% include "portfolio/_holdings_table_head.html" %}
+          <tbody>
+            {% for h in group.holdings %}
+            {% include "portfolio/_holding_row.html" %}
+            {% endfor %}
+          </tbody>
+        </table>
+        <nav class="holdings-pagination holdings-pagination-nested" aria-label="Pages in {{ group.label }}" hidden></nav>
+      </div>
+    </div>
+  </section>
+  {% endfor %}
+</div>
+
+<p id="holdings-no-match" class="holdings-no-match card" hidden>No holdings match your search.</p>

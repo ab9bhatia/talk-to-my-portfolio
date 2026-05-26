@@ -216,3 +216,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Portfolio local config & runtime data (see README)
+modules/portfolio/accounts.json
+modules/portfolio/data/
+run.local.md
+scripts/com.*.plist

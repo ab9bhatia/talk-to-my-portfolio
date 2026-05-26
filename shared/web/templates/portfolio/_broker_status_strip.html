@@ -1,0 +1,32 @@
+{# Account connection chips #}
+{% if accounts %}
+<nav class="dash-accounts broker-status-strip" aria-label="Linked accounts">
+  {% for account in accounts %}
+  {% if account.enabled %}
+  <div class="dash-account-chip broker-status-pill{% if account.connected %} is-connected{% else %} is-disconnected{% endif %}">
+    <a
+      href="/portfolio/setup"
+      class="dash-account-chip-main js-show-loader"
+      title="{{ account.label }} — manage in account hub"
+    >
+      <span class="dash-account-code broker-status-code">{{ account.code }}</span>
+      <span class="dash-account-name">{{ account.label }}</span>
+      <span class="dash-account-status broker-status-label">
+        {% if account.connected %}
+        <span class="status-dot connected" aria-hidden="true"></span> Live
+        {% elif account.broker == 'groww' %}Keys
+        {% elif account.broker in ('custom', 'sarwa') %}
+        {% if account.connected %}Synced{% else %}Import{% endif %}
+        {% else %}
+        <span class="status-dot disconnected" aria-hidden="true"></span> Login
+        {% endif %}
+      </span>
+    </a>
+    {% if not account.connected and account.broker == 'zerodha' and account.connect_url %}
+    <a href="{{ account.connect_url }}" class="dash-account-connect broker-status-link js-show-loader" title="Connect {{ account.code }}">↗</a>
+    {% endif %}
+  </div>
+  {% endif %}
+  {% endfor %}
+</nav>
+{% endif %}

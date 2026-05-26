@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}{{ app_name }}{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  {% block head %}{% endblock %}
+  <link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body class="{% block body_class %}{% endblock %}">
+  <div class="layout">
+    <aside class="sidebar">
+      <div>
+        <div class="brand-title">{{ app_name }}</div>
+        <div class="brand-subtitle">{{ app_tagline }}</div>
+      </div>
+
+      <nav>
+        <div class="nav-section">Portfolio</div>
+        <ul class="nav-list">
+          <li>
+            <a href="/portfolio" class="nav-link {% if active_module == 'portfolio' %}active{% endif %}" data-loader-message="Loading portfolio…">
+              <span class="nav-icon" aria-hidden="true">◆</span> Dashboard
+            </a>
+          </li>
+          <li>
+            <a href="/portfolio/setup" class="nav-link {% if active_module == 'setup' %}active{% endif %}" data-loader-message="Loading setup…">
+              <span class="nav-icon">◎</span> Connect accounts
+            </a>
+          </li>
+        </ul>
+        {% if expenses_app_url or learnings_app_url %}
+        <div class="nav-section">Other apps</div>
+        <ul class="nav-list">
+          {% if expenses_app_url %}
+          <li>
+            <a href="{{ expenses_app_url }}" class="nav-link" target="_blank" rel="noopener">
+              <span class="nav-icon">💳</span> Expenses ↗
+            </a>
+          </li>
+          {% endif %}
+          {% if learnings_app_url %}
+          <li>
+            <a href="{{ learnings_app_url }}" class="nav-link" target="_blank" rel="noopener">
+              <span class="nav-icon">📚</span> Learnings ↗
+            </a>
+          </li>
+          {% endif %}
+        </ul>
+        {% endif %}
+      </nav>
+    </aside>
+
+    <main class="main {% block main_class %}{% endblock %}">
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+  {% include "shared/_page_loader.html" %}
+  <script src="/static/js/nav-loader.js"></script>
+</body>
+</html>

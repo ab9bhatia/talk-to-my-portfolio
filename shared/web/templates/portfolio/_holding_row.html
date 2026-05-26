@@ -1,0 +1,103 @@
+<tr
+  class="holding-row"
+  data-holding-key="{{ h.holding_key }}"
+  data-symbol="{{ h.symbol }}"
+  data-asset-class="{{ h.asset_class_filter or h.asset_class or 'equity' }}"
+  data-account-codes="{{ h.account_codes or h.account_code or h.account_label or '' }}"
+  data-search="{{ h.symbol }} {{ h.fund_name or '' }} {{ h.exchange }} {{ h.sector or '' }} {{ h.account_label if show_account else '' }}"
+  data-invested="{{ h.invested | default(0) }}"
+  data-current-value="{{ h.current_value | default(0) }}"
+  data-pnl="{{ h.pnl | default(0) }}"
+  data-quantity="{{ h.quantity | default(0) }}"
+  data-avg-price="{{ h.avg_price | default(0) }}"
+  {% if h.account_breakdown %}data-account-breakdown='{{ h.account_breakdown | tojson }}'{% endif %}
+>
+  <td class="col-expander">
+    <button
+      type="button"
+      class="row-expander"
+      aria-expanded="false"
+      aria-label="Expand {{ h.symbol }}"
+    >▸</button>
+  </td>
+  <td class="sticky-col col-symbol">
+    {% if h.asset_class == 'mf' and h.fund_name %}
+    <strong class="symbol-name" title="{{ h.fund_name }}">{{ h.fund_name }}</strong>
+    <span class="cell-sub">MF · {{ h.symbol }}</span>
+    {% else %}
+    <strong class="symbol-name">{{ h.symbol }}</strong>
+    {% if h.get('buy_thesis') %}
+    <p class="buy-thesis-snippet" title="{{ h.buy_thesis }}">{{ h.buy_thesis }}</p>
+    {% endif %}
+    {% endif %}
+  </td>
+  {% if show_account %}
+  <td class="col-account">
+    <span class="account-cell-compact" tabindex="0">{{ account_column_compact(h.account_label) }}</span>
+    {% if h.account_label %}
+    <span class="account-hover-tip" role="tooltip">{{ h.account_label }}</span>
+    {% endif %}
+  </td>
+  {% endif %}
+  <td class="col-cap">
+    {% if h.market_cap %}
+    <span class="cap-badge {{ cap_badge_class(h.market_cap) }}">{{ h.market_cap }}</span>
+    {% else %}
+    <span class="cell-muted">—</span>
+    {% endif %}
+  </td>
+  <td class="col-sector col-hide-md">
+    {% if h.sector %}
+    <span class="sector-badge {{ sector_badge_class(h.sector) }}">{{ h.sector }}</span>
+    {% else %}
+    <span class="cell-muted">—</span>
+    {% endif %}
+  </td>
+  <td class="col-52w text-right {{ pnl_class(h.get('pct_from_52w_high')) }}">
+    {{ format_na_compact(h.get('pct_from_52w_high'), "%") }}
+  </td>
+  <td class="col-upside text-right {{ pnl_class(h.get('upside_pct')) }}">
+    {{ format_na_compact(h.get('upside_pct'), "%") }}
+  </td>
+  <td class="col-signal">
+    {% include "portfolio/_rating_cell_compact.html" %}
+    {% if trading_enabled and h.asset_class != 'mf' and h.exchange != 'US' and h.broker != 'sarwa' %}
+    {% set row_trade_accounts = trade_accounts_for_holding(h) %}
+    {% if row_trade_accounts %}
+    <span class="holding-trade-inline">
+      <button type="button" class="btn btn-xs btn-primary js-trade-open" data-side="BUY" data-symbol="{{ h.symbol }}" data-trade-accounts='{{ row_trade_accounts | tojson }}'>Buy</button>
+      <button type="button" class="btn btn-xs btn-ghost js-trade-open" data-side="SELL" data-symbol="{{ h.symbol }}" data-trade-accounts='{{ row_trade_accounts | tojson }}'>Sell</button>
+    </span>
+    {% endif %}
+    {% endif %}
+  </td>
+  <td class="col-weight text-right cell-muted">{{ format_na_compact(h.pct_of_portfolio, "%") }}</td>
+  <td class="col-qty col-hide-sm text-right">{{ h.quantity | int }}</td>
+  <td class="col-avg col-hide-md text-right">{{ format_inr_whole(h.avg_price) }}</td>
+  <td class="col-ltp col-hide-md text-right">{{ format_inr_whole(h.last_price) }}</td>
+  <td class="col-value text-right">{{ format_inr_whole(h.current_value) }}</td>
+  <td class="col-pnl text-right {{ pnl_class(h.pnl) }}">
+    {{ format_inr_whole(h.pnl) }}
+    <span class="cell-sub">{{ format_pct_compact(h.pnl_pct) }}</span>
+  </td>
+</tr>
+<tr
+  class="holding-detail-row"
+  hidden
+  data-detail-for="{{ h.holding_key }}"
+  data-symbol="{{ h.symbol }}"
+  data-exchange="{{ h.exchange }}"
+  data-quantity="{{ h.quantity }}"
+  data-last-price="{{ h.last_price_usd if h.exchange == 'US' and h.last_price_usd else h.last_price }}"
+>
+  <td colspan="{{ table_col_count }}">
+    <div class="holding-detail-panel">
+      {% include "portfolio/_holding_account_breakdown.html" %}
+      {% include "portfolio/_holding_trade_actions.html" %}
+      {% include "portfolio/_holding_detail_sections.html" %}
+      <div class="detail-async">
+        <div class="detail-loading">Loading chart &amp; news…</div>
+      </div>
+    </div>
+  </td>
+</tr>

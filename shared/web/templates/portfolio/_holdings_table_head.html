@@ -1,0 +1,109 @@
+<thead>
+  <tr>
+    <th class="col-expander" data-col-id="expander"></th>
+    <th class="sticky-col col-symbol sortable" data-col-id="symbol">
+      <div class="th-resize-wrap">
+        <a class="sort-link js-show-loader" href="{{ build_sort_url(controls_action, 'symbol', holdings_view.sort, holdings_view.order, gb, refresh) }}">
+          Symbol <span class="sort-arrow">{{ sort_indicator('symbol', holdings_view.sort, holdings_view.order) }}</span>
+        </a>
+        <span class="col-resize-handle" role="separator" title="Drag to resize column" aria-label="Resize Symbol column"></span>
+      </div>
+    </th>
+    {% if show_account %}
+    <th class="col-account" data-col-id="account">
+      <div class="th-resize-wrap">
+        <span class="th-label-static">Acct</span>
+        <span class="col-resize-handle" role="separator" aria-label="Resize Account column"></span>
+      </div>
+    </th>
+    {% endif %}
+    <th class="col-cap sortable" data-col-id="cap">
+      <div class="th-resize-wrap">
+        <a class="sort-link js-show-loader" href="{{ build_sort_url(controls_action, 'cap', holdings_view.sort, holdings_view.order, gb, refresh) }}">
+          Cap <span class="sort-arrow">{{ sort_indicator('cap', holdings_view.sort, holdings_view.order) }}</span>
+        </a>
+        <span class="col-resize-handle" role="separator" aria-label="Resize Cap column"></span>
+      </div>
+    </th>
+    <th class="col-sector col-hide-md sortable" data-col-id="sector">
+      <div class="th-resize-wrap">
+        <a class="sort-link js-show-loader" href="{{ build_sort_url(controls_action, 'sector', holdings_view.sort, holdings_view.order, gb, refresh) }}">
+          Sector <span class="sort-arrow">{{ sort_indicator('sector', holdings_view.sort, holdings_view.order) }}</span>
+        </a>
+        <span class="col-resize-handle" role="separator" aria-label="Resize Sector column"></span>
+      </div>
+    </th>
+    <th class="col-52w text-right sortable" data-col-id="pct52w">
+      <div class="th-resize-wrap">
+        <a class="sort-link js-show-loader" href="{{ build_sort_url(controls_action, 'pct_52w', holdings_view.sort, holdings_view.order, gb, refresh) }}">
+          52W <span class="sort-arrow">{{ sort_indicator('pct_52w', holdings_view.sort, holdings_view.order) }}</span>
+        </a>
+        <span class="col-resize-handle" role="separator" aria-label="Resize 52W column"></span>
+      </div>
+    </th>
+    <th class="col-upside text-right sortable" data-col-id="upside">
+      <div class="th-resize-wrap">
+        <a class="sort-link js-show-loader" href="{{ build_sort_url(controls_action, 'upside', holdings_view.sort, holdings_view.order, gb, refresh) }}">
+          Ups <span class="sort-arrow">{{ sort_indicator('upside', holdings_view.sort, holdings_view.order) }}</span>
+        </a>
+        <span class="col-resize-handle" role="separator" aria-label="Resize Upside column"></span>
+      </div>
+    </th>
+    <th class="col-signal sortable" data-col-id="signal">
+      <div class="th-resize-wrap">
+        <a class="sort-link js-show-loader" href="{{ build_sort_url(controls_action, 'signal', holdings_view.sort, holdings_view.order, gb, refresh) }}">
+          Sig <span class="sort-arrow">{{ sort_indicator('signal', holdings_view.sort, holdings_view.order) }}</span>
+        </a>
+        <span class="col-resize-handle" role="separator" aria-label="Resize Signal column"></span>
+      </div>
+    </th>
+    <th class="col-weight text-right sortable" data-col-id="weight">
+      <div class="th-resize-wrap">
+        <a class="sort-link js-show-loader" href="{{ build_sort_url(controls_action, 'weight', holdings_view.sort, holdings_view.order, gb, refresh) }}">
+          Wt% <span class="sort-arrow">{{ sort_indicator('weight', holdings_view.sort, holdings_view.order) }}</span>
+        </a>
+        <span class="col-resize-handle" role="separator" aria-label="Resize Weight column"></span>
+      </div>
+    </th>
+    <th class="col-qty col-hide-sm text-right sortable" data-col-id="qty">
+      <div class="th-resize-wrap">
+        <a class="sort-link js-show-loader" href="{{ build_sort_url(controls_action, 'qty', holdings_view.sort, holdings_view.order, gb, refresh) }}">
+          Qty <span class="sort-arrow">{{ sort_indicator('qty', holdings_view.sort, holdings_view.order) }}</span>
+        </a>
+        <span class="col-resize-handle" role="separator" aria-label="Resize Qty column"></span>
+      </div>
+    </th>
+    <th class="col-avg col-hide-md text-right sortable" data-col-id="avg">
+      <div class="th-resize-wrap">
+        <a class="sort-link js-show-loader" href="{{ build_sort_url(controls_action, 'avg', holdings_view.sort, holdings_view.order, gb, refresh) }}">
+          Avg <span class="sort-arrow">{{ sort_indicator('avg', holdings_view.sort, holdings_view.order) }}</span>
+        </a>
+        <span class="col-resize-handle" role="separator" aria-label="Resize Avg price column"></span>
+      </div>
+    </th>
+    <th class="col-ltp col-hide-md text-right sortable" data-col-id="ltp">
+      <div class="th-resize-wrap">
+        <a class="sort-link js-show-loader" href="{{ build_sort_url(controls_action, 'ltp', holdings_view.sort, holdings_view.order, gb, refresh) }}">
+          LTP <span class="sort-arrow">{{ sort_indicator('ltp', holdings_view.sort, holdings_view.order) }}</span>
+        </a>
+        <span class="col-resize-handle" role="separator" aria-label="Resize LTP column"></span>
+      </div>
+    </th>
+    <th class="col-value text-right sortable" data-col-id="value">
+      <div class="th-resize-wrap">
+        <a class="sort-link js-show-loader" href="{{ build_sort_url(controls_action, 'value', holdings_view.sort, holdings_view.order, gb, refresh) }}">
+          Value <span class="sort-arrow">{{ sort_indicator('value', holdings_view.sort, holdings_view.order) }}</span>
+        </a>
+        <span class="col-resize-handle" role="separator" aria-label="Resize Value column"></span>
+      </div>
+    </th>
+    <th class="col-pnl text-right sortable" data-col-id="pnl">
+      <div class="th-resize-wrap">
+        <a class="sort-link js-show-loader" href="{{ build_sort_url(controls_action, 'pnl', holdings_view.sort, holdings_view.order, gb, refresh) }}">
+          P&amp;L <span class="sort-arrow">{{ sort_indicator('pnl', holdings_view.sort, holdings_view.order) }}</span>
+        </a>
+        <span class="col-resize-handle" role="separator" aria-label="Resize P&amp;L column"></span>
+      </div>
+    </th>
+  </tr>
+</thead>

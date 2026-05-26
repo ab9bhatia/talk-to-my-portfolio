@@ -1,0 +1,14 @@
+{% if trading_enabled and h.asset_class != 'mf' and h.exchange != 'US' and h.broker != 'sarwa' %}
+{% set trade_accounts = trade_accounts_for_holding(h) %}
+{% if trade_accounts %}
+<div
+  class="holding-trade-actions"
+  data-trade-symbol="{{ h.symbol }}"
+  data-trade-accounts='{{ trade_accounts | tojson }}'
+>
+  <span class="holding-trade-label">Trade</span>
+  <button type="button" class="btn btn-sm btn-primary js-trade-open" data-side="BUY">Buy</button>
+  <button type="button" class="btn btn-sm btn-ghost js-trade-open" data-side="SELL">Sell</button>
+</div>
+{% endif %}
+{% endif %}

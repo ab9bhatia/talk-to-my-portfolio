@@ -1,0 +1,51 @@
+{
+  "zerodha": [
+    {
+      "id": "primary",
+      "code": "AB",
+      "label": "Primary Zerodha",
+      "user_id": "YOUR_KITE_USER_ID",
+      "enabled": true,
+      "redirect_url": "http://127.0.0.1:8000/auth/zerodha/callback",
+      "auth_port": 8000
+    },
+    {
+      "id": "member2",
+      "code": "RB",
+      "label": "Family account 2",
+      "user_id": "YOUR_KITE_USER_ID_2",
+      "enabled": false,
+      "redirect_url": "http://127.0.0.1:8000/auth/zerodha/callback",
+      "auth_port": 8000
+    },
+    {
+      "id": "member3",
+      "code": "SB",
+      "label": "Family account 3",
+      "user_id": "YOUR_KITE_USER_ID_3",
+      "enabled": false,
+      "redirect_url": "http://127.0.0.1:8000/auth/zerodha/callback",
+      "auth_port": 8000
+    }
+  ],
+  "groww": [
+    {
+      "id": "groww1",
+      "code": "HB",
+      "label": "Groww account",
+      "relation": "",
+      "user_id": "groww",
+      "enabled": false
+    }
+  ],
+  "sarwa": [
+    {
+      "id": "sarwa",
+      "code": "SW",
+      "label": "Sarwa (USD)",
+      "enabled": false
+    }
+  ],
+  "custom": [],
+  "legacy_zerodha_account_id": "primary"
+}

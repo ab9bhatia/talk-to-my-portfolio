@@ -1,0 +1,81 @@
+{# Single-row filters: accounts (AB/RB/SB/HB) + asset type + search + group #}
+<div class="portfolio-toolbar" id="portfolio-toolbar">
+  <div class="toolbar-line toolbar-accounts">
+    <span class="toolbar-label">Accounts</span>
+    <span class="toolbar-hint" title="Click one chip to focus; click again or All to reset">All · click to focus</span>
+    <div class="filter-chips" id="account-filter-chips">
+      <button type="button" class="filter-chip filter-chip-all js-filter-select-all" data-filter-group="account" title="Show all accounts">All</button>
+      {% for account in accounts %}
+      {% if account.enabled %}
+      <label
+        class="filter-chip filter-chip-account"
+        title="{{ account.label }}{% if account.connected %} · Connected{% elif account.broker == 'groww' %} · {{ account.groww_hint or 'Configure API keys' }}{% else %} · Login required{% endif %}"
+      >
+        <input
+          type="checkbox"
+          class="js-account-filter"
+          value="{{ account.code }}"
+          checked
+        >
+        <span class="chip-code">{{ account.code }}</span>
+      </label>
+      {% endif %}
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="toolbar-line toolbar-assets">
+    <span class="toolbar-label">Show</span>
+    <button type="button" class="filter-chip filter-chip-all js-filter-select-all" data-filter-group="asset" title="Show all asset types">All</button>
+    <label class="filter-chip filter-chip-type" title="NSE/BSE stocks and ETFs">
+      <input type="checkbox" class="js-asset-filter" value="equity" checked>
+      <span>Equity</span>
+    </label>
+    <label class="filter-chip filter-chip-type" title="US-listed holdings (e.g. Sarwa SW)">
+      <input type="checkbox" class="js-asset-filter" value="us_stocks" checked>
+      <span>US stocks</span>
+    </label>
+    <label class="filter-chip filter-chip-type" title="Gold, silver, copper and metal ETFs">
+      <input type="checkbox" class="js-asset-filter" value="metals" checked>
+      <span>Metals</span>
+    </label>
+    <label class="filter-chip filter-chip-type" title="Crypto (e.g. BTC)">
+      <input type="checkbox" class="js-asset-filter" value="crypto" checked>
+      <span>Crypto</span>
+    </label>
+    <label class="filter-chip filter-chip-type" title="Mutual funds in demat">
+      <input type="checkbox" class="js-asset-filter" value="mf" checked>
+      <span>Mutual funds</span>
+    </label>
+  </div>
+
+  <form class="toolbar-line toolbar-table-controls" method="get" action="{{ controls_action }}" id="holdings-controls-form">
+    {% if refresh %}<input type="hidden" name="refresh" value="1">{% endif %}
+    {% if holdings_view.sort %}<input type="hidden" name="sort" value="{{ holdings_view.sort }}">{% endif %}
+    {% if holdings_view.order %}<input type="hidden" name="order" value="{{ holdings_view.order }}">{% endif %}
+
+    <label class="toolbar-search">
+      <span class="sr-only">Search holdings</span>
+      <input
+        type="search"
+        id="symbol-search"
+        list="symbol-suggestions-list"
+        placeholder="Search symbol or fund…"
+        autocomplete="off"
+      >
+      <datalist id="symbol-suggestions-list">
+        {% for symbol in symbol_suggestions %}
+        <option value="{{ symbol }}"></option>
+        {% endfor %}
+      </datalist>
+      <ul id="symbol-suggestions" class="search-suggestions" hidden></ul>
+    </label>
+
+    <label class="toolbar-group">
+      <span>Group</span>
+      <select name="group_by" id="holdings-group-by" class="js-group-by-select">
+        {% include "portfolio/_holdings_group_by_select.html" %}
+      </select>
+    </label>
+  </form>
+</div>

@@ -1,0 +1,62 @@
+<details class="sarwa-weekly-panel card">
+  <summary>Weekly history &amp; Sarwa (SW) import</summary>
+
+  <div class="weekly-status-block" id="weekly-status-block">
+    <p class="weekly-status-lead">
+      Weekly snapshots are stored in <code>portfolio_history.db</code> (qty, avg, LTP, P&amp;L, sector, signal, etc.).
+    </p>
+    <p class="weekly-export-row">
+      <a href="/api/portfolio/weekly/export?scope=family&amp;weeks=52" class="btn btn-primary btn-sm">
+        Download weekly history (Excel)
+      </a>
+      <span class="text-muted">Summary, every position by week, and week-over-week qty changes.</span>
+    </p>
+    <ul class="weekly-status-list">
+      <li>Current week: <strong>{{ weekly_status.current_week }}</strong></li>
+      <li>
+        Family weeks saved: <strong>{{ weekly_status.family_weeks_stored }}</strong>
+        {% if weekly_status.latest_family_week %}
+        (latest {{ weekly_status.latest_family_week }})
+        {% endif %}
+      </li>
+      <li>
+        Sarwa: <strong>{{ weekly_status.sarwa_positions }}</strong> positions
+        {% if weekly_status.latest_sarwa_week %}· week {{ weekly_status.latest_sarwa_week }}{% endif %}
+      </li>
+    </ul>
+  </div>
+
+  <div class="sarwa-import-block">
+    <h4 class="sarwa-import-heading">Import Sarwa from screenshot</h4>
+    <p class="text-muted">
+      Upload your Sarwa <em>Trade</em> summary. Holdings appear above with <strong>SW</strong>; fundamentals load from Yahoo (US tickers).
+    </p>
+    {% if not sarwa_vision_available %}
+    <p class="alert alert-warning">
+      Set <code>OPENAI_API_KEY</code> in <code>.env</code> for screenshot parsing.
+    </p>
+    {% endif %}
+    <label class="sarwa-import-label" for="sarwa-screenshot-file">Screenshot (PNG / JPEG)</label>
+    <input type="file" id="sarwa-screenshot-file" accept="image/png,image/jpeg,image/webp" class="sarwa-file-input">
+    <div class="sarwa-import-actions">
+      <button type="button" class="btn btn-primary btn-sm" id="sarwa-screenshot-btn" {% if not sarwa_vision_available %}disabled{% endif %}>
+        Upload &amp; import Sarwa
+      </button>
+      <button type="button" class="btn btn-ghost btn-sm" id="sarwa-refresh-metrics-btn">
+        Refresh SW metrics (Yahoo)
+      </button>
+      <span id="sarwa-import-status" class="sarwa-import-status" aria-live="polite"></span>
+    </div>
+  </div>
+
+  <div class="weekly-growth-collapsed">
+    <button type="button" class="btn btn-ghost btn-sm" id="weekly-growth-toggle" aria-expanded="false">
+      Show 52-week growth chart
+    </button>
+    <div id="weekly-growth-panel" class="sarwa-growth-wrap" hidden>
+      <canvas id="weekly-growth-chart" height="140" aria-label="Weekly portfolio value"></canvas>
+      <p id="weekly-growth-empty" class="text-muted" hidden>Need at least 2 weekly snapshots for a trend line.</p>
+    </div>
+  </div>
+</details>
+<script src="/static/js/sarwa-weekly.js" defer></script>

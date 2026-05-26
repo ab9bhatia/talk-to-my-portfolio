@@ -1,0 +1,69 @@
+<div class="dash-stats portfolio-summary-wrap" id="portfolio-summary" data-masked="true" data-default-masked="true">
+  <div class="dash-stats-head">
+    <span class="dash-stats-label">Overview</span>
+    <button
+      type="button"
+      class="dash-mask-toggle portfolio-summary-toggle"
+      aria-pressed="false"
+      aria-controls="portfolio-summary-cards"
+      title="Toggle amount visibility"
+    >
+      <svg class="dash-mask-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+      <span class="toggle-label-show">Show amounts</span>
+      <span class="toggle-label-hide">Hide amounts</span>
+    </button>
+  </div>
+
+  <div class="dash-stat-grid portfolio-summary-cards" id="portfolio-summary-cards">
+    <article class="dash-stat-card dash-stat-card--primary">
+      <div class="dash-stat-icon" aria-hidden="true">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+      </div>
+      <div class="dash-stat-body">
+        <span class="dash-stat-name">Portfolio value</span>
+        <div class="dash-stat-value card-value">
+          <span class="summary-masked" aria-hidden="true">••••••</span>
+          <span class="summary-revealed" data-summary="value">{{ format_inr(summary.total_current_value) }}</span>
+        </div>
+      </div>
+    </article>
+
+    <article class="dash-stat-card">
+      <div class="dash-stat-icon" aria-hidden="true">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>
+      </div>
+      <div class="dash-stat-body">
+        <span class="dash-stat-name">Invested</span>
+        <div class="dash-stat-value card-value neutral">
+          <span class="summary-masked" aria-hidden="true">••••••</span>
+          <span class="summary-revealed" data-summary="invested">{{ format_inr(summary.total_invested) }}</span>
+        </div>
+      </div>
+    </article>
+
+    <article class="dash-stat-card dash-stat-card--pnl">
+      <div class="dash-stat-icon" aria-hidden="true">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+      </div>
+      <div class="dash-stat-body">
+        <span class="dash-stat-name">Total P&amp;L</span>
+        <div class="dash-stat-value card-value {{ pnl_class(summary.total_pnl) }}">
+          <span class="summary-masked" aria-hidden="true">••••••</span>
+          <span class="summary-revealed" data-summary="pnl-wrap">
+            <span data-summary="pnl">{{ format_inr(summary.total_pnl) }}</span>
+            <span class="dash-stat-pct card-sub" data-summary="pnl-pct">{{ format_pct(summary.total_pnl_pct) }}</span>
+          </span>
+        </div>
+      </div>
+    </article>
+
+    <article class="dash-stat-card dash-stat-card--meta">
+      <div class="dash-stat-body dash-stat-body--wide">
+        <span class="dash-stat-name">Positions</span>
+        <div class="dash-stat-value dash-stat-value--plain">{{ summary.holdings_count | default(0) }}</div>
+        <span class="dash-stat-foot">Across linked brokers</span>
+      </div>
+    </article>
+  </div>
+</div>
+<script src="/static/js/portfolio-summary.js"></script>

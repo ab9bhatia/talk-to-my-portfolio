@@ -1,0 +1,40 @@
+{% if h.account_breakdown and h.account_breakdown | length > 1 %}
+<div class="holding-accounts-breakdown">
+  <h5 class="accounts-breakdown-title">Holdings by account</h5>
+  <div class="accounts-breakdown-scroll">
+    <table class="accounts-breakdown-table">
+      <thead>
+        <tr>
+          <th>Symbol</th>
+          <th>Acct</th>
+          <th class="text-right">Qty</th>
+          <th class="text-right">Avg buy</th>
+          <th class="text-right">Value</th>
+          <th class="text-right">P&amp;L</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for part in h.account_breakdown %}
+        <tr>
+          <td>
+            {% if h.asset_class == 'mf' and h.fund_name %}
+            <span title="{{ h.fund_name }}">{{ h.symbol }}</span>
+            {% else %}
+            {{ part.symbol or h.symbol }}
+            {% endif %}
+          </td>
+          <td><span class="account-code-badge">{{ part.abbrev }}</span></td>
+          <td class="text-right">{{ part.quantity | int }}</td>
+          <td class="text-right">{{ format_inr(part.avg_price) }}</td>
+          <td class="text-right">{{ format_inr(part.current_value) }}</td>
+          <td class="text-right {{ pnl_class(part.pnl) }}">
+            {{ format_inr(part.pnl) }}
+            <span class="cell-sub">{{ format_pct(part.pnl_pct) }}</span>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}

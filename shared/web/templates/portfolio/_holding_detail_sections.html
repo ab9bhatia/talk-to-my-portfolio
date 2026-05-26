@@ -1,0 +1,42 @@
+<div class="detail-metrics-stacked">
+  {% if h.asset_class == 'mf' %}
+  <div class="detail-metrics-line detail-metrics-fund">
+    <span class="strip-tag">Fund</span>
+    <span class="strip-item" title="{{ h.fund_name or h.symbol }}"><b>Scheme</b> {{ (h.fund_name or h.symbol)[:40] }}{% if (h.fund_name or '')|length > 40 %}…{% endif %}</span>
+    <span class="strip-item"><b>Units</b> {{ h.quantity | int }}</span>
+    <span class="strip-item"><b>NAV</b> {{ format_inr(h.last_price) }}</span>
+    <span class="strip-item"><b>Value</b> {{ format_inr(h.current_value) }}</span>
+    <span class="strip-item"><b>Ret</b> <span class="{{ pnl_class(h.pnl_pct) }}">{{ format_pct(h.pnl_pct) }}</span></span>
+  </div>
+  <div class="detail-metrics-line detail-metrics-tech">
+    <span class="strip-tag">Tech</span>
+    <span class="strip-item"><b>52W</b> <span class="{{ pnl_class(h.get('pct_from_52w_high')) }}">{{ format_na(h.get('pct_from_52w_high'), '%') }}</span></span>
+    <span class="strip-item"><b>Room</b> {{ format_na(h.get('upside_pct'), '%') }}</span>
+    <span class="strip-item"><b>1Y</b> <span class="{{ pnl_class(h.get('return_1y_pct')) }}">{{ format_na(h.get('return_1y_pct'), '%') }}</span></span>
+    <span class="strip-item"><b>Sig</b> {% include "portfolio/_rating_cell_detail.html" %}</span>
+  </div>
+  {% if h.get('buy_thesis') %}
+  <p class="buy-thesis-detail">{{ h.buy_thesis }}</p>
+  {% endif %}
+  {% else %}
+  <div class="detail-metrics-line detail-metrics-fund">
+    <span class="strip-tag">Fund</span>
+    <span class="strip-item"><b>P/E</b> {{ format_pe(h.get('pe_ratio')) }}</span>
+    <span class="strip-item"><b>ROCE</b> {{ format_pct_metric(h.get('roce')) }}</span>
+    <span class="strip-item"><b>D/E</b> {{ format_debt_equity(h.get('debt_to_equity')) }}</span>
+    <span class="strip-item"><b>Cap</b> {{ h.get('market_cap') or '—' }}</span>
+    <span class="strip-item"><b>Ups</b> {{ format_na(h.get('upside_pct'), '%') }}</span>
+  </div>
+  <div class="detail-metrics-line detail-metrics-tech">
+    <span class="strip-tag">Tech</span>
+    <span class="strip-item"><b>52W</b> <span class="{{ pnl_class(h.get('pct_from_52w_high')) }}">{{ format_na(h.get('pct_from_52w_high'), '%') }}</span></span>
+    <span class="strip-item"><b>RSI</b> {{ format_na(h.get('rsi_14')) }}</span>
+    <span class="strip-item"><b>DMA</b> <span class="{{ pnl_class(h.get('pct_vs_dma200')) }}">{{ format_na(h.get('pct_vs_dma200'), '%') }}</span></span>
+    <span class="strip-item"><b>Rng</b> {{ format_na(h.get('pct_in_52w_range'), '%') }}</span>
+    <span class="strip-item"><b>Sig</b> {% include "portfolio/_rating_cell_detail.html" %}</span>
+  </div>
+  {% if h.get('buy_thesis') %}
+  <p class="buy-thesis-detail">{{ h.buy_thesis }}</p>
+  {% endif %}
+  {% endif %}
+</div>

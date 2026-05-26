@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+kiteconnect
+growwapi
+pyotp
+python-dotenv
+jinja2
+yfinance
+openpyxl
+pdfplumber
+python-multipart

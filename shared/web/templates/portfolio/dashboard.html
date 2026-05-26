@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+
+{% block title %}Portfolio · {{ app_name }}{% endblock %}
+{% block main_class %}main-wide dash-main{% endblock %}
+{% block body_class %}page-dashboard{% endblock %}
+
+{% block head %}
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+{% endblock %}
+
+{% block content %}
+<div class="dash">
+  <header class="dash-hero">
+    <div class="dash-hero-glow" aria-hidden="true"></div>
+    <div class="dash-hero-top">
+      <div class="dash-hero-copy">
+        <p class="dash-eyebrow">Family portfolio</p>
+        <h1 class="dash-title">Your consolidated view</h1>
+        <p class="dash-lead">Zerodha, Groww, Sarwa &amp; custom holdings — live metrics, filters, and optional AI guidance.</p>
+      </div>
+      <div class="dash-hero-actions">
+        <a href="/portfolio/setup" class="dash-btn dash-btn-ghost js-show-loader">Manage accounts</a>
+        {% if cached_at %}
+        <a
+          href="/portfolio?refresh=1&amp;sort={{ holdings_view.sort }}&amp;order={{ holdings_view.order }}{% if holdings_view.group_by %}&amp;group_by={{ holdings_view.group_by }}{% endif %}"
+          class="dash-btn dash-btn-primary js-show-loader"
+        >Refresh live</a>
+        {% else %}
+        <a
+          href="/portfolio?refresh=1&amp;sort={{ holdings_view.sort }}&amp;order={{ holdings_view.order }}{% if holdings_view.group_by %}&amp;group_by={{ holdings_view.group_by }}{% endif %}"
+          class="dash-btn dash-btn-primary js-show-loader"
+        >Load portfolio</a>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="dash-hero-meta">
+      {% include "portfolio/_broker_status_strip.html" %}
+      {% if cached_at %}
+      <span class="dash-cache-pill" title="Last portfolio fetch">
+        <span class="dash-cache-dot" aria-hidden="true"></span>
+        Updated {{ format_cache_time(cached_at) }}{% if stale %} · snapshot{% elif from_cache %} · cached{% endif %}
+      </span>
+      {% endif %}
+    </div>
+
+    {% include "portfolio/_portfolio_summary.html" %}
+  </header>
+
+  {% if stale or cache_meta.revalidating %}
+  <div
+    id="portfolio-stale-banner"
+    class="dash-banner {% if cache_meta.revalidating %}dash-banner--info{% else %}dash-banner--warn{% endif %} portfolio-stale-banner"
+    data-stale="{{ 'true' if stale else 'false' }}"
+    data-revalidating="{{ 'true' if cache_meta.revalidating else 'false' }}"
+  >
+    {% if cache_meta.revalidating %}
+    <span class="dash-banner-spinner" aria-hidden="true"></span>
+    Updating live prices and metrics in the background…
+    {% else %}
+    Showing saved snapshot — refreshing shortly.
+    {% endif %}
+  </div>
+  <script src="/static/js/portfolio-revalidate.js"></script>
+  {% endif %}
+
+  {% if errors %}
+  <div class="dash-alerts">
+    {% for error in errors %}
+    <div class="dash-banner dash-banner--warn">{{ error }}</div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if trading_enabled %}
+  <div class="dash-banner dash-banner--info trading-enabled-banner">
+    Live trading enabled — expand a row for <strong>Buy</strong> / <strong>Sell</strong> (delivery CNC).
+  </div>
+  {% endif %}
+
+  {% if holdings_view.holdings %}
+  <section class="dash-panel portfolio-holdings-block">
+    <header class="dash-panel-head">
+      <div>
+        <h2 class="dash-panel-title">Holdings</h2>
+        <p class="dash-panel-sub" id="holdings-filtered-meta">{{ holdings_view.total_count | default(0) }} positions across accounts</p>
+      </div>
+      <a href="{{ export_url }}" class="dash-btn dash-btn-ghost dash-btn-sm">Export Excel</a>
+    </header>
+
+    {% include "portfolio/_portfolio_filters_bar.html" %}
+
+    <div class="holdings-viewport dash-table-viewport" id="holdings-viewport">
+      <div class="holdings-loading-overlay dash-loading-overlay" id="holdings-loading-overlay" hidden aria-live="polite">
+        <div class="holdings-loading-inner">
+          <span class="holdings-loading-spinner" aria-hidden="true"></span>
+          <span class="holdings-loading-text" id="holdings-loading-text">Updating holdings…</span>
+        </div>
+      </div>
+      {% with show_account=True %}
+      {% include "portfolio/_holdings_table.html" %}
+      {% endwith %}
+    </div>
+  </section>
+  {% elif not errors %}
+  <div class="dash-empty">
+    <h3>No holdings yet</h3>
+    <p>Connect Zerodha or Groww, or import a custom portfolio from the account hub.</p>
+    <a href="/portfolio/setup" class="dash-btn dash-btn-primary js-show-loader">Connect accounts</a>
+  </div>
+  {% endif %}
+
+  <div class="dash-secondary">
+    <div class="dash-panel dash-panel--compact">
+      {% include "portfolio/_sarwa_weekly_panel.html" %}
+    </div>
+    <div class="dash-panel dash-panel--agent">
+      {% include "portfolio/_portfolio_agent.html" %}
+    </div>
+  </div>
+</div>
+
+{% if trading_enabled %}
+{% include "portfolio/_trade_modal.html" %}
+<script src="/static/js/trade-order.js"></script>
+{% endif %}
+{% endblock %}

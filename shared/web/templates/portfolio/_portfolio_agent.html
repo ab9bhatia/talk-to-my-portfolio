@@ -1,0 +1,69 @@
+<section class="portfolio-agent" id="portfolio-agent" aria-labelledby="portfolio-agent-title">
+  <div class="portfolio-agent-header">
+    <h2 class="section-title" id="portfolio-agent-title">Portfolio agent</h2>
+    <span class="agent-status-pill" id="agent-status-pill" hidden></span>
+  </div>
+  <p class="agent-intro">
+    Portfolio-level buy / sell / rebalance, red flags, and themes. Uses sector, industry, and business
+    summary — not ticker names. Click Ask to stream a response; follow up in the conversation below.
+  </p>
+
+  <div class="agent-controls">
+    <label class="agent-label" for="agent-question">Ask your portfolio</label>
+    <textarea
+      id="agent-question"
+      class="agent-question"
+      rows="2"
+      placeholder="e.g. Should I trim banking and add to AI infra themes?"
+    ></textarea>
+    <div class="agent-actions">
+      <button type="button" class="btn btn-primary" id="agent-ask-btn">
+        <span class="agent-btn-label">Ask portfolio agent</span>
+        <span class="agent-btn-spinner loader-spinner" id="agent-btn-spinner" hidden aria-hidden="true"></span>
+      </button>
+      <button type="button" class="btn btn-ghost btn-sm" id="agent-new-chat-btn">New chat</button>
+      <span class="agent-hint" id="agent-hint"></span>
+    </div>
+    <p class="agent-status-line" id="agent-status-line" hidden></p>
+  </div>
+
+  <div class="agent-error alert alert-warning" id="agent-error" hidden></div>
+
+  <details class="agent-outcome" id="agent-outcome" hidden>
+    <summary class="agent-outcome-summary">
+      <span id="agent-outcome-title">Agent response</span>
+      <span class="agent-outcome-meta" id="agent-outcome-meta"></span>
+    </summary>
+    <div class="agent-outcome-body">
+      <div class="agent-chat" id="agent-chat" aria-live="polite"></div>
+      <div class="agent-results" id="agent-results" hidden>
+        <div class="agent-block" id="agent-stance"></div>
+        <div class="agent-grid">
+          <div class="agent-block" id="agent-buy"></div>
+          <div class="agent-block" id="agent-sell"></div>
+          <div class="agent-block" id="agent-rebalance"></div>
+          <div class="agent-block" id="agent-red-flags"></div>
+          <div class="agent-block" id="agent-themes"></div>
+          <div class="agent-block" id="agent-macro"></div>
+        </div>
+        <div class="agent-block" id="agent-answer-block" hidden></div>
+      </div>
+
+      <div class="agent-followup">
+        <label class="agent-label" for="agent-followup-input">Follow-up</label>
+        <div class="agent-followup-row">
+          <input
+            type="text"
+            id="agent-followup-input"
+            class="agent-followup-input"
+            placeholder="Ask a follow-up…"
+            autocomplete="off"
+          />
+          <button type="button" class="btn btn-ghost btn-sm" id="agent-followup-btn">Send</button>
+        </div>
+      </div>
+    </div>
+  </details>
+</section>
+
+<script src="/static/js/portfolio-agent.js"></script>
