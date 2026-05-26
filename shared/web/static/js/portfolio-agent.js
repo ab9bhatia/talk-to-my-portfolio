@@ -8,6 +8,9 @@
   const hint = document.getElementById("agent-hint");
   const askBtn = document.getElementById("agent-ask-btn");
   const newChatBtn = document.getElementById("agent-new-chat-btn");
+  const sessionsNewBtn = document.getElementById("agent-sessions-new-btn");
+  const sessionsList = document.getElementById("agent-sessions-list");
+  const sessionsEmpty = document.getElementById("agent-sessions-empty");
   const btnSpinner = document.getElementById("agent-btn-spinner");
   const btnLabel = askBtn?.querySelector(".agent-btn-label");
   const questionEl = document.getElementById("agent-question");
@@ -25,11 +28,26 @@
   let busy = false;
   let abortController = null;
   let lastRecommendations = null;
+  let sessions = [];
 
   function escapeHtml(text) {
     const div = document.createElement("div");
     div.textContent = text;
     return div.innerHTML;
+  }
+
+  function formatSessionTime(unixSeconds) {
+    if (!unixSeconds) return "";
+    const date = new Date(unixSeconds * 1000);
+    const now = new Date();
+    const sameDay =
+      date.getFullYear() === now.getFullYear() &&
+      date.getMonth() === now.getMonth() &&
+      date.getDate() === now.getDate();
+    if (sameDay) {
+      return date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+    }
+    return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
   }
 
   function saveState() {
@@ -60,34 +78,54 @@
     try {
       raw = sessionStorage.getItem(STORAGE_KEY);
     } catch {
-      return;
+      return false;
     }
-    if (!raw) return;
+    if (!raw) return false;
 
     let data;
     try {
       data = JSON.parse(raw);
     } catch {
-      return;
+      return false;
     }
 
     threadId = data.threadId || null;
-    if (!data.bubbles?.length && !data.recommendations) return;
+    if (!data.bubbles?.length && !data.recommendations) return false;
+
+    applyConversation({
+      threadId,
+      bubbles: data.bubbles,
+      recommendations: data.recommendations,
+      outcomeOpen: data.outcomeOpen !== false,
+      metaNote: " · restored after navigation",
+    });
+    return true;
+  }
+
+  function applyConversation({ threadId: tid, bubbles, recommendations, outcomeOpen, metaNote }) {
+    threadId = tid || null;
+    lastRecommendations = recommendations || null;
 
     if (outcomeEl) {
-      outcomeEl.hidden = false;
-      outcomeEl.open = data.outcomeOpen !== false;
+      const hasContent = (bubbles && bubbles.length) || recommendations;
+      outcomeEl.hidden = !hasContent;
+      outcomeEl.open = outcomeOpen !== false;
     }
-    if (outcomeTitle) outcomeTitle.textContent = threadId ? "Agent conversation" : "Agent response";
+    if (outcomeTitle) {
+      outcomeTitle.textContent = threadId ? "Agent conversation" : "Agent response";
+    }
     if (chatEl) {
       chatEl.innerHTML = "";
-      data.bubbles.forEach((b) => appendChatBubble(b.role, b.text));
+      (bubbles || []).forEach((b) => appendChatBubble(b.role, b.text));
     }
-    if (data.recommendations) {
-      lastRecommendations = data.recommendations;
-      renderRecommendations(data.recommendations);
+    if (recommendations) {
+      renderRecommendations(recommendations);
+    } else if (resultsEl) {
+      resultsEl.hidden = true;
     }
-    if (outcomeMeta) outcomeMeta.textContent = " · restored after navigation";
+    if (outcomeMeta) outcomeMeta.textContent = metaNote || "";
+    renderSessionsList();
+    saveState();
   }
 
   function clearConversation() {
@@ -99,7 +137,9 @@
       outcomeEl.hidden = true;
       outcomeEl.open = false;
     }
+    if (outcomeMeta) outcomeMeta.textContent = "";
     showError("");
+    renderSessionsList();
     try {
       sessionStorage.removeItem(STORAGE_KEY);
     } catch {
@@ -112,6 +152,7 @@
     if (askBtn) askBtn.disabled = on;
     if (followupBtn) followupBtn.disabled = on;
     if (newChatBtn) newChatBtn.disabled = on;
+    if (sessionsNewBtn) sessionsNewBtn.disabled = on;
     if (btnSpinner) btnSpinner.hidden = !on;
     if (btnLabel) btnLabel.hidden = on;
     if (statusLine) {
@@ -205,6 +246,80 @@
 
     resultsEl.hidden = false;
     saveState();
+  }
+
+  function renderSessionsList() {
+    if (!sessionsList) return;
+    sessionsList.innerHTML = "";
+    const hasSessions = sessions.length > 0;
+    if (sessionsEmpty) sessionsEmpty.hidden = hasSessions;
+
+    sessions.forEach((session) => {
+      const li = document.createElement("li");
+      li.setAttribute("role", "listitem");
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "agent-session-item";
+      if (session.thread_id === threadId) btn.classList.add("is-active");
+      btn.dataset.threadId = session.thread_id;
+      btn.innerHTML = `
+        <span class="agent-session-title">${escapeHtml(session.title || "Portfolio chat")}</span>
+        <span class="agent-session-meta">${escapeHtml(formatSessionTime(session.updated_at))}${session.message_count ? ` · ${session.message_count} msgs` : ""}</span>
+      `;
+      btn.addEventListener("click", () => loadSession(session.thread_id));
+      li.appendChild(btn);
+      sessionsList.appendChild(li);
+    });
+  }
+
+  async function loadSessions() {
+    if (!sessionsList) return;
+    try {
+      const res = await fetch("/api/portfolio/agent/sessions");
+      if (!res.ok) return;
+      const data = await res.json();
+      sessions = data.sessions || [];
+      renderSessionsList();
+    } catch {
+      /* sidebar is optional UX */
+    }
+  }
+
+  async function loadSession(id) {
+    if (!id || busy) return;
+    if (id === threadId && chatEl?.querySelector(".agent-chat-bubble")) return;
+
+    showError("");
+    setBusy(true, "Loading chat…");
+    try {
+      const res = await fetch(`/api/portfolio/agent/sessions/${encodeURIComponent(id)}`);
+      if (res.status === 404) {
+        threadId = null;
+        try {
+          sessionStorage.removeItem(STORAGE_KEY);
+        } catch {
+          /* ignore */
+        }
+        await loadSessions();
+        throw new Error("This chat expired. Start a new question.");
+      }
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error(errBody.detail || `Could not load session (${res.status})`);
+      }
+      const data = await res.json();
+      applyConversation({
+        threadId: data.thread_id,
+        bubbles: data.bubbles,
+        recommendations: data.recommendations,
+        outcomeOpen: true,
+        metaNote: " · loaded from history",
+      });
+    } catch (err) {
+      showError(err.message || "Could not load chat.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   function parseSseChunk(buffer, onEvent) {
@@ -302,6 +417,8 @@
               "Response ready — see sections below.";
             appendChatBubble("assistant", summary);
             saveState();
+            loadSessions();
+            renderSessionsList();
           } else if (event === "error") {
             throw new Error(data.message || "Stream error");
           }
@@ -326,7 +443,7 @@
       if (data.available) {
         statusPill.textContent = `${data.provider} · ${data.model}`;
         statusPill.className = "agent-status-pill is-ready";
-        if (hint) hint.textContent = "New question = new thread · follow-up continues below";
+        if (hint) hint.textContent = "Chats are saved for 4 hours · pick one on the left or start new";
       } else {
         statusPill.textContent = "API key required";
         statusPill.className = "agent-status-pill is-off";
@@ -336,6 +453,13 @@
     } catch {
       if (hint) hint.textContent = "Could not load agent status.";
     }
+  }
+
+  function startNewChat() {
+    if (abortController) abortController.abort();
+    clearConversation();
+    if (questionEl) questionEl.focus();
+    loadSessions();
   }
 
   askBtn?.addEventListener("click", () => {
@@ -364,12 +488,17 @@
     }
   });
 
-  newChatBtn?.addEventListener("click", () => {
-    if (abortController) abortController.abort();
-    clearConversation();
-    if (questionEl) questionEl.focus();
-  });
+  newChatBtn?.addEventListener("click", startNewChat);
+  sessionsNewBtn?.addEventListener("click", startNewChat);
 
-  restoreState();
-  loadStatus();
+  (async function init() {
+    await loadSessions();
+    const restored = restoreState();
+    if (!restored && threadId) {
+      await loadSession(threadId);
+    } else if (!restored && sessions.length > 0) {
+      /* leave blank canvas for new question; sessions visible in sidebar */
+    }
+    loadStatus();
+  })();
 })();
