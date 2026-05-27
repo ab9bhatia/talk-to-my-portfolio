@@ -519,11 +519,11 @@
       if (data.available) {
         statusPill.textContent = `${data.provider} · ${data.model}`;
         statusPill.className = "agent-status-pill is-ready";
-        if (hint) hint.textContent = "Chats last 4h · ★ keeps them · delete with × on the left";
+        if (hint) hint.textContent = "Chats kept 1 week · ★ saves longer · delete with × on the left";
       } else {
         statusPill.textContent = "API key required";
         statusPill.className = "agent-status-pill is-off";
-        if (hint) hint.textContent = "Add API_KEY to .env";
+        if (hint) hint.textContent = "Configure LLM in Connect accounts";
         if (askBtn) askBtn.disabled = true;
       }
     } catch {

@@ -73,6 +73,14 @@ def invalidate_portfolio_cache(account_id: str | None = None) -> None:
         _PORTFOLIO_CACHE.clear()
         for key in ("family:metrics=True", "family:metrics=False"):
             disk_cache.delete_snapshot(key)
+        try:
+            from modules.portfolio.services.market_data import invalidate_stale_metrics_cache
+
+            dropped = invalidate_stale_metrics_cache()
+            if dropped:
+                logger.info("Cleared %s stale Yahoo metric cache entries", dropped)
+        except Exception:
+            pass
         return
 
     for key in list(_PORTFOLIO_CACHE):
@@ -148,16 +156,31 @@ def _refresh_holdings_ltps_from_yahoo(holdings: list[dict]) -> list[dict]:
     return updated
 
 
+def _ensure_block_metrics(holdings: list[dict], *, with_metrics: bool) -> list[dict]:
+    """Re-fetch Yahoo 52W / signal when cached rows are mostly empty."""
+    if not with_metrics or not holdings:
+        return holdings
+    from modules.portfolio.services.market_data import (
+        apply_holdings_metric_overrides,
+        enrich_holdings,
+        holdings_need_metrics_refresh,
+        invalidate_stale_metrics_cache,
+    )
+
+    if holdings_need_metrics_refresh(holdings):
+        invalidate_stale_metrics_cache()
+        holdings = enrich_holdings(holdings)
+    apply_holdings_metric_overrides(holdings)
+    return holdings
+
+
 def _refresh_stale_payload_prices(payload: dict, *, with_metrics: bool) -> dict:
     """Recompute summary after Yahoo LTP refresh on a cached portfolio payload."""
     if payload.get("portfolios"):
         portfolios = []
         for block in payload["portfolios"]:
             holdings = _refresh_holdings_ltps_from_yahoo(block.get("holdings") or [])
-            if with_metrics:
-                from modules.portfolio.services.market_data import apply_holdings_metric_overrides
-
-                apply_holdings_metric_overrides(holdings)
+            holdings = _ensure_block_metrics(holdings, with_metrics=with_metrics)
             summary = summarize_holdings(holdings)
             portfolios.append({**block, "holdings": holdings, "summary": summary})
         all_holdings = [h for p in portfolios for h in p.get("holdings") or []]
@@ -169,10 +192,7 @@ def _refresh_stale_payload_prices(payload: dict, *, with_metrics: bool) -> dict:
         }
 
     holdings = _refresh_holdings_ltps_from_yahoo(payload.get("holdings") or [])
-    if with_metrics:
-        from modules.portfolio.services.market_data import apply_holdings_metric_overrides
-
-        apply_holdings_metric_overrides(holdings)
+    holdings = _ensure_block_metrics(holdings, with_metrics=with_metrics)
     return {
         **payload,
         "holdings": holdings,
@@ -524,6 +544,14 @@ def _fetch_family_live(*, with_metrics: bool = True) -> dict:
     from modules.portfolio.db import custom_holdings as custom_holdings_store
     from modules.portfolio.services.custom_portfolio import fetch_custom_portfolio_live
 
+    if with_metrics:
+        try:
+            from modules.portfolio.services.market_data import invalidate_stale_metrics_cache
+
+            invalidate_stale_metrics_cache()
+        except Exception:
+            pass
+
     accounts = get_enabled_accounts()
     groww_accounts = get_enabled_groww_accounts()
     sarwa_accounts = get_enabled_sarwa_accounts()
@@ -647,6 +675,35 @@ def _merge_sarwa_into_family(
     }
 
 
+def _ensure_family_payload_metrics(payload: dict, *, with_metrics: bool) -> dict:
+    """Fill 52W / upside / signal when disk cache has poisoned empty Yahoo metrics."""
+    if not with_metrics or not payload.get("portfolios"):
+        return payload
+    portfolios = []
+    for block in payload["portfolios"]:
+        holdings = list(block.get("holdings") or [])
+        updated = _ensure_block_metrics(holdings, with_metrics=True)
+        portfolios.append(
+            {
+                **block,
+                "holdings": updated,
+                "summary": summarize_holdings(updated),
+            }
+        )
+    all_holdings = [h for p in portfolios for h in p.get("holdings") or []]
+    return {**payload, "portfolios": portfolios, "summary": summarize_holdings(all_holdings)}
+
+
+def _finalize_family_payload(
+    payload: dict,
+    *,
+    with_metrics: bool,
+    refresh: bool = False,
+) -> dict:
+    payload = _merge_sarwa_into_family(payload, with_metrics=with_metrics, refresh=refresh)
+    return _ensure_family_payload_metrics(payload, with_metrics=with_metrics)
+
+
 def fetch_family_portfolio(
     *,
     with_metrics: bool = True,
@@ -663,8 +720,9 @@ def fetch_family_portfolio(
 
     if refresh:
         live = _fetch_family_live(with_metrics=with_metrics)
+        live = _ensure_family_payload_metrics(live, with_metrics=with_metrics)
         if live.get("portfolios"):
-            return _merge_sarwa_into_family(
+            return _finalize_family_payload(
                 _store_cache(key, live),
                 with_metrics=with_metrics,
                 refresh=True,
@@ -672,12 +730,8 @@ def fetch_family_portfolio(
         stale = _load_stale_family_portfolio(with_metrics=with_metrics)
         if stale is not None:
             stale["errors"] = live.get("errors") or []
-            return _merge_sarwa_into_family(
-                stale,
-                with_metrics=with_metrics,
-                refresh=False,
-            )
-        return _merge_sarwa_into_family(
+            return _finalize_family_payload(stale, with_metrics=with_metrics, refresh=False)
+        return _finalize_family_payload(
             _store_cache(key, live),
             with_metrics=with_metrics,
             refresh=True,
@@ -685,7 +739,7 @@ def fetch_family_portfolio(
 
     cached = _memory_cached(key, refresh=False)
     if cached is not None:
-        return _merge_sarwa_into_family(
+        return _finalize_family_payload(
             _apply_llm_sector_cache(cached), with_metrics=with_metrics, refresh=False
         )
 
@@ -693,30 +747,29 @@ def fetch_family_portfolio(
     if disk is not None:
         payload = _payload_without_cache_meta(disk)
         payload = _apply_llm_sector_cache(payload)
-        payload = _merge_sarwa_into_family(
-            payload, with_metrics=with_metrics, refresh=False
-        )
+        payload = _ensure_family_payload_metrics(payload, with_metrics=with_metrics)
         _PORTFOLIO_CACHE[key] = (disk["cached_at"], payload)
         merged_disk = {**disk, **payload}
         if disk.get("stale"):
             schedule_family_revalidate(with_metrics=with_metrics)
-        return merged_disk
+        return _finalize_family_payload(merged_disk, with_metrics=with_metrics, refresh=False)
 
     live = _fetch_family_live(with_metrics=with_metrics)
+    live = _ensure_family_payload_metrics(live, with_metrics=with_metrics)
     if live.get("portfolios"):
-        return _merge_sarwa_into_family(
+        return _finalize_family_payload(
             _store_cache(key, live),
             with_metrics=with_metrics,
-            refresh=True,
+            refresh=False,
         )
 
     stale = _load_stale_family_portfolio(with_metrics=with_metrics)
     if stale is not None:
         stale["errors"] = live.get("errors") or []
-        return _merge_sarwa_into_family(stale, with_metrics=with_metrics, refresh=False)
+        return _finalize_family_payload(stale, with_metrics=with_metrics, refresh=False)
 
-    return _merge_sarwa_into_family(
+    return _finalize_family_payload(
         _store_cache(key, live),
         with_metrics=with_metrics,
-        refresh=True,
+        refresh=False,
     )

@@ -327,6 +327,27 @@ def sector_override_for_symbol(symbol: str) -> str | None:
     return _club_sector_label(label, symbol, sector="", industry="")
 
 
+def _sector_from_reference(symbol: str, exchange: str | None) -> str | None:
+    """Static sector lookup (LLM / Yahoo / seed file) when Yahoo live fetch has no sector."""
+    from modules.portfolio.db import sector_llm_cache
+
+    sector = sector_llm_cache.get_sector(symbol, exchange)
+    if sector:
+        return sector
+    return sector_override_for_symbol(symbol)
+
+
+def _remember_sector_reference(symbol: str, exchange: str | None, sector: str | None, *, source: str) -> None:
+    if not sector:
+        return
+    try:
+        from modules.portfolio.db import sector_llm_cache
+
+        sector_llm_cache.remember_sector(symbol, exchange, sector, source=source)
+    except Exception as exc:
+        logger.debug("Sector reference save skipped for %s: %s", symbol, exc)
+
+
 def apply_symbol_metric_overrides(metrics: dict[str, Any], symbol: str) -> None:
     """Apply symbol-level sector and cap overrides (also when metrics come from cache)."""
     cap = cap_override_for_symbol(symbol)
@@ -335,6 +356,7 @@ def apply_symbol_metric_overrides(metrics: dict[str, Any], symbol: str) -> None:
     sector = sector_override_for_symbol(symbol)
     if sector:
         metrics["sector"] = sector
+        _remember_sector_reference(symbol, metrics.get("exchange") or "NSE", sector, source="seed")
 
 
 def apply_holdings_metric_overrides(holdings: list[dict[str, Any]]) -> None:
@@ -592,6 +614,14 @@ def _fetch_yahoo_metrics(symbol: str, exchange: str | None) -> dict[str, Any]:
             if not mcap and qt == "ETF":
                 mcap = info.get("totalAssets")
             mcap = _resolve_indian_market_cap_inr(symbol, exchange, mcap)
+            sector = classify_sector(
+                info.get("sector"),
+                info.get("industry"),
+                info.get("quoteType"),
+                symbol,
+            )
+            if sector:
+                _remember_sector_reference(symbol, exchange, sector, source="yahoo")
             return {
                 "pe_ratio": info.get("trailingPE") or info.get("forwardPE"),
                 "roce": info.get("returnOnCapital") or info.get("returnOnEquity"),
@@ -603,12 +633,7 @@ def _fetch_yahoo_metrics(symbol: str, exchange: str | None) -> dict[str, Any]:
                 "recommendation_key": info.get("recommendationKey"),
                 "recommendation_mean": info.get("recommendationMean"),
                 "analyst_count": info.get("numberOfAnalystOpinions"),
-                "sector": classify_sector(
-                    info.get("sector"),
-                    info.get("industry"),
-                    info.get("quoteType"),
-                    symbol,
-                ),
+                "sector": sector or _sector_from_reference(symbol, exchange),
             }
 
     mcap = _resolve_indian_market_cap_inr(symbol, exchange, None)
@@ -622,8 +647,50 @@ def _fetch_yahoo_metrics(symbol: str, exchange: str | None) -> dict[str, Any]:
         "recommendation_key": None,
         "recommendation_mean": None,
         "analyst_count": None,
-        "sector": classify_sector(None, None, None, symbol),
+        "sector": _sector_from_reference(symbol, exchange),
     }
+
+
+def _cached_base_metrics_usable(metrics: dict[str, Any], exchange: str | None) -> bool:
+    """True when Yahoo fundamentals were fetched — not an empty fallback blob."""
+    if metrics.get("high_52w") or metrics.get("target_price") or metrics.get("recommendation_key"):
+        return True
+    if metrics.get("pe_ratio") is not None and metrics.get("sector"):
+        return True
+    return bool(is_us_exchange(exchange) and metrics.get("market_cap"))
+
+
+def invalidate_stale_metrics_cache() -> int:
+    """Drop in-memory Yahoo metric entries that have no 52W / analyst data (failed fetches)."""
+    drop = [
+        key
+        for key, (_ts, metrics) in _CACHE.items()
+        if not _cached_base_metrics_usable(metrics, None)
+    ]
+    for key in drop:
+        _CACHE.pop(key, None)
+    return len(drop)
+
+
+def clear_metrics_cache_for_symbol(symbol: str, exchange: str | None) -> None:
+    _CACHE.pop(f"{symbol}:{exchange or 'NSE'}", None)
+
+
+def holdings_need_metrics_refresh(holdings: list[dict[str, Any]]) -> bool:
+    """True when most equity rows are missing 52W / signal (poisoned or never enriched)."""
+    equity = [
+        h
+        for h in holdings
+        if (h.get("asset_class") or "equity") != "mf" and h.get("symbol")
+    ]
+    if len(equity) < 2:
+        return False
+    missing = sum(
+        1
+        for h in equity
+        if h.get("pct_from_52w_high") is None and not h.get("rating_label")
+    )
+    return (missing / len(equity)) > 0.25
 
 
 def get_stock_metrics(
@@ -639,8 +706,13 @@ def get_stock_metrics(
 
     cached = _CACHE.get(cache_key)
     if cached and (now - cached[0]) < _CACHE_TTL_SECONDS:
-        metrics = cached[1].copy()
-    else:
+        if _cached_base_metrics_usable(cached[1], exchange):
+            metrics = cached[1].copy()
+        else:
+            _CACHE.pop(cache_key, None)
+            cached = None
+
+    if not cached:
         yahoo = _fetch_yahoo_metrics(symbol, exchange)
         if is_us_exchange(exchange):
             cap = classify_market_cap_usd(yahoo.get("market_cap_usd"))
@@ -677,7 +749,8 @@ def get_stock_metrics(
             "recommendation_mean": _safe_round(yahoo.get("recommendation_mean")),
             "analyst_count": yahoo.get("analyst_count"),
         }
-        _CACHE[cache_key] = (now, metrics)
+        if _cached_base_metrics_usable(metrics, exchange):
+            _CACHE[cache_key] = (now, metrics)
 
     metrics["pct_from_52w_high"] = _pct_from_52w_high(last_price, metrics.get("high_52w"))
     metrics["upside_pct"] = _pct_upside(last_price, metrics.get("target_price"))
@@ -875,11 +948,35 @@ def enrich_holdings(
         futures = [pool.submit(_load_equity, row) for row in equity_work]
         futures.extend(pool.submit(_load_mf, row) for row in mf_work)
         for future in as_completed(futures):
-            key, metrics = future.result()
+            try:
+                key, metrics = future.result()
+            except Exception as exc:
+                logger.warning("Metrics load failed: %s", exc)
+                continue
             if key in mf_unique:
                 mf_metrics[key] = metrics
             else:
                 equity_metrics[key] = metrics
+
+    retry_equity = [
+        (key, sym, exch, lp)
+        for key, (sym, exch, lp) in equity_unique.items()
+        if not _cached_base_metrics_usable(equity_metrics.get(key, {}), exch)
+    ]
+    if retry_equity:
+        for key, sym, exch, lp in retry_equity:
+            clear_metrics_cache_for_symbol(sym, exch)
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            futures = {
+                pool.submit(_load_equity, (key, sym, exch, lp)): key
+                for key, sym, exch, lp in retry_equity
+            }
+            for future in as_completed(futures):
+                try:
+                    key, metrics = future.result()
+                    equity_metrics[key] = metrics
+                except Exception as exc:
+                    logger.warning("Metrics retry failed for %s: %s", futures.get(future), exc)
 
     enriched = []
     for holding in holdings:
@@ -900,6 +997,12 @@ def enrich_holdings(
         enriched.append({**holding, **equity_metrics.get(key, {})})
 
     apply_holdings_metric_overrides(enriched)
+    try:
+        from modules.portfolio.db import sector_llm_cache
+
+        sector_llm_cache.export_reference_file()
+    except Exception:
+        pass
     if sector_llm if sector_llm is not None else _sector_llm_on_enrich():
         try:
             from modules.portfolio.services.sector_llm import classify_holdings_llm

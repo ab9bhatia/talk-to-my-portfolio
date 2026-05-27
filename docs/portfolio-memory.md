@@ -8,7 +8,7 @@ Personal Hub portfolio module uses a **three-layer** model. No Redis or external
 |-------|------|------------|----------|
 | **Hot cache** | Sub-minute repeat requests within one server process | Python `dict` (TTL 5 min default) | `modules/portfolio/services/portfolio.py` |
 | **Cache (persistent)** | Survive restarts; stale-first page load | **SQLite 3** | `modules/portfolio/data/portfolio_cache.db` |
-| **STM** | Agent chat threads & messages (hours) | **SQLite 3** (same DB) | `agent_threads`, `agent_messages` |
+| **STM** | Agent chat threads & messages (1 week; starred longer) | **SQLite 3** (same DB) | `agent_threads`, `agent_messages` |
 | **LTM** | Investor thesis, notes, past recommendations (planned) | **SQLite 3** (same DB, tables TBD) | See schema below |
 | **Yahoo metrics** | Per-symbol PE, sector, signal | In-process `dict` (6 h) | `market_data.py` |
 | **Insights** | Row expander charts/news | In-process `dict` (6 h) | `stock_insights.py` |
@@ -59,7 +59,7 @@ Force live data: **Refresh** link (`?refresh=1`) skips stale path.
 | `thread_id` | TEXT PK | UUID |
 | `context_json` | TEXT | Portfolio context JSON at thread start |
 | `created_at` | REAL | Unix timestamp |
-| `updated_at` | REAL | Unix timestamp (TTL purge after 4 h idle) |
+| `updated_at` | REAL | Unix timestamp (TTL purge after 1 week idle; `is_important` exempt) |
 
 ### `agent_messages` — STM (chat history)
 

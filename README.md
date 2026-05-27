@@ -15,7 +15,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/python-3.11%2B-blue?style=flat-square" alt="Python 3.11+">
-  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey?style=flat-square" alt="macOS or Linux">
+  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey?style=flat-square" alt="macOS, Windows, or Linux">
   <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="MIT">
 </p>
 
@@ -73,7 +73,7 @@ flowchart TB
 - **Threaded chats** — sessions saved locally for continuity.
 - **Not financial advice** — personal decision support using data you already trust; you stay in control of every trade.
 
-Enable with `OPENAI_API_KEY` (or `PORTFOLIO_OPENAI_API_KEY`) in `.env`. See [Enable the agent](#enable-the-agent).
+Configure any supported provider under **Connect accounts → Portfolio agent (LLM)**. See [Enable the agent (LLM)](#enable-the-agent-llm).
 
 ---
 
@@ -105,6 +105,8 @@ Enable with `OPENAI_API_KEY` (or `PORTFOLIO_OPENAI_API_KEY`) in `.env`. See [Ena
 
 ## Quick start
 
+Works on **macOS, Windows, and Linux** (Python 3.11+). Example on macOS/Linux:
+
 ```bash
 git clone https://github.com/ab9bhatia/talk-to-my-portfolio.git
 cd talk-to-my-portfolio
@@ -114,6 +116,21 @@ source .venv/bin/activate
 pip install -r requirements.txt
 
 bash scripts/init_local_config.sh
+uvicorn main:app --reload --host 127.0.0.1 --port 8000
+```
+
+**Windows (PowerShell):**
+
+```powershell
+git clone https://github.com/ab9bhatia/talk-to-my-portfolio.git
+cd talk-to-my-portfolio
+
+py -3.11 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+
+copy .env-example .env
+copy modules\portfolio\accounts.example.json modules\portfolio\accounts.json
 uvicorn main:app --reload --host 127.0.0.1 --port 8000
 ```
 
@@ -146,22 +163,41 @@ Full guide: **[docs/broker-api-keys.md](docs/broker-api-keys.md)**
 
 ---
 
-## Enable the agent
+## Enable the agent (LLM)
 
-Add to `.env`:
+Configure from **Connect accounts** → **Portfolio agent (LLM)** — pick a provider and model from dropdowns; **Save** writes to `.env` automatically (same as broker keys):
+
+| Provider | What you enter |
+|----------|----------------|
+| **OpenAI** | API key + model (e.g. `gpt-4o-mini`) |
+| **Claude (Anthropic)** | API key + model (e.g. `claude-sonnet-4-20250514`) |
+| **Google Gemini** | API key + model (e.g. `gemini-2.0-flash`) |
+| **Ollama (local)** | Base URL (`http://localhost:11434`) + model name (e.g. `llama3.2`) — no cloud key |
+
+Settings are written to `.env` as `PORTFOLIO_LLM_PROVIDER`, `PORTFOLIO_LLM_MODEL`, and provider-specific keys (`PORTFOLIO_OPENAI_API_KEY`, `PORTFOLIO_ANTHROPIC_API_KEY`, `PORTFOLIO_GEMINI_API_KEY`, `PORTFOLIO_OLLAMA_BASE_URL`, …).
+
+Manual `.env` example (OpenAI):
 
 ```text
-OPENAI_API_KEY=sk-...
-# optional:
+PORTFOLIO_LLM_PROVIDER=openai
+PORTFOLIO_OPENAI_API_KEY=sk-...
 PORTFOLIO_LLM_MODEL=gpt-4o-mini
 ```
 
-The agent is the **primary** OpenAI use case. Other LLM features are separate and off by default:
+Ollama example:
+
+```text
+PORTFOLIO_LLM_PROVIDER=ollama
+PORTFOLIO_OLLAMA_BASE_URL=http://localhost:11434
+PORTFOLIO_LLM_MODEL=llama3.2
+```
+
+**Chat history** is kept for **1 week** (starred chats are kept longer). Other LLM-powered features:
 
 | Feature | When it runs | Default |
 |---------|----------------|---------|
-| **Portfolio agent** | You click **Ask** | On once key is set |
-| Sarwa / screenshot import | File upload | Needs same key |
+| **Portfolio agent** | You click **Ask** | On once provider is configured |
+| Sarwa / screenshot import | File upload | Needs vision-capable key (OpenAI recommended) |
 | Sector / buy thesis on refresh | `?refresh=1` | Off |
 
 ---
@@ -183,10 +219,12 @@ talk-to-my-portfolio/
 
 ## Requirements
 
-- Python 3.11+, macOS or Linux  
+- **Python 3.11+** on macOS, Windows, or Linux  
 - Zerodha Kite app(s) per login  
 - Groww Trade API (optional)  
-- **OpenAI API key** — to use the portfolio agent (and optional screenshot import)
+- **LLM provider** — OpenAI, Claude, Gemini, or local [Ollama](https://ollama.com) for the portfolio agent (configure in app or `.env`)
+
+**Platform notes:** The web app and brokers are cross-platform. Optional `scripts/install_groww_reminder.sh` (macOS launchd email reminder) is macOS-only; skip it on Windows/Linux.
 
 ---
 
@@ -195,6 +233,23 @@ talk-to-my-portfolio/
 - Never commit `.env`, `accounts.json`, or `modules/portfolio/data/`  
 - Agent sends **portfolio context + your question** to your chosen LLM provider when you ask — nothing automatic in the background  
 - Prefer a private GitHub repo for personal forks  
+
+### LAN / phone access (recommended)
+
+If another device on your network can reach the app (phone on Wi‑Fi, `0.0.0.0`, tunnel), set in `.env`:
+
+```text
+PORTFOLIO_HTTP_USER=you
+PORTFOLIO_HTTP_PASSWORD=choose-a-strong-password
+```
+
+The browser will prompt once; all routes (portfolio, setup, trading API, agent) are protected. Zerodha OAuth callback stays open so Kite login still works. `/docs` is hidden while auth is on.
+
+Leave both unset for **localhost-only** dev with no login prompt (default).
+
+Run with `uvicorn main:app --host 127.0.0.1 --port 8000` unless you need LAN; use auth if you bind to `0.0.0.0`.
+
+See [docs/security.md](docs/security.md) for the full threat model.
 
 ---
 

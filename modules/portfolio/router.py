@@ -297,11 +297,7 @@ def portfolio_dashboard(
                 holdings_financials_map(all_holdings_from_view(holdings_view))
             ),
             "weekly_status": weekly_status,
-            "sarwa_vision_available": bool(
-                os.getenv("PORTFOLIO_OPENAI_API_KEY")
-                or os.getenv("OPENAI_API_KEY")
-                or os.getenv("API_KEY")
-            ),
+            "sarwa_vision_available": _vision_available(),
             "trading_enabled": _trading_enabled(),
         },
     )
@@ -493,12 +489,13 @@ def api_classify_sectors(force: bool = Query(False)):
     Classify missing / generic-ETF holdings via LLM (cached in sector_llm_cache.db).
     Use after refresh if many rows show Unclassified.
     """
-    from modules.portfolio.services.sector_llm import classify_holdings_llm, llm_available
+    from modules.portfolio.services.llm_config import agent_configured
+    from modules.portfolio.services.sector_llm import classify_holdings_llm
 
-    if not llm_available():
+    if not agent_configured():
         raise HTTPException(
             status_code=503,
-            detail="Sector LLM unavailable: set OPENAI_API_KEY in .env",
+            detail="LLM unavailable: configure provider in Connect accounts → Portfolio agent",
         )
 
     try:
@@ -534,6 +531,12 @@ def api_groww_refresh():
     except GrowwError as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
     return {"ok": True, "message": "Groww session verified. Reload /portfolio?refresh=1"}
+
+
+def _vision_available() -> bool:
+    from modules.portfolio.services.llm_config import vision_configured
+
+    return vision_configured()
 
 
 def _trading_enabled() -> bool:
@@ -703,7 +706,9 @@ async def api_sarwa_import_screenshot(
     if resolved not in SARWA_ACCOUNTS:
         raise HTTPException(status_code=400, detail=f"Not a Sarwa account: {resolved}")
 
-    content = await file.read()
+    from shared.web.uploads import read_upload_bounded
+
+    content = await read_upload_bounded(file)
     media = file.content_type or "image/png"
     try:
         parsed = parse_sarwa_screenshot(content, media_type=media)
@@ -1069,6 +1074,7 @@ def portfolio_setup_page(request: Request):
         or (a.get("credentials_ok") and a.get("broker") in ("groww", "zerodha"))
     )
     from modules.portfolio.services.holdings_screenshot import vision_available
+    from modules.portfolio.services.llm_config import llm_setup_status
 
     return templates.TemplateResponse(
         request,
@@ -1078,7 +1084,8 @@ def portfolio_setup_page(request: Request):
             "accounts": accounts,
             "default_callback_url": default_callback_url(),
             "setup_stats": {"linked": len(accounts), "ready": ready_count},
-            "vision_available": vision_available(),
+            "vision_available": vision_available() or _vision_available(),
+            "llm_status": llm_setup_status(),
         },
     )
 
@@ -1095,6 +1102,42 @@ def api_setup_accounts():
     from modules.portfolio.services.onboarding import account_setup_status
 
     return {"accounts": account_setup_status()}
+
+
+class LlmSetupPayload(BaseModel):
+    provider: str = Field(..., min_length=2, max_length=32)
+    api_key: str | None = Field(default=None, max_length=512)
+    model: str | None = Field(default=None, max_length=128)
+    base_url: str | None = Field(default=None, max_length=256)
+
+
+@router.get("/api/portfolio/setup/llm")
+def api_setup_llm_get():
+    from modules.portfolio.services.llm_config import llm_config_for_edit
+
+    return llm_config_for_edit()
+
+
+@router.get("/api/portfolio/setup/llm/ollama-models")
+def api_setup_ollama_models(base_url: str = Query(default="http://localhost:11434")):
+    """Models installed locally (Ollama /api/tags) for the setup dropdown."""
+    from modules.portfolio.services.llm_config import fetch_ollama_model_names, validate_ollama_base_url
+
+    try:
+        validate_ollama_base_url(base_url)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"models": fetch_ollama_model_names(base_url)}
+
+
+@router.put("/api/portfolio/setup/llm")
+def api_setup_llm_save(payload: LlmSetupPayload):
+    from modules.portfolio.services.llm_config import save_llm_config
+
+    try:
+        return save_llm_config(payload.model_dump(exclude_none=True))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 class SetupAccountPayload(BaseModel):
@@ -1174,7 +1217,9 @@ async def api_setup_import_holdings(
     from modules.portfolio.services.onboarding import import_account_upload
     from modules.portfolio.services.portfolio import invalidate_portfolio_cache
 
-    content = await file.read()
+    from shared.web.uploads import read_upload_bounded
+
+    content = await read_upload_bounded(file)
     try:
         result = import_account_upload(
             broker,

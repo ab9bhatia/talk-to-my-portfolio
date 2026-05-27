@@ -1,9 +1,8 @@
-"""Portfolio-level AI agent — streaming SSE + follow-up threads."""
+"""Portfolio-level AI agent — streaming SSE + follow-up threads (multi-provider)."""
 
 from __future__ import annotations
 
 import json
-import os
 import urllib.error
 import urllib.request
 from collections.abc import Iterator
@@ -14,6 +13,17 @@ from modules.portfolio.services.agent_threads import (
     create_thread,
     get_thread,
     save_thread_recommendations,
+)
+from modules.portfolio.services.llm_config import (
+    PROVIDER_ANTHROPIC,
+    PROVIDER_GEMINI,
+    PROVIDER_OLLAMA,
+    PROVIDER_OPENAI,
+    active_provider,
+    agent_configured,
+    api_key_for_provider,
+    model_name,
+    ollama_base_url,
 )
 from modules.portfolio.services.portfolio_context import build_portfolio_context
 
@@ -60,40 +70,17 @@ Stay concise. If they ask for trades, use the same JSON schema as the first repl
 For simple follow-ups you may reply with plain text in the "answer" field and leave other arrays empty."""
 
 
-def _provider() -> str | None:
-    explicit = (os.getenv("PORTFOLIO_LLM_PROVIDER") or os.getenv("LLM_PROVIDER") or "").strip().lower()
-    if explicit in ("openai",):
-        return "openai"
-    return "openai" if _api_key() else None
-
-
-def _api_key() -> str | None:
-    return (
-        os.getenv("PORTFOLIO_OPENAI_API_KEY")
-        or os.getenv("OPENAI_API_KEY")
-        or os.getenv("API_KEY")
-        or ""
-    ).strip() or None
-
-
-def _model() -> str:
-    return (
-        os.getenv("PORTFOLIO_LLM_MODEL")
-        or os.getenv("LLM_MODEL")
-        or "gpt-5.4-mini"
-    ).strip()
-
-
 def agent_available() -> bool:
-    return _provider() is not None and _api_key() is not None
+    return agent_configured()
 
 
 def agent_status() -> dict[str, Any]:
+    provider = active_provider() or "none"
     return {
         "available": agent_available(),
-        "provider": _provider() or "none",
-        "model": _model(),
-        "api_configured": bool(_api_key()),
+        "provider": provider,
+        "model": model_name(),
+        "api_configured": agent_configured(),
         "streaming": True,
     }
 
@@ -125,7 +112,7 @@ def _assistant_history_text(recommendations: dict[str, Any], full_text: str) -> 
     return full_text[:8000]
 
 
-def _openai_messages(
+def _chat_messages(
     *,
     context: dict[str, Any],
     question: str,
@@ -166,15 +153,25 @@ def _openai_messages(
     ]
 
 
-def _stream_openai_sse(*, messages: list[dict[str, str]]) -> Iterator[str]:
-    """Yield raw text deltas from OpenAI chat completions stream."""
-    api_key = _api_key()
+def _split_system_messages(messages: list[dict[str, str]]) -> tuple[str, list[dict[str, str]]]:
+    system_parts: list[str] = []
+    rest: list[dict[str, str]] = []
+    for msg in messages:
+        if msg["role"] == "system":
+            system_parts.append(msg["content"])
+        else:
+            rest.append(msg)
+    return "\n\n".join(system_parts), rest
+
+
+def _stream_openai(messages: list[dict[str, str]]) -> Iterator[str]:
+    api_key = api_key_for_provider(PROVIDER_OPENAI)
     if not api_key:
         raise RuntimeError("OpenAI API key not configured")
 
     body = json.dumps(
         {
-            "model": _model(),
+            "model": model_name(),
             "messages": messages,
             "temperature": 0.3,
             "stream": True,
@@ -216,6 +213,178 @@ def _stream_openai_sse(*, messages: list[dict[str, str]]) -> Iterator[str]:
                 yield text
 
 
+def _stream_anthropic(messages: list[dict[str, str]]) -> Iterator[str]:
+    api_key = api_key_for_provider(PROVIDER_ANTHROPIC)
+    if not api_key:
+        raise RuntimeError("Anthropic API key not configured")
+
+    system_text, chat = _split_system_messages(messages)
+    anthropic_messages = [
+        {"role": m["role"], "content": m["content"]}
+        for m in chat
+        if m["role"] in ("user", "assistant")
+    ]
+
+    body = json.dumps(
+        {
+            "model": model_name(),
+            "max_tokens": 4096,
+            "system": system_text,
+            "messages": anthropic_messages,
+            "stream": True,
+            "temperature": 0.3,
+        }
+    ).encode()
+
+    req = urllib.request.Request(
+        "https://api.anthropic.com/v1/messages",
+        data=body,
+        headers={
+            "x-api-key": api_key,
+            "anthropic-version": "2023-06-01",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+
+    with urllib.request.urlopen(req, timeout=180) as resp:
+        while True:
+            line = resp.readline()
+            if not line:
+                break
+            decoded = line.decode("utf-8", errors="replace").strip()
+            if not decoded.startswith("data:"):
+                continue
+            payload = decoded[5:].strip()
+            if payload == "[DONE]":
+                break
+            try:
+                chunk = json.loads(payload)
+            except json.JSONDecodeError:
+                continue
+            if chunk.get("type") == "content_block_delta":
+                delta = chunk.get("delta") or {}
+                text = delta.get("text")
+                if text:
+                    yield text
+
+
+def _stream_ollama(messages: list[dict[str, str]]) -> Iterator[str]:
+    base = ollama_base_url()
+    body = json.dumps(
+        {
+            "model": model_name(),
+            "messages": messages,
+            "stream": True,
+            "format": "json",
+            "options": {"temperature": 0.3},
+        }
+    ).encode()
+
+    req = urllib.request.Request(
+        f"{base}/api/chat",
+        data=body,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+
+    with urllib.request.urlopen(req, timeout=300) as resp:
+        while True:
+            line = resp.readline()
+            if not line:
+                break
+            try:
+                chunk = json.loads(line.decode("utf-8"))
+            except json.JSONDecodeError:
+                continue
+            msg = chunk.get("message") or {}
+            text = msg.get("content")
+            if text:
+                yield text
+            if chunk.get("done"):
+                break
+
+
+def _stream_gemini(messages: list[dict[str, str]]) -> Iterator[str]:
+    api_key = api_key_for_provider(PROVIDER_GEMINI)
+    if not api_key:
+        raise RuntimeError("Gemini API key not configured")
+
+    system_text, chat = _split_system_messages(messages)
+    contents = []
+    for msg in chat:
+        role = "user" if msg["role"] == "user" else "model"
+        contents.append({"role": role, "parts": [{"text": msg["content"]}]})
+
+    model = model_name()
+    if not model.startswith("models/"):
+        model_path = f"models/{model}"
+    else:
+        model_path = model
+
+    body = json.dumps(
+        {
+            "systemInstruction": {"parts": [{"text": system_text}]},
+            "contents": contents,
+            "generationConfig": {
+                "temperature": 0.3,
+                "responseMimeType": "application/json",
+            },
+        }
+    ).encode()
+
+    url = (
+        f"https://generativelanguage.googleapis.com/v1beta/{model_path}:"
+        f"streamGenerateContent?alt=sse&key={api_key}"
+    )
+    req = urllib.request.Request(
+        url,
+        data=body,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+
+    with urllib.request.urlopen(req, timeout=180) as resp:
+        while True:
+            line = resp.readline()
+            if not line:
+                break
+            decoded = line.decode("utf-8", errors="replace").strip()
+            if not decoded.startswith("data:"):
+                continue
+            payload = decoded[5:].strip()
+            if not payload or payload == "[DONE]":
+                continue
+            try:
+                chunk = json.loads(payload)
+            except json.JSONDecodeError:
+                continue
+            candidates = chunk.get("candidates") or []
+            if not candidates:
+                continue
+            parts = (candidates[0].get("content") or {}).get("parts") or []
+            for part in parts:
+                text = part.get("text")
+                if text:
+                    yield text
+
+
+def _stream_llm_sse(*, messages: list[dict[str, str]]) -> Iterator[str]:
+    provider = active_provider()
+    if provider == PROVIDER_OPENAI:
+        yield from _stream_openai(messages)
+    elif provider == PROVIDER_ANTHROPIC:
+        yield from _stream_anthropic(messages)
+    elif provider == PROVIDER_OLLAMA:
+        yield from _stream_ollama(messages)
+    elif provider == PROVIDER_GEMINI:
+        yield from _stream_gemini(messages)
+    else:
+        raise RuntimeError(
+            "LLM provider not configured. Open Connect accounts → Portfolio agent (LLM)."
+        )
+
+
 def _format_sse(event: str, data: dict[str, Any]) -> str:
     return f"event: {event}\ndata: {json.dumps(data, default=str)}\n\n"
 
@@ -233,12 +402,17 @@ def stream_portfolio_agent(
     Events: status | token | done | error
     """
     if not agent_available():
-        yield _format_sse("error", {"message": "API key not configured"})
+        yield _format_sse(
+            "error",
+            {"message": "LLM not configured — set provider in Connect accounts → Portfolio agent"},
+        )
         return
 
     user_message = (question or "").strip()
     if not user_message:
         user_message = "Give portfolio-level recommendations for the next 3+ years."
+
+    provider = active_provider() or "unknown"
 
     try:
         if new_thread:
@@ -255,13 +429,16 @@ def stream_portfolio_agent(
             yield _format_sse("status", {"message": "Loading portfolio context…"})
             context = build_portfolio_context(refresh=refresh)
             active_thread_id = create_thread(context=context)
-            yield _format_sse("status", {"message": "Analyzing with LLM…", "thread_id": active_thread_id})
+            yield _format_sse(
+                "status",
+                {"message": f"Analyzing with {provider}…", "thread_id": active_thread_id},
+            )
 
-        messages = _openai_messages(context=context, question=user_message, thread=thread)
+        messages = _chat_messages(context=context, question=user_message, thread=thread)
         append_message(active_thread_id, "user", user_message)
 
         parts: list[str] = []
-        for delta in _stream_openai_sse(messages=messages):
+        for delta in _stream_llm_sse(messages=messages):
             parts.append(delta)
             yield _format_sse("token", {"delta": delta})
 
@@ -303,7 +480,7 @@ def stream_portfolio_agent(
         )
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode(errors="replace")[:500]
-        yield _format_sse("error", {"message": f"OpenAI API error ({exc.code}): {detail}"})
+        yield _format_sse("error", {"message": f"LLM API error ({exc.code}): {detail}"})
     except Exception as exc:
         yield _format_sse("error", {"message": str(exc)})
 

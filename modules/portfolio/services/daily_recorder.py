@@ -33,6 +33,8 @@ def record_positions_snapshot(
 
 def record_family_from_payload(family: dict[str, Any], *, source: str = "live") -> list[dict[str, Any]]:
     """Save family + per-account daily snapshots (upserts today)."""
+    from modules.portfolio.services.holdings_view import aggregate_holdings_across_accounts
+
     results: list[dict[str, Any]] = []
     all_holdings: list[dict[str, Any]] = []
     for portfolio in family.get("portfolios") or []:
@@ -48,12 +50,15 @@ def record_family_from_payload(family: dict[str, Any], *, source: str = "live") 
                     source=source,
                 )
             )
+    family_positions = (
+        aggregate_holdings_across_accounts(all_holdings) if all_holdings else []
+    )
     results.insert(
         0,
         record_positions_snapshot(
             scope="family",
             account_id=None,
-            positions=all_holdings,
+            positions=family_positions,
             source=source,
         ),
     )

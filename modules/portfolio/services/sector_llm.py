@@ -255,14 +255,24 @@ def classify_holdings_llm(holdings: list[dict[str, Any]], *, force: bool = False
 
 
 def apply_cached_sectors(holdings: list[dict[str, Any]]) -> int:
-    """Apply SQLite LLM sector cache only (no API call)."""
+    """Apply sector reference (SQLite / sector_reference.json) — no LLM API call."""
     keys = [(h.get("symbol") or "", h.get("exchange")) for h in holdings]
     cached = sector_llm_cache.get_many(keys)
     applied = 0
     for h in holdings:
+        if has_symbol_sector_override(h.get("symbol") or ""):
+            continue
         sym, ex = sector_llm_cache.cache_key(h.get("symbol") or "", h.get("exchange"))
-        if (sym, ex) in cached and _needs_llm_sector(h):
-            h["sector"] = cached[(sym, ex)]
-            h["sector_source"] = "llm_cache"
+        ref = cached.get((sym, ex))
+        if not ref:
+            continue
+        current = (h.get("sector") or "").strip()
+        if not current:
+            h["sector"] = ref
+            h["sector_source"] = "reference"
+            applied += 1
+        elif _needs_llm_sector(h):
+            h["sector"] = ref
+            h["sector_source"] = "reference"
             applied += 1
     return applied

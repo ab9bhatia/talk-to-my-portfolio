@@ -47,7 +47,9 @@ def _api_key() -> str | None:
 
 
 def vision_available() -> bool:
-    return _api_key() is not None
+    from modules.portfolio.services.llm_config import vision_configured
+
+    return vision_configured() or _api_key() is not None
 
 
 def parse_holdings_screenshot(image_bytes: bytes, *, media_type: str = "image/png") -> dict[str, Any]:

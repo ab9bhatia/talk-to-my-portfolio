@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "comment": "Seed sector labels (copied into SQLite on startup). Live file: modules/portfolio/data/sector_reference.json",
+  "entries": [
+    {"symbol": "ITBEES", "exchange": "NSE", "sector": "IT", "source": "seed"},
+    {"symbol": "FMCGIETF", "exchange": "NSE", "sector": "FMCG", "source": "seed"},
+    {"symbol": "BANKBEES", "exchange": "NSE", "sector": "Banking", "source": "seed"},
+    {"symbol": "PHARMABEES", "exchange": "NSE", "sector": "ETF", "source": "seed"},
+    {"symbol": "NIFTYBEES", "exchange": "NSE", "sector": "ETF", "source": "seed"},
+    {"symbol": "JUNIORBEES", "exchange": "NSE", "sector": "ETF", "source": "seed"},
+    {"symbol": "EMULTIMQ", "exchange": "NSE", "sector": "Momentum", "source": "seed"},
+    {"symbol": "MOMENTUM50", "exchange": "NSE", "sector": "Momentum", "source": "seed"},
+    {"symbol": "MAFANG", "exchange": "NSE", "sector": "Newedge Tech", "source": "seed"},
+    {"symbol": "MODEFENSE", "exchange": "NSE", "sector": "Defense", "source": "seed"},
+    {"symbol": "GLDM", "exchange": "US", "sector": "Metals", "source": "seed"},
+    {"symbol": "BTC", "exchange": "US", "sector": "Crypto", "source": "seed"}
+  ]
+}

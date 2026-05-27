@@ -52,6 +52,39 @@
     </div>
   </section>
 
+  <section class="setup-llm-section" aria-labelledby="setup-llm-title">
+    <div class="setup-section-head">
+      <h2 id="setup-llm-title" class="setup-section-title">Portfolio agent (LLM)</h2>
+      <p class="setup-section-sub">Choose OpenAI, Claude, Gemini, or local Ollama — same flow as broker keys.</p>
+    </div>
+    <article class="setup-card setup-card--llm{% if llm_status.configured %} is-live{% endif %}" id="setup-llm-card">
+      <div class="setup-card-top">
+        <div class="setup-card-avatar setup-card-avatar--llm" aria-hidden="true">AI</div>
+        <div class="setup-card-badges">
+          <span class="setup-broker-tag setup-broker-tag--llm">Agent</span>
+          {% if llm_status.configured %}
+          <span class="setup-status setup-status--ok"><span class="setup-status-dot"></span>Ready</span>
+          {% else %}
+          <span class="setup-status setup-status--muted"><span class="setup-status-dot"></span>Not configured</span>
+          {% endif %}
+        </div>
+      </div>
+      <h3 class="setup-card-name">
+        {% if llm_status.provider_label %}{{ llm_status.provider_label }}{% else %}No provider selected{% endif %}
+      </h3>
+      <p class="setup-card-detail" id="setup-llm-detail">
+        {% if llm_status.configured %}
+        Model: <code class="setup-inline-code">{{ llm_status.model }}</code> · Chats kept 1 week
+        {% else %}
+        Required for Portfolio Agent and optional screenshot import.
+        {% endif %}
+      </p>
+      <div class="setup-card-actions">
+        <button type="button" class="setup-btn setup-btn-primary" id="setup-llm-configure-btn">Configure LLM</button>
+      </div>
+    </article>
+  </section>
+
   <section class="setup-accounts-section" aria-labelledby="setup-accounts-title">
     <div class="setup-section-head">
       <h2 id="setup-accounts-title" class="setup-section-title">Your accounts</h2>
@@ -189,6 +222,36 @@
   </div>
 </dialog>
 
+<dialog id="setup-llm-dialog" class="setup-modal setup-llm-modal">
+  <div class="setup-modal-panel">
+    <header class="setup-modal-header">
+      <div>
+        <p class="setup-eyebrow">Portfolio agent</p>
+        <h2 class="setup-modal-title">Configure LLM</h2>
+      </div>
+      <button type="button" class="setup-modal-close" id="setup-llm-dialog-close" aria-label="Close">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+      </button>
+    </header>
+    <form id="setup-llm-form" class="setup-modal-form">
+      <fieldset class="setup-broker-picker">
+        <legend class="setup-field-label">Provider</legend>
+        <div id="setup-llm-tiles" class="setup-broker-tiles" role="radiogroup"></div>
+        <select id="setup-llm-provider" name="provider" class="setup-broker-select-native" required tabindex="-1" aria-hidden="true"></select>
+      </fieldset>
+      <p class="setup-llm-env-hint">API keys, model, and provider are written to your project <code class="setup-inline-code">.env</code> when you click Save (same as broker accounts).</p>
+      <div id="setup-llm-intro" class="setup-guide-intro"></div>
+      <div id="setup-llm-fields" class="setup-form-grid"></div>
+      <footer class="setup-modal-footer">
+        <div class="setup-modal-footer-right">
+          <button type="button" class="setup-btn setup-btn-ghost" id="setup-llm-cancel-btn">Cancel</button>
+          <button type="submit" class="setup-btn setup-btn-primary" id="setup-llm-save-btn">Save</button>
+        </div>
+      </footer>
+    </form>
+  </div>
+</dialog>
+
 <div id="setup-toast" class="setup-toast" role="status" hidden></div>
 
 <script>
@@ -196,4 +259,5 @@
   window.__SETUP_VISION__ = {% if vision_available %}true{% else %}false{% endif %};
 </script>
 <script src="/static/js/portfolio-setup.js"></script>
+<script src="/static/js/portfolio-setup-llm.js"></script>
 {% endblock %}

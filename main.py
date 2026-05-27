@@ -14,6 +14,7 @@ from modules.portfolio.db import portfolio_cache as portfolio_cache_store
 from modules.portfolio.db import tokens as token_store
 from modules.portfolio.router import router as portfolio_router
 from shared.config import APP_NAME, APP_TAGLINE
+from shared.web.http_auth import add_http_basic_auth, http_auth_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +24,8 @@ STATIC_DIR = Path(__file__).resolve().parent / "shared" / "web" / "static"
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize portfolio databases on startup."""
+    if http_auth_enabled():
+        logger.info("HTTP Basic Auth enabled (PORTFOLIO_HTTP_USER is set)")
     token_store.init_db()
     from modules.portfolio.db import groww_tokens as groww_token_store
 
@@ -49,6 +52,9 @@ app = FastAPI(
     title=APP_NAME,
     description=APP_TAGLINE,
     lifespan=lifespan,
+    docs_url=None if http_auth_enabled() else "/docs",
+    redoc_url=None if http_auth_enabled() else "/redoc",
+    openapi_url=None if http_auth_enabled() else "/openapi.json",
 )
 
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
@@ -66,3 +72,5 @@ def health():
 
 
 app.include_router(portfolio_router)
+
+app = add_http_basic_auth(app)

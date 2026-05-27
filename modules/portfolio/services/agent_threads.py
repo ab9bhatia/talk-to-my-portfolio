@@ -9,7 +9,7 @@ from typing import Any
 
 from modules.portfolio.db.portfolio_cache import connect
 
-_THREAD_TTL_SECONDS = 4 * 60 * 60
+_THREAD_TTL_SECONDS = 7 * 24 * 60 * 60  # 1 week (important chats exempt)
 
 
 def _purge_expired() -> None:
