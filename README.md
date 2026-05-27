@@ -84,7 +84,7 @@ Configure any supported provider under **Connect accounts → Portfolio agent (L
 | **Unified dashboard** | Family P&amp;L, filters by account, sector, cap bucket, 52W, upside, signals |
 | **Account hub** | Add, edit, reconnect brokers; import CSV / Excel / screenshots |
 | **Brokers** | Zerodha (Kite), Groww (Trade API), Sarwa (USD), Custom portfolios |
-| **Smart cache** | Stale-first SQLite + background refresh |
+| **Smart cache** | Stale-first SQLite + background refresh; Yahoo fundamentals cached 24h and refreshed daily in off-hours |
 | **Daily growth** | Auto-saved each live refresh; charts on **Growth** tab |
 | **Weekly history** | Weekly snapshots + Excel export in `portfolio_history.db` |
 | **Optional trading** | Live Buy/Sell when `TRADING_ENABLED=true` |

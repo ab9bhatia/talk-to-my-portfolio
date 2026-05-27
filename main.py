@@ -45,6 +45,9 @@ async def lifespan(app: FastAPI):
     from modules.portfolio.db import custom_holdings as custom_holdings_store
 
     custom_holdings_store.init_db()
+    from modules.portfolio.services.market_data import start_daily_yahoo_refresh_scheduler
+
+    start_daily_yahoo_refresh_scheduler()
     yield
 
 

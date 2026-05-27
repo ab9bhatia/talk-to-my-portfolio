@@ -6,13 +6,17 @@ import logging
 import os
 import re
 import sys
+import threading
 import time
 from contextlib import contextmanager
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import yfinance as yf
 
+from modules.portfolio.db import portfolio_cache as disk_cache
 from modules.portfolio.services.analyst_rating import compute_rating
 
 # Suppress yfinance 404 spam for illiquid / unmapped Indian tickers.
@@ -21,7 +25,10 @@ logger = logging.getLogger(__name__)
 
 # In-memory cache: symbol -> (timestamp, metrics dict)
 _CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
-_CACHE_TTL_SECONDS = 6 * 60 * 60  # 6 hours
+_CACHE_TTL_SECONDS = int(os.getenv("YAHOO_METRICS_TTL_SECONDS", str(24 * 60 * 60)))
+_OFFHOURS_REFRESH_HOUR_IST = int(os.getenv("YAHOO_REFRESH_HOUR_IST", "23"))
+_TZ_IST = ZoneInfo("Asia/Kolkata")
+_SCHEDULER_STARTED = False
 
 # NSE tradingsymbol → extra Yahoo roots (Zerodha often omits "LTD").
 _INDIAN_YAHOO_SYMBOL_ALIASES: dict[str, list[str]] = {
@@ -693,17 +700,38 @@ def holdings_need_metrics_refresh(holdings: list[dict[str, Any]]) -> bool:
     return (missing / len(equity)) > 0.25
 
 
+def _is_offhours_ist(now_ts: float | None = None) -> bool:
+    """True during the low-traffic refresh window in IST."""
+    now = datetime.now(_TZ_IST) if now_ts is None else datetime.fromtimestamp(now_ts, tz=_TZ_IST)
+    return now.hour >= _OFFHOURS_REFRESH_HOUR_IST or now.hour < 6
+
+
+def _disk_cached_base_metrics(cache_key: str) -> tuple[float, dict[str, Any]] | None:
+    cached = disk_cache.get_yahoo_metrics(cache_key)
+    if not cached:
+        return None
+    ts, metrics = cached
+    return ts, dict(metrics)
+
+
+def _store_base_metrics(cache_key: str, metrics: dict[str, Any], now_ts: float) -> None:
+    _CACHE[cache_key] = (now_ts, metrics)
+    disk_cache.put_yahoo_metrics(cache_key, metrics, cached_at=now_ts)
+
+
 def get_stock_metrics(
     symbol: str,
     exchange: str | None,
     last_price: float | None,
     *,
     technical: bool | None = None,
+    force_refresh_base: bool = False,
 ) -> dict[str, Any]:
     """Return cached fundamental metrics for a single symbol."""
     cache_key = f"{symbol}:{exchange or 'NSE'}"
     now = time.time()
 
+    metrics: dict[str, Any] | None = None
     cached = _CACHE.get(cache_key)
     if cached and (now - cached[0]) < _CACHE_TTL_SECONDS:
         if _cached_base_metrics_usable(cached[1], exchange):
@@ -712,7 +740,19 @@ def get_stock_metrics(
             _CACHE.pop(cache_key, None)
             cached = None
 
-    if not cached:
+    disk_cached = _disk_cached_base_metrics(cache_key)
+    if metrics is None and disk_cached:
+        disk_ts, disk_metrics = disk_cached
+        if _cached_base_metrics_usable(disk_metrics, exchange):
+            if (now - disk_ts) < _CACHE_TTL_SECONDS:
+                metrics = disk_metrics.copy()
+                _CACHE[cache_key] = (disk_ts, metrics.copy())
+            elif not force_refresh_base and not _is_offhours_ist(now):
+                # Daytime path: keep using yesterday's fundamentals; refresh happens in off-hours.
+                metrics = disk_metrics.copy()
+                _CACHE[cache_key] = (now, metrics.copy())
+
+    if metrics is None:
         yahoo = _fetch_yahoo_metrics(symbol, exchange)
         if is_us_exchange(exchange):
             cap = classify_market_cap_usd(yahoo.get("market_cap_usd"))
@@ -750,7 +790,7 @@ def get_stock_metrics(
             "analyst_count": yahoo.get("analyst_count"),
         }
         if _cached_base_metrics_usable(metrics, exchange):
-            _CACHE[cache_key] = (now, metrics)
+            _store_base_metrics(cache_key, metrics.copy(), now)
 
     metrics["pct_from_52w_high"] = _pct_from_52w_high(last_price, metrics.get("high_52w"))
     metrics["upside_pct"] = _pct_upside(last_price, metrics.get("target_price"))
@@ -1020,3 +1060,82 @@ def enrich_holdings(
             logger.warning("Buy thesis LLM skipped: %s", exc)
 
     return enriched
+
+
+def warm_daily_yahoo_metrics(*, force_refresh: bool = True) -> dict[str, Any]:
+    """
+    Preload Yahoo fundamentals for portfolio symbols.
+    Intended for a daily off-hours run to keep daytime refresh fast.
+    """
+    from modules.portfolio.services.portfolio import fetch_family_portfolio
+
+    family = fetch_family_portfolio(with_metrics=False, refresh=False, stale_ok=True)
+    portfolios = family.get("portfolios") or []
+    unique: dict[str, tuple[str, str | None, float | None]] = {}
+    for block in portfolios:
+        for holding in block.get("holdings") or []:
+            if holding.get("asset_class") == "mf":
+                continue
+            symbol = holding.get("symbol")
+            if not symbol:
+                continue
+            exchange = holding.get("exchange")
+            key = f"{symbol}:{exchange or 'NSE'}"
+            if key not in unique:
+                unique[key] = (symbol, exchange, metric_last_price(holding))
+
+    warmed = 0
+    failed = 0
+    for symbol, exchange, last_price in unique.values():
+        try:
+            get_stock_metrics(
+                symbol,
+                exchange,
+                last_price,
+                technical=False,
+                force_refresh_base=force_refresh,
+            )
+            warmed += 1
+        except Exception as exc:
+            failed += 1
+            logger.debug("Daily Yahoo warm failed for %s:%s: %s", symbol, exchange, exc)
+    return {"symbols": len(unique), "warmed": warmed, "failed": failed}
+
+
+def start_daily_yahoo_refresh_scheduler() -> None:
+    """Daemon scheduler: refresh Yahoo metrics once per day in off-hours."""
+    global _SCHEDULER_STARTED
+    if _SCHEDULER_STARTED:
+        return
+    _SCHEDULER_STARTED = True
+
+    def _run() -> None:
+        if _is_offhours_ist():
+            try:
+                result = warm_daily_yahoo_metrics(force_refresh=True)
+                logger.info("Startup off-hours Yahoo refresh complete: %s", result)
+            except Exception:
+                logger.exception("Startup off-hours Yahoo refresh failed")
+        while True:
+            now = datetime.now(_TZ_IST)
+            target = now.replace(
+                hour=_OFFHOURS_REFRESH_HOUR_IST,
+                minute=0,
+                second=0,
+                microsecond=0,
+            )
+            if now >= target:
+                target = target + timedelta(days=1)
+            sleep_seconds = max(60, int((target - now).total_seconds()))
+            time.sleep(sleep_seconds)
+            try:
+                result = warm_daily_yahoo_metrics(force_refresh=True)
+                logger.info("Daily Yahoo metrics refresh complete: %s", result)
+            except Exception:
+                logger.exception("Daily Yahoo metrics refresh failed")
+
+    threading.Thread(
+        target=_run,
+        name="yahoo-daily-refresh",
+        daemon=True,
+    ).start()

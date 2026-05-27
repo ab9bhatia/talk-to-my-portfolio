@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import time
-from datetime import date, datetime, timedelta, timezone
+from datetime import date
 from typing import Any
 
 from modules.portfolio.paths import DATA_DIR
@@ -75,6 +75,15 @@ def init_db() -> None:
                 ON daily_snapshots(scope, account_id, day_date DESC);
             """
         )
+        _cleanup_duplicate_family_days(conn)
+        # SQLite UNIQUE(scope, account_id, day_date) does not dedupe NULL account_id rows.
+        conn.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_daily_family_day_unique
+            ON daily_snapshots(scope, day_date)
+            WHERE account_id IS NULL
+            """
+        )
 
 
 def day_date_for(when: date | None = None) -> str:
@@ -118,7 +127,7 @@ def save_snapshot(
                 scope, account_id, day_date, captured_at, source, usd_inr,
                 holdings_count, total_invested, total_current, total_pnl, total_pnl_pct, notes
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(scope, account_id, day_date) DO UPDATE SET
+            ON CONFLICT DO UPDATE SET
                 captured_at = excluded.captured_at,
                 source = excluded.source,
                 usd_inr = COALESCE(excluded.usd_inr, daily_snapshots.usd_inr),
@@ -148,6 +157,7 @@ def save_snapshot(
             """
             SELECT id FROM daily_snapshots
             WHERE scope = ? AND account_id IS ? AND day_date = ?
+            ORDER BY captured_at DESC, id DESC
             """,
             (scope, account_id, day_date),
         ).fetchone()
@@ -243,17 +253,31 @@ def list_snapshots(
     account_id: str | None = None,
     limit: int = 365,
 ) -> list[dict[str, Any]]:
+    query_limit = limit * 4 if (scope == "family" and account_id is None) else limit
     with connect() as conn:
         rows = conn.execute(
             """
             SELECT * FROM daily_snapshots
             WHERE scope = ? AND account_id IS ?
-            ORDER BY day_date DESC
+            ORDER BY day_date DESC, captured_at DESC, id DESC
             LIMIT ?
             """,
-            (scope, account_id, limit),
+            (scope, account_id, query_limit),
         ).fetchall()
-    return [dict(r) for r in rows]
+    out = [dict(r) for r in rows]
+    if scope == "family" and account_id is None:
+        dedup: list[dict[str, Any]] = []
+        seen_days: set[str] = set()
+        for row in out:
+            day = row["day_date"]
+            if day in seen_days:
+                continue
+            seen_days.add(day)
+            dedup.append(row)
+            if len(dedup) >= limit:
+                break
+        return dedup
+    return out
 
 
 def growth_series(
@@ -328,3 +352,65 @@ def _row_to_snapshot(snap: sqlite3.Row, positions: list[sqlite3.Row]) -> dict[st
                 pos["extra"] = {}
         out["positions"].append(pos)
     return out
+
+
+def _cleanup_duplicate_family_days(conn: sqlite3.Connection) -> None:
+    """
+    Repair historical duplicates for family/day_date.
+    Keep the snapshot closest to sum(account totals) for that day; fallback latest captured_at.
+    """
+    duplicate_days = conn.execute(
+        """
+        SELECT day_date
+        FROM daily_snapshots
+        WHERE scope = 'family' AND account_id IS NULL
+        GROUP BY day_date
+        HAVING COUNT(*) > 1
+        """
+    ).fetchall()
+    for row in duplicate_days:
+        day_date = row["day_date"]
+        snaps = conn.execute(
+            """
+            SELECT id, captured_at, total_current
+            FROM daily_snapshots
+            WHERE scope = 'family' AND account_id IS NULL AND day_date = ?
+            ORDER BY captured_at DESC, id DESC
+            """,
+            (day_date,),
+        ).fetchall()
+        if len(snaps) <= 1:
+            continue
+        acct_total_row = conn.execute(
+            """
+            SELECT SUM(total_current) AS total
+            FROM daily_snapshots
+            WHERE scope = 'account' AND day_date = ?
+            """,
+            (day_date,),
+        ).fetchone()
+        account_total = float(acct_total_row["total"] or 0) if acct_total_row else 0.0
+        if account_total > 0:
+            best = min(
+                snaps,
+                key=lambda s: (
+                    abs(float(s["total_current"] or 0) - account_total),
+                    -float(s["captured_at"] or 0),
+                    -int(s["id"]),
+                ),
+            )
+        else:
+            best = snaps[0]
+        keep_id = int(best["id"])
+        drop_ids = [int(s["id"]) for s in snaps if int(s["id"]) != keep_id]
+        if not drop_ids:
+            continue
+        placeholders = ",".join("?" for _ in drop_ids)
+        conn.execute(
+            f"DELETE FROM daily_positions WHERE snapshot_id IN ({placeholders})",
+            drop_ids,
+        )
+        conn.execute(
+            f"DELETE FROM daily_snapshots WHERE id IN ({placeholders})",
+            drop_ids,
+        )

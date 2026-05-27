@@ -60,6 +60,15 @@ def init_db() -> None:
 
             CREATE INDEX IF NOT EXISTS idx_agent_messages_thread
                 ON agent_messages(thread_id, created_at);
+
+            CREATE TABLE IF NOT EXISTS yahoo_metrics_cache (
+                cache_key    TEXT PRIMARY KEY,
+                metrics_json TEXT NOT NULL,
+                cached_at    REAL NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_yahoo_metrics_cached_at
+                ON yahoo_metrics_cache(cached_at);
             """
         )
         _migrate_agent_threads(conn)
@@ -154,3 +163,42 @@ def set_revalidate_status(
             """,
             (cache_key, status, started_at, finished_at, error),
         )
+
+
+def get_yahoo_metrics(cache_key: str) -> tuple[float, dict[str, Any]] | None:
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT cached_at, metrics_json FROM yahoo_metrics_cache WHERE cache_key = ?",
+            (cache_key,),
+        ).fetchone()
+    if not row:
+        return None
+    try:
+        metrics = json.loads(row["metrics_json"])
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(metrics, dict):
+        return None
+    return float(row["cached_at"]), metrics
+
+
+def put_yahoo_metrics(
+    cache_key: str,
+    metrics: dict[str, Any],
+    *,
+    cached_at: float | None = None,
+) -> float:
+    ts = cached_at if cached_at is not None else time.time()
+    blob = json.dumps(metrics, default=str)
+    with connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO yahoo_metrics_cache (cache_key, metrics_json, cached_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(cache_key) DO UPDATE SET
+                metrics_json = excluded.metrics_json,
+                cached_at = excluded.cached_at
+            """,
+            (cache_key, blob, ts),
+        )
+    return ts

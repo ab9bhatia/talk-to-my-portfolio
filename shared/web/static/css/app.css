@@ -4904,7 +4904,8 @@ body.setup-modal-open {
 }
 
 .page-dashboard .main.dash-main {
-  max-width: 1280px;
+  max-width: none;
+  width: 100%;
   padding-top: 1.25rem;
   font-family: var(--dash-font);
 }
@@ -5468,7 +5469,7 @@ body.setup-modal-open {
 
 .page-dashboard .holdings-table tbody tr.holding-row td {
   border-bottom: 1px solid rgba(36, 48, 68, 0.6);
-  padding: 0.5rem 0.5rem;
+  padding: 0.42rem 0.42rem;
 }
 
 .page-dashboard .holdings-table th.sortable:hover {
