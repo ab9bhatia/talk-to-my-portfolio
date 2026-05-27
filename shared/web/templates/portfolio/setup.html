@@ -96,6 +96,9 @@
           {% else %}{{ acc.broker|title }}{% endif %}
         </p>
         <div class="setup-card-actions">
+          {% if acc.broker == 'zerodha' and acc.credentials_ok and not acc.connected and acc.connect_url %}
+          <a href="{{ acc.connect_url }}" class="setup-btn setup-btn-primary setup-card-login" onclick="event.stopPropagation()">Log in to Kite</a>
+          {% endif %}
           <span class="setup-card-edit-hint">Edit →</span>
         </div>
       </article>

@@ -181,19 +181,26 @@ def sarwa_positions_from_rows(
 
 
 def sync_family_weekly_snapshot(*, source: str = "merged") -> dict[str, Any] | None:
-    """Update family weekly snapshot from current dashboard holdings (incl. Sarwa)."""
+    """Update family weekly + daily snapshots from current dashboard holdings (incl. Sarwa)."""
     from modules.portfolio.services.portfolio import fetch_family_portfolio
 
     family = fetch_family_portfolio(refresh=False, stale_ok=True)
     all_holdings = [h for p in family.get("portfolios") or [] for h in p.get("holdings") or []]
     if not all_holdings:
         return None
-    return record_positions_snapshot(
+    snap = record_positions_snapshot(
         scope="family",
         account_id=None,
         positions=all_holdings,
         source=source,
     )
+    try:
+        from modules.portfolio.services.daily_recorder import record_today_from_family
+
+        record_today_from_family(family, source=source)
+    except Exception as exc:
+        logger.warning("Daily snapshot sync skipped: %s", exc)
+    return snap
 
 
 def repair_sarwa_weekly_snapshot(account_id: str = "sarwa") -> dict[str, Any] | None:

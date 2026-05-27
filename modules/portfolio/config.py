@@ -299,8 +299,11 @@ def get_auth_start_url(ref: str) -> str:
     account_id = resolve_account_ref(ref)
     account = get_account(account_id)
     code = account["code"]
-    port = account.get("auth_port") or 8000
-    return f"http://127.0.0.1:{port}/auth/zerodha/{code}"
+    base = (HUB_BASE_URL or "").strip().rstrip("/")
+    if not base:
+        port = account.get("auth_port") or 8000
+        base = f"http://127.0.0.1:{port}"
+    return f"{base}/auth/zerodha/{code}"
 
 
 def get_hub_url(path: str = "") -> str:

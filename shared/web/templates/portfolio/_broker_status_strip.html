@@ -5,9 +5,9 @@
   {% if account.enabled %}
   <div class="dash-account-chip broker-status-pill{% if account.connected %} is-connected{% else %} is-disconnected{% endif %}">
     <a
-      href="/portfolio/setup"
-      class="dash-account-chip-main js-show-loader"
-      title="{{ account.label }} — manage in account hub"
+      href="{% if not account.connected and account.broker == 'zerodha' and account.connect_url %}{{ account.connect_url }}{% else %}/portfolio/setup{% endif %}"
+      class="dash-account-chip-main{% if not account.connected and account.broker == 'zerodha' and account.connect_url %}{% else %} js-show-loader{% endif %}"
+      title="{% if not account.connected and account.broker == 'zerodha' and account.connect_url %}{{ account.label }} — log in to Zerodha{% else %}{{ account.label }} — manage in account hub{% endif %}"
     >
       <span class="dash-account-code broker-status-code">{{ account.code }}</span>
       <span class="dash-account-name">{{ account.label }}</span>
@@ -23,7 +23,7 @@
       </span>
     </a>
     {% if not account.connected and account.broker == 'zerodha' and account.connect_url %}
-    <a href="{{ account.connect_url }}" class="dash-account-connect broker-status-link js-show-loader" title="Connect {{ account.code }}">↗</a>
+    <a href="/portfolio/setup" class="dash-account-connect broker-status-link js-show-loader" title="Manage API keys for {{ account.code }}">⚙</a>
     {% endif %}
   </div>
   {% endif %}

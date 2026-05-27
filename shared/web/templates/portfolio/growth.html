@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+
+{% block title %}Growth · {{ app_name }}{% endblock %}
+{% block main_class %}main-wide dash-main{% endblock %}
+{% block body_class %}page-dashboard page-growth{% endblock %}
+
+{% block head %}
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" defer></script>
+{% endblock %}
+
+{% block content %}
+<div class="dash">
+  <header class="dash-hero dash-hero--compact">
+    <div class="dash-hero-top">
+      <div class="dash-hero-copy">
+        <p class="dash-eyebrow">Daily history</p>
+        <h1 class="dash-title">Portfolio growth</h1>
+        <p class="dash-lead">
+          Day-by-day portfolio value after each <strong>Refresh live</strong> on the dashboard.
+          Compare movement across accounts, market cap, and asset class.
+        </p>
+      </div>
+      <div class="dash-hero-actions">
+        <a href="/portfolio" class="dash-btn dash-btn-ghost js-show-loader">← Dashboard</a>
+        <a href="/portfolio/growth?refresh=1&amp;days={{ days }}" class="dash-btn dash-btn-primary js-show-loader">
+          Record today
+        </a>
+      </div>
+    </div>
+    <div class="growth-status-pill" id="growth-status-pill">
+      {% if daily_status.latest_day %}
+      <span>{{ daily_status.family_days_stored }} day{{ 's' if daily_status.family_days_stored != 1 else '' }} saved</span>
+      <span class="growth-status-sep">·</span>
+      <span>Latest {{ daily_status.latest_day }}</span>
+      {% if daily_status.latest_family_value_inr %}
+      <span class="growth-status-sep">·</span>
+      <span>{{ format_inr(daily_status.latest_family_value_inr) }}</span>
+      {% endif %}
+      {% else %}
+      <span>No daily snapshots yet — refresh portfolio on the dashboard to start.</span>
+      {% endif %}
+    </div>
+  </header>
+
+  <section class="dash-panel growth-panel" aria-labelledby="growth-change-title">
+    <div class="growth-change-cards" id="growth-change-cards">
+      <p class="growth-loading text-muted">Loading day-over-day summary…</p>
+    </div>
+  </section>
+
+  <section class="dash-panel growth-panel" aria-labelledby="growth-chart-title">
+    <div class="growth-panel-head">
+      <h2 class="growth-panel-title" id="growth-chart-title">Value over time</h2>
+      <label class="growth-days-label">
+        <span class="sr-only">Days to show</span>
+        <select id="growth-days-select" class="growth-days-select">
+          <option value="30" {% if days == 30 %}selected{% endif %}>30 days</option>
+          <option value="90" {% if days == 90 %}selected{% endif %}>90 days</option>
+          <option value="180" {% if days == 180 %}selected{% endif %}>180 days</option>
+          <option value="365" {% if days == 365 %}selected{% endif %}>1 year</option>
+        </select>
+      </label>
+    </div>
+    <div class="growth-chart-wrap">
+      <canvas id="growth-daily-chart" height="200" aria-label="Daily portfolio value"></canvas>
+      <p id="growth-chart-empty" class="text-muted growth-chart-empty" hidden>
+        Need at least one live refresh to record today. Open the dashboard and click <strong>Refresh live</strong>.
+      </p>
+    </div>
+  </section>
+
+  <section class="dash-panel growth-panel" aria-labelledby="growth-breakdown-title">
+    <h2 class="growth-panel-title" id="growth-breakdown-title">Day-over-day change</h2>
+    <p class="growth-breakdown-hint text-muted" id="growth-breakdown-hint"></p>
+    <div class="growth-tabs" role="tablist">
+      <button type="button" class="growth-tab is-active" role="tab" aria-selected="true" data-breakdown="by_account">Accounts</button>
+      <button type="button" class="growth-tab" role="tab" aria-selected="false" data-breakdown="by_market_cap">Market cap</button>
+      <button type="button" class="growth-tab" role="tab" aria-selected="false" data-breakdown="by_asset_class">Asset class</button>
+      <button type="button" class="growth-tab" role="tab" aria-selected="false" data-breakdown="by_sector">Sector</button>
+    </div>
+    <div class="growth-table-wrap">
+      <table class="growth-table" id="growth-breakdown-table">
+        <thead>
+          <tr>
+            <th scope="col">Segment</th>
+            <th scope="col" class="text-right">Today</th>
+            <th scope="col" class="text-right">Yesterday</th>
+            <th scope="col" class="text-right">Change</th>
+            <th scope="col" class="text-right">%</th>
+          </tr>
+        </thead>
+        <tbody id="growth-breakdown-body">
+          <tr><td colspan="5" class="text-muted">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>
+
+<script src="/static/js/portfolio-growth.js" defer></script>
+{% endblock %}

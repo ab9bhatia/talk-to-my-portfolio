@@ -71,6 +71,32 @@ def format_cache_time(timestamp: float | None) -> str:
     return datetime.fromtimestamp(timestamp).strftime("%I:%M %p")
 
 
+def format_data_as_of_label(
+    timestamp: float | None,
+    *,
+    auth_degraded: bool = False,
+) -> str | None:
+    """
+    Human label when broker login failed but a snapshot is shown.
+    e.g. "Updated till 11:00 PM yesterday (IST)".
+    """
+    if timestamp is None or not auth_degraded:
+        return None
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+
+    tz = ZoneInfo("Asia/Kolkata")
+    dt = datetime.fromtimestamp(timestamp, tz=tz)
+    now = datetime.now(tz)
+    time_str = dt.strftime("%I:%M %p").lstrip("0")
+    if dt.date() == now.date():
+        return f"Updated till {time_str} today (IST)"
+    yesterday = now.date() - timedelta(days=1)
+    if dt.date() == yesterday:
+        return f"Updated till {time_str} yesterday (IST)"
+    return f"Updated till {dt.strftime('%d %b %Y')}, {time_str} (IST)"
+
+
 def format_pe(value: float | int | None) -> str:
     """Format P/E ratio."""
     num = _coerce_number(value)

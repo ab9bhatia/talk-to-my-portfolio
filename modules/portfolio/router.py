@@ -24,6 +24,7 @@ from modules.portfolio.config import (
     is_known_account,
     resolve_account_ref,
 )
+from modules.portfolio.db import daily_history
 from modules.portfolio.db import weekly_history
 from modules.portfolio.db import tokens as token_store
 from modules.portfolio.services.holdings_view import (
@@ -60,6 +61,7 @@ from modules.portfolio.services.weekly_recorder import (
     sync_family_weekly_snapshot,
 )
 from modules.portfolio.services.portfolio_revalidate import meta_for_family
+from shared.web.formatters import format_data_as_of_label
 from shared.web.templates import templates
 
 router = APIRouter(tags=["portfolio"])
@@ -261,6 +263,12 @@ def portfolio_dashboard(
         refresh=refresh, view_params=view_params
     )
     errors = [e["error"] for e in family.get("errors", [])]
+    auth_degraded = bool(family.get("auth_degraded")) or any(
+        e.get("using_snapshot") for e in family.get("errors", [])
+    )
+    data_as_of_label = format_data_as_of_label(
+        family.get("cached_at"), auth_degraded=auth_degraded
+    )
     weekly_status = weekly_history.weekly_status()
     cache_meta = meta_for_family(fresh_ttl=CACHE_TTL_SECONDS)
     export_qs = _export_query_string(view_params["sort"], view_params["order"], view_params["group_by"])
@@ -277,6 +285,9 @@ def portfolio_dashboard(
             "cached_at": family.get("cached_at"),
             "from_cache": family.get("from_cache", False),
             "stale": family.get("stale", False),
+            "auth_degraded": auth_degraded,
+            "data_as_of_label": data_as_of_label,
+            "ltp_refreshed_offline": family.get("ltp_refreshed_offline", False),
             "cache_meta": cache_meta,
             "controls_action": "/portfolio",
             "export_url": f"/api/portfolio/export?{export_qs}",
@@ -309,6 +320,44 @@ def portfolio_agent_page(request: Request):
     )
 
 
+@router.get("/portfolio/growth")
+def portfolio_growth_page(
+    request: Request,
+    refresh: bool = Query(False),
+    days: int = Query(90, ge=7, le=365),
+):
+    """Daily portfolio growth — value trend and day-over-day breakdowns."""
+    from modules.portfolio.services.daily_analytics import build_growth_dashboard
+    from modules.portfolio.services.daily_recorder import seed_today_if_missing
+
+    if refresh:
+        try:
+            family = fetch_family_portfolio(refresh=True, stale_ok=False)
+            seed_today_if_missing(family, source="manual_refresh")
+        except OAuthError:
+            pass
+
+    dashboard = build_growth_dashboard(days=days)
+    if not dashboard["series"]:
+        try:
+            family = fetch_family_portfolio(refresh=False, stale_ok=True)
+            seed_today_if_missing(family, source="bootstrap")
+            dashboard = build_growth_dashboard(days=days)
+        except Exception:
+            pass
+
+    return templates.TemplateResponse(
+        request,
+        "portfolio/growth.html",
+        {
+            "active_module": "growth",
+            "days": days,
+            "daily_status": dashboard["status"],
+            "trading_enabled": _trading_enabled(),
+        },
+    )
+
+
 @router.get("/portfolio/account/{account_ref}")
 def portfolio_account(
     request: Request,
@@ -327,7 +376,7 @@ def portfolio_account(
     view_params = _normalize_view_params(sort=sort, order=order, group_by=group_by)
 
     try:
-        portfolio = fetch_account_portfolio(account_id, refresh=refresh, stale_ok=not refresh)
+        portfolio = fetch_account_portfolio(account_id, refresh=refresh, stale_ok=True)
     except OAuthError as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
     except GrowwError as exc:
@@ -425,7 +474,7 @@ def api_account_portfolio(account_ref: str, refresh: bool = Query(False)):
 
     account_id = resolve_account_ref(account_ref)
     try:
-        return fetch_account_portfolio(account_id, refresh=refresh, stale_ok=not refresh)
+        return fetch_account_portfolio(account_id, refresh=refresh, stale_ok=True)
     except OAuthError as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
     except GrowwError as exc:
@@ -719,6 +768,64 @@ def api_sarwa_refresh_metrics():
     return {"updated": len(positions)}
 
 
+@router.get("/api/portfolio/daily/status")
+def api_daily_status():
+    """Confirm daily SQLite history."""
+    return daily_history.daily_status()
+
+
+@router.get("/api/portfolio/daily/dashboard")
+def api_daily_dashboard(days: int = Query(90, ge=7, le=365)):
+    """Daily growth series + day-over-day breakdown by account, cap, sector."""
+    from modules.portfolio.services.daily_analytics import build_growth_dashboard
+
+    return build_growth_dashboard(days=days)
+
+
+@router.get("/api/portfolio/daily/history")
+def api_daily_history(
+    scope: str = Query("family"),
+    account_ref: str | None = Query(None),
+    days: int = Query(90, ge=1, le=365),
+):
+    """Daily portfolio totals (oldest → newest)."""
+    account_id = None
+    if account_ref:
+        try:
+            account_id = resolve_account_ref(account_ref)
+        except KeyError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    series = daily_history.growth_series(scope=scope, account_id=account_id, days=days)
+    return {
+        "scope": scope,
+        "account_id": account_id,
+        "days": days,
+        "series": series,
+        "fx": fx_meta(),
+    }
+
+
+@router.post("/api/portfolio/daily/snapshot")
+def api_record_daily_snapshot(refresh: bool = Query(True)):
+    """Record today's family + per-account daily snapshots."""
+    try:
+        family = fetch_family_portfolio(refresh=refresh, stale_ok=not refresh)
+    except OAuthError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+
+    from modules.portfolio.services.daily_recorder import record_today_from_family
+
+    recorded = record_today_from_family(family, source="manual")
+    if not recorded:
+        return {
+            "recorded": False,
+            "message": "No holdings to record",
+            "day_date": daily_history.day_date_for(),
+        }
+    return {"recorded": True, "snapshots": recorded, "day_date": daily_history.day_date_for()}
+
+
 @router.get("/api/portfolio/weekly/status")
 def api_weekly_status():
     """Confirm weekly SQLite history and latest snapshot weeks."""
@@ -929,7 +1036,7 @@ def export_account_portfolio(
     view_params = _normalize_view_params(sort=sort, order=order, group_by=group_by)
 
     try:
-        portfolio = fetch_account_portfolio(account_id, refresh=refresh, stale_ok=not refresh)
+        portfolio = fetch_account_portfolio(account_id, refresh=refresh, stale_ok=True)
     except OAuthError as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
     except GrowwError as exc:

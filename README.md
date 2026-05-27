@@ -85,7 +85,8 @@ Enable with `OPENAI_API_KEY` (or `PORTFOLIO_OPENAI_API_KEY`) in `.env`. See [Ena
 | **Account hub** | Add, edit, reconnect brokers; import CSV / Excel / screenshots |
 | **Brokers** | Zerodha (Kite), Groww (Trade API), Sarwa (USD), Custom portfolios |
 | **Smart cache** | Stale-first SQLite + background refresh |
-| **Weekly history** | Snapshots export from `portfolio_history.db` |
+| **Daily growth** | Auto-saved each live refresh; charts on **Growth** tab |
+| **Weekly history** | Weekly snapshots + Excel export in `portfolio_history.db` |
 | **Optional trading** | Live Buy/Sell when `TRADING_ENABLED=true` |
 
 ---
@@ -95,6 +96,7 @@ Enable with `OPENAI_API_KEY` (or `PORTFOLIO_OPENAI_API_KEY`) in `.env`. See [Ena
 | Route | Purpose |
 |-------|---------|
 | [`/portfolio`](http://127.0.0.1:8000/portfolio) | Dashboard + **Portfolio agent** |
+| [`/portfolio/growth`](http://127.0.0.1:8000/portfolio/growth) | **Daily growth** — value trend & day-over-day by account / cap |
 | [`/portfolio/setup`](http://127.0.0.1:8000/portfolio/setup) | Connect & edit accounts |
 | [`/docs`](http://127.0.0.1:8000/docs) | Swagger API |
 | `POST /api/portfolio/agent/ask` | Agent (SSE stream) |

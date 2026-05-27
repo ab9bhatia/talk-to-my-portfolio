@@ -118,6 +118,102 @@ def _is_valid_account_payload(data: dict) -> bool:
     return all(k in summary for k in required) and isinstance(data.get("holdings"), list)
 
 
+def _payload_without_cache_meta(data: dict) -> dict:
+    return {k: v for k, v in data.items() if k not in ("stale", "from_cache", "cached_at")}
+
+
+def _refresh_holdings_ltps_from_yahoo(holdings: list[dict]) -> list[dict]:
+    """Refresh LTP and P&L from Yahoo; keep quantity and avg_price from snapshot."""
+    from modules.portfolio.services.weekly_recorder import _yahoo_ltp_inr
+
+    updated: list[dict] = []
+    for holding in holdings:
+        row = dict(holding)
+        symbol = row.get("symbol")
+        if not symbol:
+            updated.append(row)
+            continue
+        ltp = _yahoo_ltp_inr(symbol, row.get("exchange"))
+        if ltp is None or ltp <= 0:
+            updated.append(row)
+            continue
+        qty = float(row.get("quantity") or 0)
+        avg = float(row.get("avg_price") or 0)
+        row["last_price"] = round(ltp, 2)
+        row["invested"] = round(qty * avg, 2)
+        row["current_value"] = round(qty * ltp, 2)
+        row["pnl"] = round(row["current_value"] - row["invested"], 2)
+        row["pnl_pct"] = round((row["pnl"] / row["invested"] * 100) if row["invested"] else 0.0, 2)
+        updated.append(row)
+    return updated
+
+
+def _refresh_stale_payload_prices(payload: dict, *, with_metrics: bool) -> dict:
+    """Recompute summary after Yahoo LTP refresh on a cached portfolio payload."""
+    if payload.get("portfolios"):
+        portfolios = []
+        for block in payload["portfolios"]:
+            holdings = _refresh_holdings_ltps_from_yahoo(block.get("holdings") or [])
+            if with_metrics:
+                from modules.portfolio.services.market_data import apply_holdings_metric_overrides
+
+                apply_holdings_metric_overrides(holdings)
+            summary = summarize_holdings(holdings)
+            portfolios.append({**block, "holdings": holdings, "summary": summary})
+        all_holdings = [h for p in portfolios for h in p.get("holdings") or []]
+        return {
+            **payload,
+            "portfolios": portfolios,
+            "summary": summarize_holdings(all_holdings),
+            "ltp_refreshed_offline": True,
+        }
+
+    holdings = _refresh_holdings_ltps_from_yahoo(payload.get("holdings") or [])
+    if with_metrics:
+        from modules.portfolio.services.market_data import apply_holdings_metric_overrides
+
+        apply_holdings_metric_overrides(holdings)
+    return {
+        **payload,
+        "holdings": holdings,
+        "summary": summarize_holdings(holdings),
+        "ltp_refreshed_offline": True,
+    }
+
+
+def _load_stale_account_portfolio(account_id: str, *, with_metrics: bool) -> dict | None:
+    key = _cache_key(account_id, with_metrics)
+    disk = _disk_cached(key, stale_ok=True)
+    if disk is None:
+        return None
+    payload = _payload_without_cache_meta(disk)
+    payload = _refresh_stale_payload_prices(payload, with_metrics=with_metrics)
+    return {
+        **payload,
+        "cached_at": disk["cached_at"],
+        "from_cache": True,
+        "stale": True,
+        "auth_degraded": True,
+    }
+
+
+def _load_stale_family_portfolio(*, with_metrics: bool) -> dict | None:
+    key = _cache_key(None, with_metrics)
+    disk = _disk_cached(key, stale_ok=True)
+    if disk is None:
+        return None
+    payload = _payload_without_cache_meta(disk)
+    payload = _refresh_stale_payload_prices(payload, with_metrics=with_metrics)
+    return {
+        **payload,
+        "cached_at": disk["cached_at"],
+        "from_cache": True,
+        "stale": True,
+        "auth_degraded": True,
+        "ltp_refreshed_offline": True,
+    }
+
+
 def _disk_cached(key: str, *, stale_ok: bool) -> dict | None:
     if not stale_ok:
         return None
@@ -304,12 +400,20 @@ def _fetch_cached_account(
             return _apply_llm_sector_cache(cached)
         disk = _disk_cached(key, stale_ok=stale_ok)
         if disk is not None:
-            payload = {k: v for k, v in disk.items() if k not in ("stale", "from_cache", "cached_at")}
+            payload = _payload_without_cache_meta(disk)
             payload = _apply_llm_sector_cache(payload)
             _PORTFOLIO_CACHE[key] = (disk["cached_at"], payload)
             return {**disk, **payload}
 
-    return _store_cache(key, live_fetch(account_id, with_metrics=with_metrics))
+    try:
+        return _store_cache(key, live_fetch(account_id, with_metrics=with_metrics))
+    except OAuthError:
+        if not stale_ok:
+            raise
+        stale = _load_stale_account_portfolio(account_id, with_metrics=with_metrics)
+        if stale is not None:
+            return stale
+        raise
 
 
 def fetch_groww_portfolio_cached(
@@ -397,9 +501,10 @@ def fetch_sarwa_portfolio_cached(
 
 
 def _after_family_live_fetch(payload: dict) -> None:
-    """Record weekly snapshots and refresh current-week LTPs when brokers return live data."""
+    """Record weekly + daily snapshots when brokers return live data."""
     try:
         from modules.portfolio.config import get_enabled_sarwa_accounts
+        from modules.portfolio.services.daily_recorder import record_today_from_family
         from modules.portfolio.services.weekly_recorder import (
             record_if_new_week,
             refresh_all_current_week_ltps,
@@ -409,8 +514,9 @@ def _after_family_live_fetch(payload: dict) -> None:
         account_ids.extend(get_enabled_sarwa_accounts())
         refresh_all_current_week_ltps(account_ids)
         record_if_new_week(payload, source="live")
+        record_today_from_family(payload, source="live")
     except Exception as exc:
-        logger.warning("Weekly snapshot skipped: %s", exc)
+        logger.warning("History snapshot skipped: %s", exc)
 
 
 def _fetch_family_live(*, with_metrics: bool = True) -> dict:
@@ -429,8 +535,16 @@ def _fetch_family_live(*, with_metrics: bool = True) -> dict:
         try:
             portfolios.append(_fetch_portfolio_live(account_id, with_metrics=with_metrics))
         except OAuthError as exc:
+            stale = _load_stale_account_portfolio(account_id, with_metrics=with_metrics)
+            if stale:
+                portfolios.append(stale)
             errors.append(
-                {"account": get_account_code(account_id), "broker": "zerodha", "error": str(exc)}
+                {
+                    "account": get_account_code(account_id),
+                    "broker": "zerodha",
+                    "error": str(exc),
+                    "using_snapshot": bool(stale),
+                }
             )
 
     if groww_accounts:
@@ -442,8 +556,16 @@ def _fetch_family_live(*, with_metrics: bool = True) -> dict:
                     fetch_groww_portfolio_cached(account_id, with_metrics=with_metrics, refresh=True)
                 )
             except GrowwError as exc:
+                stale = _load_stale_account_portfolio(account_id, with_metrics=with_metrics)
+                if stale:
+                    portfolios.append(stale)
                 errors.append(
-                    {"account": get_account_code(account_id), "broker": "groww", "error": str(exc)}
+                    {
+                        "account": get_account_code(account_id),
+                        "broker": "groww",
+                        "error": str(exc),
+                        "using_snapshot": bool(stale),
+                    }
                 )
 
     for account_id in sarwa_accounts:
@@ -483,6 +605,8 @@ def _fetch_family_live(*, with_metrics: bool = True) -> dict:
         "portfolios": portfolios,
         "errors": errors,
     }
+    if any(e.get("using_snapshot") for e in errors):
+        payload["auth_degraded"] = True
     _after_family_live_fetch(payload)
     return payload
 
@@ -538,8 +662,23 @@ def fetch_family_portfolio(
     key = _cache_key(None, with_metrics)
 
     if refresh:
+        live = _fetch_family_live(with_metrics=with_metrics)
+        if live.get("portfolios"):
+            return _merge_sarwa_into_family(
+                _store_cache(key, live),
+                with_metrics=with_metrics,
+                refresh=True,
+            )
+        stale = _load_stale_family_portfolio(with_metrics=with_metrics)
+        if stale is not None:
+            stale["errors"] = live.get("errors") or []
+            return _merge_sarwa_into_family(
+                stale,
+                with_metrics=with_metrics,
+                refresh=False,
+            )
         return _merge_sarwa_into_family(
-            _store_cache(key, _fetch_family_live(with_metrics=with_metrics)),
+            _store_cache(key, live),
             with_metrics=with_metrics,
             refresh=True,
         )
@@ -552,7 +691,7 @@ def fetch_family_portfolio(
 
     disk = _disk_cached(key, stale_ok=stale_ok)
     if disk is not None:
-        payload = {k: v for k, v in disk.items() if k not in ("stale", "from_cache", "cached_at")}
+        payload = _payload_without_cache_meta(disk)
         payload = _apply_llm_sector_cache(payload)
         payload = _merge_sarwa_into_family(
             payload, with_metrics=with_metrics, refresh=False
@@ -563,8 +702,21 @@ def fetch_family_portfolio(
             schedule_family_revalidate(with_metrics=with_metrics)
         return merged_disk
 
+    live = _fetch_family_live(with_metrics=with_metrics)
+    if live.get("portfolios"):
+        return _merge_sarwa_into_family(
+            _store_cache(key, live),
+            with_metrics=with_metrics,
+            refresh=True,
+        )
+
+    stale = _load_stale_family_portfolio(with_metrics=with_metrics)
+    if stale is not None:
+        stale["errors"] = live.get("errors") or []
+        return _merge_sarwa_into_family(stale, with_metrics=with_metrics, refresh=False)
+
     return _merge_sarwa_into_family(
-        _store_cache(key, _fetch_family_live(with_metrics=with_metrics)),
+        _store_cache(key, live),
         with_metrics=with_metrics,
         refresh=True,
     )

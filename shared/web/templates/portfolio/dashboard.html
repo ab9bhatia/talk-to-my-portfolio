@@ -39,7 +39,7 @@
       {% if cached_at %}
       <span class="dash-cache-pill" title="Last portfolio fetch">
         <span class="dash-cache-dot" aria-hidden="true"></span>
-        Updated {{ format_cache_time(cached_at) }}{% if stale %} · snapshot{% elif from_cache %} · cached{% endif %}
+        {% if data_as_of_label %}{{ data_as_of_label }}{% else %}Updated {{ format_cache_time(cached_at) }}{% endif %}{% if ltp_refreshed_offline %} · LTP live{% elif stale %} · snapshot{% elif from_cache %} · cached{% endif %}
       </span>
       {% endif %}
     </div>
@@ -47,7 +47,23 @@
     {% include "portfolio/_portfolio_summary.html" %}
   </header>
 
-  {% if stale or cache_meta.revalidating %}
+  {% if auth_degraded %}
+  <div class="dash-banner dash-banner--warn portfolio-auth-banner">
+    <p class="portfolio-auth-banner-text">
+      <strong>Broker login expired.</strong>
+      {% if data_as_of_label %}{{ data_as_of_label }}.{% endif %}
+      Avg buy prices are from that snapshot{% if ltp_refreshed_offline %} — share prices (LTP) refreshed now via Yahoo{% endif %}.
+    </p>
+    <p class="portfolio-auth-banner-actions">
+      {% for account in accounts %}
+      {% if account.enabled and not account.connected and account.broker == 'zerodha' and account.connect_url %}
+      <a href="{{ account.connect_url }}" class="dash-btn dash-btn-sm dash-btn-primary">Log in to Zerodha ({{ account.code }})</a>
+      {% endif %}
+      {% endfor %}
+      <a href="/portfolio/setup" class="dash-btn dash-btn-sm dash-btn-ghost js-show-loader">Manage API keys</a>
+    </p>
+  </div>
+  {% elif stale or cache_meta.revalidating %}
   <div
     id="portfolio-stale-banner"
     class="dash-banner {% if cache_meta.revalidating %}dash-banner--info{% else %}dash-banner--warn{% endif %} portfolio-stale-banner"
@@ -102,7 +118,7 @@
       {% endwith %}
     </div>
   </section>
-  {% elif not errors %}
+  {% elif not errors and not holdings_view.holdings %}
   <div class="dash-empty">
     <h3>No holdings yet</h3>
     <p>Connect Zerodha or Groww, or import a custom portfolio from the account hub.</p>

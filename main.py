@@ -28,9 +28,11 @@ async def lifespan(app: FastAPI):
 
     groww_token_store.init_db()
     portfolio_cache_store.init_db()
+    from modules.portfolio.db import daily_history as daily_history_store
     from modules.portfolio.db import weekly_history as weekly_history_store
 
     weekly_history_store.init_db()
+    daily_history_store.init_db()
     from modules.portfolio.db import sector_llm_cache as sector_llm_cache_store
 
     sector_llm_cache_store.init_db()
