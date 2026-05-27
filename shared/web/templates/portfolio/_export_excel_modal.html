@@ -1,0 +1,66 @@
+<dialog id="export-excel-dialog" class="export-excel-modal" aria-labelledby="export-excel-title">
+  <form id="export-excel-form" class="export-excel-panel" method="dialog">
+    <header class="export-excel-header">
+      <div>
+        <h2 id="export-excel-title" class="export-excel-title">Export to Excel</h2>
+        <p class="export-excel-sub">Choose columns{% if export_account_choices %} and which accounts to include{% endif %}.</p>
+      </div>
+      <button type="button" class="export-excel-close" id="export-excel-close" aria-label="Close">×</button>
+    </header>
+
+    <div class="export-excel-body">
+      {% if export_account_choices %}
+      <fieldset class="export-accounts-fieldset">
+        <legend class="export-section-label">Accounts</legend>
+        <div class="export-accounts-mode">
+          <label class="export-account-mode">
+            <input type="radio" name="export_accounts_mode" value="all" checked>
+            <span>All accounts</span>
+          </label>
+          <label class="export-account-mode">
+            <input type="radio" name="export_accounts_mode" value="specific">
+            <span>Specific accounts</span>
+          </label>
+        </div>
+        <div class="export-account-chips" id="export-account-chips" hidden>
+          {% for acct in export_account_choices %}
+          <label class="export-account-chip">
+            <input type="checkbox" class="js-export-account" value="{{ acct.code }}" checked>
+            <span class="export-account-chip-code">{{ acct.code }}</span>
+            <span class="export-account-chip-label">{{ acct.label }}</span>
+          </label>
+          {% endfor %}
+        </div>
+      </fieldset>
+      {% endif %}
+
+      <div class="export-excel-toolbar">
+        <span class="export-section-label">Columns</span>
+        <span class="export-excel-toolbar-actions">
+          <button type="button" class="btn-link export-excel-link" id="export-columns-all">Select all</button>
+          <span class="export-excel-sep" aria-hidden="true">·</span>
+          <button type="button" class="btn-link export-excel-link" id="export-columns-none">Clear all</button>
+        </span>
+      </div>
+
+      <fieldset class="export-columns-fieldset">
+        <legend class="sr-only">Columns to include</legend>
+        <div class="export-columns-grid" id="export-columns-grid">
+          {% for col in export_column_options %}
+          <label class="export-column-option">
+            <input type="checkbox" name="export_column" value="{{ col.id }}" checked>
+            <span>{{ col.label }}</span>
+          </label>
+          {% endfor %}
+        </div>
+      </fieldset>
+
+      <p class="export-excel-error" id="export-excel-error" hidden role="alert"></p>
+    </div>
+
+    <footer class="export-excel-footer">
+      <button type="button" class="dash-btn dash-btn-ghost" id="export-excel-cancel">Cancel</button>
+      <button type="submit" class="dash-btn dash-btn-primary" id="export-excel-submit">Download Excel</button>
+    </footer>
+  </form>
+</dialog>

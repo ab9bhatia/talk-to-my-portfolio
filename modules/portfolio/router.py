@@ -30,7 +30,10 @@ from modules.portfolio.db import tokens as token_store
 from modules.portfolio.services.holdings_view import (
     all_holdings_from_view,
     build_holdings_excel,
+    export_column_options,
+    filter_holdings_by_account_codes,
     holdings_financials_map,
+    normalize_export_columns,
     prepare_holdings_view,
 )
 from modules.portfolio.services.agent_threads import (
@@ -239,14 +242,24 @@ def _family_holdings_view(
     *,
     refresh: bool,
     view_params: dict[str, str | None],
+    account_codes: list[str] | None = None,
 ) -> tuple[dict, dict, list[dict]]:
     """Fetch family portfolio and build aggregated holdings view for UI/export."""
     family = fetch_family_portfolio(refresh=refresh, stale_ok=not refresh)
     raw_holdings = [h for p in family["portfolios"] for h in p["holdings"]]
+    raw_holdings = filter_holdings_by_account_codes(raw_holdings, account_codes)
     holdings_view = prepare_holdings_view(
         raw_holdings, **view_params, aggregate_across_accounts=True
     )
     return family, holdings_view, raw_holdings
+
+
+def _export_account_choices() -> list[dict[str, str]]:
+    return [
+        {"code": account["code"], "label": account["label"]}
+        for account in _account_statuses()
+        if account.get("enabled")
+    ]
 
 
 @router.get("/portfolio")
@@ -291,6 +304,10 @@ def portfolio_dashboard(
             "cache_meta": cache_meta,
             "controls_action": "/portfolio",
             "export_url": f"/api/portfolio/export?{export_qs}",
+            "export_api_url": "/api/portfolio/export",
+            "export_column_options": export_column_options(include_account=True),
+            "export_include_account": True,
+            "export_account_choices": _export_account_choices(),
             "refresh": refresh,
             "symbol_suggestions": _symbol_suggestions(raw_holdings),
             "holdings_financials_json": json.dumps(
@@ -392,6 +409,9 @@ def portfolio_account(
             "from_cache": portfolio.get("from_cache", False),
             "controls_action": f"/portfolio/account/{account_code}",
             "export_url": f"/api/portfolio/export/{account_code}?{export_qs}",
+            "export_api_url": f"/api/portfolio/export/{account_code}",
+            "export_column_options": export_column_options(include_account=False),
+            "export_include_account": False,
             "refresh": refresh,
             "show_account": False,
             "symbol_suggestions": _symbol_suggestions(portfolio["holdings"]),
@@ -1005,23 +1025,71 @@ def stock_insights(
         raise HTTPException(status_code=500, detail=f"Insights unavailable: {exc}") from exc
 
 
+class HoldingsExportBody(BaseModel):
+    columns: list[str] = Field(default_factory=list)
+    accounts: list[str] = Field(default_factory=list)
+    sort: str = "value"
+    order: str = "desc"
+    refresh: bool = False
+
+
+def _excel_download_response(content: bytes, filename: str) -> Response:
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @router.get("/api/portfolio/export")
 def export_family_portfolio(
     refresh: bool = Query(False),
     sort: str = Query("value"),
     order: str = Query("desc"),
     group_by: str = Query(""),
+    columns: str = Query(""),
 ):
     """Download family holdings as Excel."""
     view_params = _normalize_view_params(sort=sort, order=order, group_by=group_by)
     _, holdings_view, _ = _family_holdings_view(refresh=refresh, view_params=view_params)
-    content = build_holdings_excel(holdings_view, include_account=True, sheet_title="Family Portfolio")
-
-    return Response(
-        content=content,
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": 'attachment; filename="portfolio-family.xlsx"'},
+    col_ids = normalize_export_columns(columns or None, include_account=True)
+    content = build_holdings_excel(
+        holdings_view,
+        columns=col_ids,
+        include_account=True,
+        sheet_title="Family Portfolio",
     )
+    return _excel_download_response(content, "portfolio-family.xlsx")
+
+
+@router.post("/api/portfolio/export")
+def export_family_portfolio_post(body: HoldingsExportBody):
+    """Download family holdings as Excel (column picker from UI)."""
+    view_params = _normalize_view_params(sort=body.sort, order=body.order, group_by="")
+    account_codes = [c.strip().upper() for c in body.accounts if c and str(c).strip()]
+    allowed = {a["code"] for a in _export_account_choices()}
+    if account_codes and not set(account_codes).issubset(allowed):
+        raise HTTPException(status_code=400, detail="Invalid account selection.")
+    _, holdings_view, raw = _family_holdings_view(
+        refresh=body.refresh,
+        view_params=view_params,
+        account_codes=account_codes or None,
+    )
+    if account_codes and not raw:
+        raise HTTPException(status_code=400, detail="No holdings for the selected accounts.")
+    col_ids = normalize_export_columns(body.columns or None, include_account=True)
+    if not col_ids:
+        raise HTTPException(status_code=400, detail="Select at least one column.")
+    sheet_title = "Family Portfolio"
+    if account_codes:
+        sheet_title = f"Portfolio ({','.join(account_codes)})"
+    content = build_holdings_excel(
+        holdings_view,
+        columns=col_ids,
+        include_account=True,
+        sheet_title=sheet_title,
+    )
+    return _excel_download_response(content, "portfolio-family.xlsx")
 
 
 @router.get("/api/portfolio/export/{account_ref}")
@@ -1031,6 +1099,7 @@ def export_account_portfolio(
     sort: str = Query("value"),
     order: str = Query("desc"),
     group_by: str = Query(""),
+    columns: str = Query(""),
 ):
     """Download single-account holdings as Excel."""
     if not is_known_account(account_ref):
@@ -1049,13 +1118,45 @@ def export_account_portfolio(
 
     holdings_view = prepare_holdings_view(portfolio["holdings"], **view_params)
     label = portfolio.get("account_code") or account_code
-    content = build_holdings_excel(holdings_view, include_account=False, sheet_title=label)
-
-    return Response(
-        content=content,
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f'attachment; filename="portfolio-{account_code}.xlsx"'},
+    col_ids = normalize_export_columns(columns or None, include_account=False)
+    content = build_holdings_excel(
+        holdings_view,
+        columns=col_ids,
+        include_account=False,
+        sheet_title=label,
     )
+    return _excel_download_response(content, f"portfolio-{account_code}.xlsx")
+
+
+@router.post("/api/portfolio/export/{account_ref}")
+def export_account_portfolio_post(account_ref: str, body: HoldingsExportBody):
+    """Download single-account holdings as Excel (column picker from UI)."""
+    if not is_known_account(account_ref):
+        raise HTTPException(status_code=404, detail=f"Unknown account: {account_ref}")
+
+    account_id = resolve_account_ref(account_ref)
+    account_code = get_account_code(account_id)
+    view_params = _normalize_view_params(sort=body.sort, order=body.order, group_by="")
+
+    try:
+        portfolio = fetch_account_portfolio(account_id, refresh=body.refresh, stale_ok=True)
+    except OAuthError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+    except GrowwError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+
+    holdings_view = prepare_holdings_view(portfolio["holdings"], **view_params)
+    label = portfolio.get("account_code") or account_code
+    col_ids = normalize_export_columns(body.columns or None, include_account=False)
+    if not col_ids:
+        raise HTTPException(status_code=400, detail="Select at least one column.")
+    content = build_holdings_excel(
+        holdings_view,
+        columns=col_ids,
+        include_account=False,
+        sheet_title=label,
+    )
+    return _excel_download_response(content, f"portfolio-{account_code}.xlsx")
 
 
 # --- Account setup / onboarding ---

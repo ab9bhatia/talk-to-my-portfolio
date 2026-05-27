@@ -26,9 +26,6 @@
     <span class="cell-sub">MF · {{ h.symbol }}</span>
     {% else %}
     <strong class="symbol-name">{{ h.symbol }}</strong>
-    {% if h.get('buy_thesis') %}
-    <p class="buy-thesis-snippet" title="{{ h.buy_thesis }}">{{ h.buy_thesis }}</p>
-    {% endif %}
     {% endif %}
   </td>
   {% if show_account %}

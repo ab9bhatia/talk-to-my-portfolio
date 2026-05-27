@@ -202,6 +202,29 @@ def all_holdings_from_view(holdings_view: dict[str, Any]) -> list[dict[str, Any]
     return list(holdings_view.get("holdings") or [])
 
 
+def filter_holdings_by_account_codes(
+    holdings: list[dict[str, Any]],
+    account_codes: list[str] | None,
+) -> list[dict[str, Any]]:
+    """Keep holdings whose account code is in account_codes. Empty/None = no filter."""
+    if not account_codes:
+        return holdings
+    allowed = {code.strip().upper() for code in account_codes if code and str(code).strip()}
+    if not allowed:
+        return holdings
+    filtered: list[dict[str, Any]] = []
+    for holding in holdings:
+        account_id = holding.get("account_id")
+        code = (
+            get_account_code(account_id)
+            if account_id
+            else (holding.get("account_code") or holding.get("account_label") or "")
+        )
+        if str(code).strip().upper() in allowed:
+            filtered.append(holding)
+    return filtered
+
+
 def _attach_account_codes(holdings: list[dict[str, Any]]) -> None:
     """Set comma-separated account codes (AB, HB, …) for client-side filtering."""
     for holding in holdings:
@@ -541,66 +564,118 @@ def prepare_holdings_view(
     }
 
 
-def _excel_row(holding: dict[str, Any], *, include_account: bool) -> list[Any]:
-    row = [
-        holding.get("symbol"),
-        holding.get("exchange"),
-    ]
+EXPORT_COLUMN_HEADERS: dict[str, str] = {
+    "symbol": "Symbol",
+    "exchange": "Exchange",
+    "account": "Account",
+    "cap": "Cap",
+    "pe": "P/E",
+    "sector": "Sector",
+    "pct52w": "52W Δ %",
+    "upside": "Upside %",
+    "signal": "Signal",
+    "weight": "% of total",
+    "qty": "Qty",
+    "avg": "Avg price",
+    "ltp": "LTP",
+    "value": "Value",
+    "invested": "Invested",
+    "pnl": "P&L",
+    "pnl_pct": "P&L %",
+}
+
+EXPORT_COLUMN_ORDER: tuple[str, ...] = tuple(EXPORT_COLUMN_HEADERS.keys())
+
+
+def _export_cell(col_id: str, holding: dict[str, Any]) -> Any:
+    if col_id == "symbol":
+        return holding.get("symbol")
+    if col_id == "exchange":
+        return holding.get("exchange")
+    if col_id == "account":
+        return holding.get("account_label")
+    if col_id == "cap":
+        return holding.get("market_cap")
+    if col_id == "pe":
+        return holding.get("pe_ratio")
+    if col_id == "sector":
+        return holding.get("sector")
+    if col_id == "pct52w":
+        return holding.get("pct_from_52w_high")
+    if col_id == "upside":
+        return holding.get("upside_pct")
+    if col_id == "signal":
+        return holding.get("rating_label")
+    if col_id == "weight":
+        return holding.get("pct_of_portfolio")
+    if col_id == "qty":
+        return holding.get("quantity")
+    if col_id == "avg":
+        return holding.get("avg_price")
+    if col_id == "ltp":
+        return holding.get("last_price")
+    if col_id == "value":
+        return holding.get("current_value")
+    if col_id == "invested":
+        return holding.get("invested")
+    if col_id == "pnl":
+        return holding.get("pnl")
+    if col_id == "pnl_pct":
+        return holding.get("pnl_pct")
+    return None
+
+
+def default_export_columns(*, include_account: bool) -> list[str]:
     if include_account:
-        row.append(holding.get("account_label"))
-    row.extend(
-        [
-            holding.get("market_cap"),
-            holding.get("pe_ratio"),
-            holding.get("sector"),
-            holding.get("pct_from_52w_high"),
-            holding.get("upside_pct"),
-            holding.get("rating_label"),
-            holding.get("pct_of_portfolio"),
-            holding.get("quantity"),
-            holding.get("avg_price"),
-            holding.get("last_price"),
-            holding.get("current_value"),
-            holding.get("invested"),
-            holding.get("pnl"),
-            holding.get("pnl_pct"),
-        ]
-    )
-    return row
+        return list(EXPORT_COLUMN_ORDER)
+    return [c for c in EXPORT_COLUMN_ORDER if c != "account"]
+
+
+def normalize_export_columns(
+    columns: list[str] | str | None,
+    *,
+    include_account: bool,
+) -> list[str]:
+    """Return ordered, valid export column ids (defaults to all allowed)."""
+    allowed = set(default_export_columns(include_account=include_account))
+    if not columns:
+        return [c for c in EXPORT_COLUMN_ORDER if c in allowed]
+
+    if isinstance(columns, str):
+        requested = [part.strip() for part in columns.split(",") if part.strip()]
+    else:
+        requested = list(columns)
+
+    picked = [c for c in EXPORT_COLUMN_ORDER if c in requested and c in allowed]
+    return picked or [c for c in EXPORT_COLUMN_ORDER if c in allowed]
+
+
+def export_column_options(*, include_account: bool) -> list[dict[str, str]]:
+    return [
+        {"id": col_id, "label": EXPORT_COLUMN_HEADERS[col_id]}
+        for col_id in default_export_columns(include_account=include_account)
+    ]
+
+
+def _excel_row(holding: dict[str, Any], columns: list[str]) -> list[Any]:
+    return [_export_cell(col_id, holding) for col_id in columns]
 
 
 def build_holdings_excel(
     view: dict[str, Any],
     *,
+    columns: list[str] | str | None = None,
     include_account: bool = False,
     sheet_title: str = "Holdings",
 ) -> bytes:
     """Build an .xlsx workbook from a prepared holdings view."""
+    col_ids = normalize_export_columns(columns, include_account=include_account)
+    headers = [EXPORT_COLUMN_HEADERS[c] for c in col_ids]
+
     wb = Workbook()
     ws = wb.active
     ws.title = sheet_title[:31]
 
-    headers = ["Symbol", "Exchange"]
-    if include_account:
-        headers.append("Account")
-    headers.extend(
-        [
-            "Cap",
-            "P/E",
-            "Sector",
-            "52W Δ %",
-            "Upside %",
-            "Signal",
-            "% of total",
-            "Qty",
-            "Avg price",
-            "LTP",
-            "Value",
-            "Invested",
-            "P&L",
-            "P&L %",
-        ]
-    )
     ws.append(headers)
     for cell in ws[1]:
         cell.font = Font(bold=True)
@@ -611,10 +686,10 @@ def build_holdings_excel(
             for cell in ws[ws.max_row]:
                 cell.font = Font(bold=True)
             for holding in group["holdings"]:
-                ws.append(_excel_row(holding, include_account=include_account))
+                ws.append(_excel_row(holding, col_ids))
     else:
         for holding in view["holdings"]:
-            ws.append(_excel_row(holding, include_account=include_account))
+            ws.append(_excel_row(holding, col_ids))
 
     for idx, _ in enumerate(headers, start=1):
         ws.column_dimensions[get_column_letter(idx)].width = 14

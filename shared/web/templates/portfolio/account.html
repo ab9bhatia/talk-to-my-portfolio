@@ -41,6 +41,11 @@
 {% endwith %}
 {% endif %}
 
+{% if portfolio.holdings %}
+{% include "portfolio/_export_excel_modal.html" %}
+<script src="/static/js/portfolio-export.js"></script>
+{% endif %}
+
 {% if trading_enabled %}
 {% include "portfolio/_trade_modal.html" %}
 <script src="/static/js/trade-order.js"></script>

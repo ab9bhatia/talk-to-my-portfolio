@@ -51,9 +51,19 @@
   % of total = portfolio weight. Sort via headers ▲▼.
   <span class="table-footnote-resize">Drag the <strong>⋮⋮</strong> grip on the right edge of any column header to resize; <button type="button" class="btn-link" id="reset-col-widths">reset widths</button>.</span>
 </p>
+{% if export_column_options is defined %}
 <div class="table-actions">
-  <a href="{{ export_url }}" class="btn btn-primary btn-sm">Download Excel</a>
+  <button
+    type="button"
+    class="btn btn-primary btn-sm js-export-excel-open"
+    data-export-api="{{ export_api_url }}"
+    data-sort="{{ holdings_view.sort }}"
+    data-order="{{ holdings_view.order }}"
+    data-export-accounts="{{ 1 if export_account_choices is defined and export_account_choices else 0 }}"
+    data-refresh="{{ 1 if refresh else 0 }}"
+  >Download Excel</button>
 </div>
+{% endif %}
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="/static/js/holdings.js"></script>

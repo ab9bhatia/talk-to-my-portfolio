@@ -937,6 +937,230 @@ button.filter-chip-all:hover {
   margin-bottom: 0.5rem;
 }
 
+.portfolio-toolbar-single .toolbar-main {
+  flex: 1 1 100%;
+  align-items: center;
+  gap: 0.4rem 0.55rem;
+}
+
+.portfolio-toolbar-single .toolbar-table-controls {
+  margin-left: auto;
+  flex-wrap: nowrap;
+  flex-shrink: 0;
+  gap: 0.5rem 0.65rem;
+}
+
+.toolbar-sep {
+  width: 1px;
+  height: 1.25rem;
+  background: var(--border);
+  flex-shrink: 0;
+  margin: 0 0.1rem;
+}
+
+.export-excel-modal {
+  padding: 0;
+  border: none;
+  background: transparent;
+  max-width: min(32rem, calc(100vw - 2rem));
+  width: 100%;
+}
+
+.export-excel-modal::backdrop {
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.export-excel-panel {
+  display: flex;
+  flex-direction: column;
+  max-height: min(90vh, 40rem);
+  background: var(--bg-card, #1a1f2e);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+  color: var(--text, #e8eaed);
+}
+
+.export-excel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.15rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.export-excel-title {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text, #f1f5f9);
+}
+
+.export-excel-sub {
+  margin: 0.35rem 0 0;
+  font-size: 0.82rem;
+  color: var(--text-muted, #94a3b8);
+}
+
+.export-section-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted, #94a3b8);
+}
+
+.export-excel-link {
+  color: var(--accent, #60a5fa);
+}
+
+.export-excel-link:hover {
+  color: #93c5fd;
+}
+
+.export-excel-close {
+  border: none;
+  background: transparent;
+  color: var(--text-muted, #94a3b8);
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0.15rem 0.35rem;
+  border-radius: 6px;
+}
+
+.export-excel-close:hover {
+  color: var(--text, #f1f5f9);
+  background: var(--bg-elevated, rgba(255, 255, 255, 0.08));
+}
+
+.export-excel-body {
+  padding: 0.85rem 1.15rem;
+  overflow: auto;
+}
+
+.export-excel-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem;
+  margin-bottom: 0.65rem;
+  font-size: 0.8rem;
+}
+
+.export-excel-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.export-accounts-fieldset {
+  border: none;
+  margin: 0 0 1rem;
+  padding: 0;
+}
+
+.export-accounts-mode {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.25rem;
+  margin: 0.5rem 0 0.65rem;
+}
+
+.export-account-mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.86rem;
+  color: var(--text, #e8eaed);
+  cursor: pointer;
+}
+
+.export-account-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.export-account-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-elevated, rgba(255, 255, 255, 0.06));
+  font-size: 0.8rem;
+  color: var(--text, #e8eaed);
+  cursor: pointer;
+}
+
+.export-account-chip:has(input:checked) {
+  border-color: rgba(96, 165, 250, 0.5);
+  background: rgba(96, 165, 250, 0.12);
+}
+
+.export-account-chip-code {
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.export-account-chip-label {
+  color: var(--text-muted, #94a3b8);
+  font-size: 0.75rem;
+}
+
+.export-excel-sep {
+  color: var(--text-muted);
+}
+
+.export-columns-fieldset {
+  border: none;
+  margin: 0;
+  padding: 0;
+}
+
+.export-columns-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
+  gap: 0.35rem 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.export-column-option {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.82rem;
+  color: var(--text, #e8eaed);
+  cursor: pointer;
+}
+
+.export-column-option span {
+  color: inherit;
+}
+
+.export-excel-error {
+  margin: 0.75rem 0 0;
+  font-size: 0.82rem;
+  color: var(--negative);
+}
+
+.export-excel-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding: 0.75rem 1.15rem 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.export-excel-footer .dash-btn-ghost {
+  color: var(--text, #e8eaed);
+  border-color: var(--border);
+}
+
 .account-filter-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -5399,6 +5623,15 @@ body.setup-modal-open {
   border: 1px solid var(--dash-border);
   background: rgba(0, 0, 0, 0.22);
   gap: 0.75rem 1.25rem;
+}
+
+.page-dashboard .portfolio-toolbar-single {
+  gap: 0;
+}
+
+.page-dashboard .portfolio-toolbar-single .toolbar-search input {
+  min-width: 9rem;
+  max-width: 12rem;
 }
 
 .page-dashboard .toolbar-label {

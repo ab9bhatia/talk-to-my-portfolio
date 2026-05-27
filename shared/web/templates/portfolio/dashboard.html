@@ -101,7 +101,15 @@
         <h2 class="dash-panel-title">Holdings</h2>
         <p class="dash-panel-sub" id="holdings-filtered-meta">{{ holdings_view.total_count | default(0) }} positions across accounts</p>
       </div>
-      <a href="{{ export_url }}" class="dash-btn dash-btn-ghost dash-btn-sm">Export Excel</a>
+      <button
+        type="button"
+        class="dash-btn dash-btn-ghost dash-btn-sm js-export-excel-open"
+        data-export-api="{{ export_api_url }}"
+        data-export-accounts="1"
+        data-sort="{{ holdings_view.sort }}"
+        data-order="{{ holdings_view.order }}"
+        data-refresh="{{ 1 if refresh else 0 }}"
+      >Export Excel</button>
     </header>
 
     {% include "portfolio/_portfolio_filters_bar.html" %}
@@ -132,6 +140,11 @@
     </div>
   </div>
 </div>
+
+{% if holdings_view.holdings %}
+{% include "portfolio/_export_excel_modal.html" %}
+<script src="/static/js/portfolio-export.js"></script>
+{% endif %}
 
 {% if trading_enabled %}
 {% include "portfolio/_trade_modal.html" %}
