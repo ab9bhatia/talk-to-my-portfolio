@@ -10,6 +10,7 @@ The format is inspired by Keep a Changelog and semantic versioning.
 - Consolidated documentation: `code_flow_and_index.md`, `docs/product.md`, slimmer README.
 - Removed duplicate / obsolete docs and dev spike scripts.
 - Removed KMCP/kagent docs and `POST /api/portfolio/kmcp/invoke` (not in scope for now).
+- Removed README screenshot assets and Playwright capture scripts.
 
 ### Added
 - Portfolio goals and guardrails API + dashboard controls.

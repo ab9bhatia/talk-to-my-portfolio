@@ -61,7 +61,7 @@ flowchart TB
 | `.github/workflows/ci.yml` | Lint + pytest on push/PR |
 | `CHANGELOG.md` | Release notes |
 | `tests/` | API and unit tests |
-| `scripts/` | Optional utilities (screenshots, Groww reminder — not required at runtime) |
+| `scripts/` | Optional utilities (Groww reminder — not required at runtime) |
 
 ### `modules/portfolio/` — core domain
 
@@ -171,15 +171,11 @@ flowchart TB
 | `security.md` | Threat model, LAN auth |
 | `api-contract-v1.md` | Stable JSON API for mobile clients |
 | `release-checklist.md` | Release steps |
-| `images/` | README screenshots |
-
 ### `scripts/` (repo root)
 
 | Script | Purpose |
 |--------|---------|
 | `init_local_config.sh` | Copy `.env` + `accounts.json` templates |
-| `capture_readme_screenshots.py` | Playwright screenshots for README |
-| `redact_readme_holdings_screenshot.py` | Redact sensitive columns in holdings PNG |
 | `install_groww_reminder.sh` | macOS launchd reminder (optional) |
 
 ---

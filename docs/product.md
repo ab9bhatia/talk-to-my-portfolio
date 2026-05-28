@@ -141,8 +141,6 @@ flowchart LR
 | `/portfolio/setup` | Accounts, LLM, goals, data quality |
 | `/portfolio/account/{code}` | Single-account view |
 
-Marketing assets (screenshots + `demo.gif`): [images/README.md](images/README.md)
-
 ---
 
 ## Domain notes (equity markets)
@@ -158,7 +156,7 @@ Marketing assets (screenshots + `demo.gif`): [images/README.md](images/README.md
 
 | Doc | Use when |
 |-----|----------|
-| [README.md](../README.md) | Install, screenshots, security summary |
+| [README.md](../README.md) | Install, security summary |
 | [code_flow_and_index.md](../code_flow_and_index.md) | Code navigation, request flows |
 | [broker-api-keys.md](broker-api-keys.md) | Broker credentials |
 | [security.md](security.md) | Threat model |
