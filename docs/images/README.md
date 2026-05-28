@@ -1,42 +1,52 @@
-# README screenshots & demo media
+# README screenshots & demo GIF
 
-Add PNG or WebP files here so they render on GitHub. The [README](../../README.md) references these paths.
+Assets for [README.md](../../README.md). Use **1400px** width, dark theme. Blur or redact sensitive amounts if the repo is public.
 
-## Suggested captures
+## Files
 
-| File | Route | What to show |
-|------|--------|----------------|
-| `dashboard-holdings.png` | `/portfolio` | Family summary + holdings table (filters, signals, P&amp;L) |
-| `dashboard-agent.png` | `/portfolio/agent` | Portfolio agent chat with a sample question |
-| `setup-accounts.png` | `/portfolio/setup` | Account hub (brokers connected / import) |
-| `export-excel-modal.png` | `/portfolio` → **Export Excel** | Column + account picker modal |
+| File | What to show |
+|------|----------------|
+| `dashboard-holdings.png` | Family dashboard (WT%, Value, P&L redacted for public README) |
+| `holding-expanded.png` | Expanded row: Fund/Tech strips, chart, forecast, **Why this signal?**, news |
+| `trade-order-modal.png` | Buy/Sell order dialog (requires `TRADING_ENABLED=true`) |
+| `dashboard-agent.png` | Portfolio agent chat |
+| `growth-overview.png` | Growth tab — charts & timeline |
+| `setup-accounts.png` | Setup hub (accounts, LLM, goals) |
+| `export-excel-modal.png` | Export column + account picker |
+| `demo.gif` | Short walkthrough of main features |
 
-**Tips:** Use 1400–1600px browser width, dark theme as you prefer, blur or crop any account IDs if the repo is public.
-
-## Quick capture (macOS)
-
-With the app running (`uvicorn main:app --reload`):
-
-1. Open each route above.
-2. `Cmd + Shift + 4` → window capture, or full-page extension (e.g. GoFullPage).
-3. Save into this folder with the names in the table.
-
-## Automated capture (optional)
+## Capture everything (app must be running)
 
 ```bash
-pip install playwright
+# From repo root, with venv active:
+pip install playwright pillow
 playwright install chromium
+
+# Optional: enable trading UI for trade-order-modal.png
+# TRADING_ENABLED=true in .env — then restart uvicorn
+
 python scripts/capture_readme_screenshots.py
 ```
 
-Requires a running app at `http://127.0.0.1:8000` (no HTTP auth, or set `PORTFOLIO_SCREENSHOT_BASE_URL` with credentials in the script).
+`dashboard-holdings.png` is captured and redacted by `scripts/redact_readme_holdings_screenshot.py` (called automatically).
 
-`dashboard-holdings.png` is cropped and has **WT%**, **Value**, and **P&L** blurred for public README use. Re-run:
+## Demo GIF
+
+Requires **ffmpeg** (`brew install ffmpeg` on macOS):
 
 ```bash
-.venv/bin/python scripts/redact_readme_holdings_screenshot.py
+python scripts/capture_readme_demo_gif.py
 ```
 
-after re-capturing that file.
+Produces `docs/images/demo.gif` (~15–25s): dashboard → expand holding → growth → agent → setup → export modal.
 
-Do not commit holdings with real names/values if the repository is public — use a demo account or redact.
+**GitHub tip:** Keep GIF under ~10MB. If too large, lower fps in `capture_readme_demo_gif.py` or trim duration.
+
+## Manual capture
+
+1. Open each route in the table above.
+2. For expanded view: click **▸** on a liquid equity row; wait for chart/news.
+3. For trade modal: expand a row with **Buy** / **Sell**; click **Buy**.
+4. Save PNGs into this folder with the exact filenames.
+
+Do not commit real account IDs or full portfolio values on a public repo.

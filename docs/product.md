@@ -141,6 +141,8 @@ flowchart LR
 | `/portfolio/setup` | Accounts, LLM, goals, data quality |
 | `/portfolio/account/{code}` | Single-account view |
 
+Marketing assets (screenshots + `demo.gif`): [images/README.md](images/README.md)
+
 ---
 
 ## Domain notes (equity markets)

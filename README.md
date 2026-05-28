@@ -38,11 +38,28 @@ Everything runs **on your machine**. Broker data stays local; only questions you
 
 ## Screenshots
 
-| Dashboard | Agent | Setup | Export |
-|-----------|-------|-------|--------|
-| ![Holdings](docs/images/dashboard-holdings.png) | ![Agent](docs/images/dashboard-agent.png) | ![Setup](docs/images/setup-accounts.png) | ![Export](docs/images/export-excel-modal.png) |
+<p align="center">
+  <img src="docs/images/demo.gif" alt="Talk to My Portfolio — feature walkthrough" width="960">
+</p>
+<p align="center"><sub>Feature tour (auto-captured). Regenerate: <code>python scripts/capture_readme_demo_gif.py</code> — needs ffmpeg.</sub></p>
 
-Capture or refresh: [docs/images/README.md](docs/images/README.md)
+### Dashboard & holdings
+
+| Family dashboard | Expanded holding (fundamentals, chart, signal, news) |
+|------------------|------------------------------------------------------|
+| ![Holdings](docs/images/dashboard-holdings.png) | ![Expanded holding](docs/images/holding-expanded.png) |
+
+### Agent, growth, setup, export, trading
+
+| Agent | Growth | Setup |
+|-------|--------|-------|
+| ![Agent](docs/images/dashboard-agent.png) | ![Growth](docs/images/growth-overview.png) | ![Setup](docs/images/setup-accounts.png) |
+
+| Export Excel | Buy / Sell (optional) |
+|--------------|------------------------|
+| ![Export](docs/images/export-excel-modal.png) | ![Trade](docs/images/trade-order-modal.png) |
+
+Capture or refresh all assets: [docs/images/README.md](docs/images/README.md) (`python scripts/capture_readme_screenshots.py`). Trade screenshot needs `TRADING_ENABLED=true` in `.env`.
 
 ---
 
