@@ -1,15 +1,27 @@
 (function () {
   const cardsEl = document.getElementById("growth-change-cards");
   const chartEl = document.getElementById("growth-daily-chart");
+  const perfChartEl = document.getElementById("growth-performance-chart");
+  const mixChartEl = document.getElementById("growth-account-mix-chart");
+  const benchmarkChartEl = document.getElementById("growth-benchmark-chart");
+  const attributionChartEl = document.getElementById("growth-attribution-chart");
   const chartEmpty = document.getElementById("growth-chart-empty");
   const breakdownBody = document.getElementById("growth-breakdown-body");
   const breakdownHint = document.getElementById("growth-breakdown-hint");
+  const insightsCards = document.getElementById("growth-insights-cards");
+  const timelineHead = document.getElementById("growth-timeline-head");
+  const timelineBody = document.getElementById("growth-timeline-body");
   const daysSelect = document.getElementById("growth-days-select");
   const tabs = document.querySelectorAll(".growth-tab[data-breakdown]");
 
   let growthChart = null;
+  let performanceChart = null;
+  let accountMixChart = null;
+  let benchmarkChart = null;
+  let attributionChart = null;
   let dashboardData = null;
   let activeBreakdown = "by_account";
+  const PALETTE = ["#38bdf8", "#818cf8", "#34d399", "#f59e0b", "#f472b6", "#fb7185", "#22d3ee"];
 
   function formatInr(n) {
     if (n == null || Number.isNaN(n)) return "—";
@@ -113,6 +125,231 @@
     });
   }
 
+  function sourceBadge(source) {
+    if (source === "sheet_distribution") return "sheet";
+    if (source === "live") return "live";
+    return source || "—";
+  }
+
+  function renderInsights(series) {
+    if (!insightsCards) return;
+    if (!series || !series.length) {
+      insightsCards.innerHTML = '<p class="text-muted">No timeline data yet.</p>';
+      return;
+    }
+    const first = series[0];
+    const last = series[series.length - 1];
+    const absGain = (last.total_current || 0) - (first.total_current || 0);
+    const pctGain = first.total_current ? (absGain / first.total_current) * 100 : null;
+
+    let peak = Number.NEGATIVE_INFINITY;
+    let maxDrawdown = 0;
+    for (const p of series) {
+      const v = Number(p.total_current || 0);
+      peak = Math.max(peak, v);
+      if (peak > 0) {
+        const dd = ((v - peak) / peak) * 100;
+        maxDrawdown = Math.min(maxDrawdown, dd);
+      }
+    }
+
+    let bestMove = { date: null, pct: -Infinity };
+    for (let i = 1; i < series.length; i++) {
+      const prev = Number(series[i - 1].total_current || 0);
+      const cur = Number(series[i].total_current || 0);
+      if (!prev) continue;
+      const p = ((cur - prev) / prev) * 100;
+      if (p > bestMove.pct) bestMove = { date: series[i].day_date, pct: p };
+    }
+
+    insightsCards.innerHTML = `
+      <article class="growth-stat-card">
+        <p class="growth-stat-label">Period return</p>
+        <p class="growth-stat-value ${changeClass(absGain)}">${formatInr(absGain)} (${formatPct(pctGain)})</p>
+      </article>
+      <article class="growth-stat-card">
+        <p class="growth-stat-label">Max drawdown</p>
+        <p class="growth-stat-value ${changeClass(maxDrawdown)}">${formatPct(maxDrawdown)}</p>
+      </article>
+      <article class="growth-stat-card">
+        <p class="growth-stat-label">Best recorded day</p>
+        <p class="growth-stat-value ${changeClass(bestMove.pct)}">${bestMove.date || "—"} · ${formatPct(bestMove.pct)}</p>
+      </article>
+      <article class="growth-stat-card">
+        <p class="growth-stat-label">Latest source</p>
+        <p class="growth-stat-value">${sourceBadge(last.source)}</p>
+      </article>
+    `;
+  }
+
+  function renderPerformanceChart(series) {
+    if (!perfChartEl || typeof Chart === "undefined") return;
+    if (!series || !series.length) return;
+    const base = Number(series[0].total_current || 0) || 1;
+    const labels = series.map((p) => p.day_date);
+    const idx = series.map((p) => ((Number(p.total_current || 0) / base) * 100).toFixed(2));
+    const pnlPct = series.map((p) => Number(p.total_pnl_pct || 0));
+    if (performanceChart) performanceChart.destroy();
+    performanceChart = new Chart(perfChartEl, {
+      type: "line",
+      data: {
+        labels,
+        datasets: [
+          { label: "Indexed value", data: idx, borderColor: "#a78bfa", fill: false, tension: 0.25, pointRadius: 0 },
+          { label: "P&L %", data: pnlPct, borderColor: "#22d3ee", fill: false, tension: 0.25, pointRadius: 0, yAxisID: "y1" },
+        ],
+      },
+      options: {
+        responsive: true,
+        interaction: { mode: "index", intersect: false },
+        plugins: { legend: { position: "bottom" } },
+        scales: {
+          x: { ticks: { autoSkip: true, maxTicksLimit: 10 } },
+          y: { ticks: { callback: (v) => Number(v).toFixed(0) } },
+          y1: { position: "right", grid: { drawOnChartArea: false }, ticks: { callback: (v) => `${Number(v).toFixed(0)}%` } },
+        },
+      },
+    });
+  }
+
+  function renderAccountMixChart(accountSeries) {
+    if (!mixChartEl || typeof Chart === "undefined") return;
+    if (!accountSeries || !accountSeries.length) return;
+    const labels = accountSeries[0].series.map((p) => p.day_date);
+    const datasets = accountSeries.map((acc, idx) => ({
+      label: acc.code || acc.account_id,
+      data: acc.series.map((p) => Number(p.total_current || 0)),
+      borderColor: PALETTE[idx % PALETTE.length],
+      backgroundColor: `${PALETTE[idx % PALETTE.length]}33`,
+      fill: true,
+      tension: 0.2,
+      pointRadius: 0,
+      stack: "mix",
+    }));
+    if (accountMixChart) accountMixChart.destroy();
+    accountMixChart = new Chart(mixChartEl, {
+      type: "line",
+      data: { labels, datasets },
+      options: {
+        responsive: true,
+        interaction: { mode: "index", intersect: false },
+        plugins: { legend: { position: "bottom" } },
+        scales: {
+          x: { ticks: { autoSkip: true, maxTicksLimit: 10 } },
+          y: { stacked: true, ticks: { callback: (v) => "₹" + Math.round(v).toLocaleString("en-IN") } },
+        },
+      },
+    });
+  }
+
+  function renderBenchmarkChart(series, benchmarkSeries) {
+    if (!benchmarkChartEl || typeof Chart === "undefined") return;
+    if (!series || !series.length) return;
+    const labels = series.map((p) => p.day_date);
+    const base = Number(series[0].total_current || 0) || 1;
+    const portfolioIndexed = series.map((p) => Number(((Number(p.total_current || 0) / base) * 100).toFixed(2)));
+    const datasets = [
+      { label: "Portfolio", data: portfolioIndexed, borderColor: "#38bdf8", fill: false, pointRadius: 0, tension: 0.2 },
+    ];
+    Object.entries(benchmarkSeries || {}).forEach(([label, rows], idx) => {
+      datasets.push({
+        label,
+        data: (rows || []).map((r) => r.index),
+        borderColor: PALETTE[(idx + 2) % PALETTE.length],
+        borderDash: [6, 4],
+        fill: false,
+        pointRadius: 0,
+        tension: 0.2,
+      });
+    });
+    if (benchmarkChart) benchmarkChart.destroy();
+    benchmarkChart = new Chart(benchmarkChartEl, {
+      type: "line",
+      data: { labels, datasets },
+      options: {
+        responsive: true,
+        interaction: { mode: "index", intersect: false },
+        plugins: { legend: { position: "bottom" } },
+        scales: {
+          x: { ticks: { autoSkip: true, maxTicksLimit: 10 } },
+          y: { ticks: { callback: (v) => Number(v).toFixed(0) } },
+        },
+      },
+    });
+  }
+
+  function renderAttributionChart(byAccount) {
+    if (!attributionChartEl || typeof Chart === "undefined") return;
+    const rows = byAccount || [];
+    if (!rows.length) return;
+    const labels = rows.map((r) => r.label);
+    const values = rows.map((r) => Number(r.change || 0));
+    if (attributionChart) attributionChart.destroy();
+    attributionChart = new Chart(attributionChartEl, {
+      type: "bar",
+      data: {
+        labels,
+        datasets: [
+          {
+            label: "Change (₹)",
+            data: values,
+            backgroundColor: values.map((v) => (v >= 0 ? "rgba(74,222,128,0.55)" : "rgba(248,113,113,0.55)")),
+            borderColor: values.map((v) => (v >= 0 ? "#4ade80" : "#f87171")),
+            borderWidth: 1,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ticks: { autoSkip: false, maxRotation: 35, minRotation: 0 } },
+          y: { ticks: { callback: (v) => "₹" + Math.round(v).toLocaleString("en-IN") } },
+        },
+      },
+    });
+  }
+
+  function renderTimelineTable(timelineRows) {
+    if (!timelineHead || !timelineBody) return;
+    if (!timelineRows || !timelineRows.length) {
+      timelineBody.innerHTML = '<tr><td colspan="4" class="text-muted">No date-wise rows.</td></tr>';
+      return;
+    }
+    const accountCodes = Object.keys(timelineRows[0].accounts || {});
+    const accountHeaders = accountCodes
+      .map((c) => `<th class="text-right">${escapeHtml(c)} invested</th><th class="text-right">${escapeHtml(c)} value</th>`)
+      .join("");
+    timelineHead.innerHTML = `
+      <tr>
+        <th>Date</th>
+        <th class="text-right">Family invested</th>
+        <th class="text-right">Family value</th>
+        <th class="text-right">Family P&L %</th>
+        ${accountHeaders}
+      </tr>
+    `;
+    timelineBody.innerHTML = timelineRows
+      .map((r) => {
+        const accountCols = accountCodes
+          .map((code) => {
+            const cell = r.accounts?.[code] || {};
+            return `<td class="text-right">${formatInr(cell.invested)}</td><td class="text-right">${formatInr(cell.value)}</td>`;
+          })
+          .join("");
+        return `
+          <tr>
+            <td>${escapeHtml(r.day_date || "")}</td>
+            <td class="text-right">${formatInr(r.family_invested)}</td>
+            <td class="text-right">${formatInr(r.family_value)}</td>
+            <td class="text-right ${changeClass(r.family_pnl_pct)}">${formatPct(r.family_pnl_pct)}</td>
+            ${accountCols}
+          </tr>
+        `;
+      })
+      .join("");
+  }
+
   function renderBreakdown() {
     if (!breakdownBody || !dashboardData) return;
     const rows = (dashboardData.breakdown || {})[activeBreakdown] || [];
@@ -153,7 +390,14 @@
     if (!res.ok) return;
     dashboardData = await res.json();
     renderChangeCards(dashboardData.day_change);
-    renderChart(dashboardData.series || []);
+    const series = dashboardData.series || [];
+    renderChart(series);
+    renderInsights(series);
+    renderPerformanceChart(series);
+    renderAccountMixChart(dashboardData.account_series || []);
+    renderBenchmarkChart(series, dashboardData.benchmark_series || {});
+    renderAttributionChart((dashboardData.breakdown || {}).by_account || []);
+    renderTimelineTable(dashboardData.timeline_table || []);
     renderBreakdown();
   }
 

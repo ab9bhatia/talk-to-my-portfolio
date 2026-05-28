@@ -25,6 +25,8 @@ from modules.portfolio.config import (
     resolve_account_ref,
 )
 from modules.portfolio.db import daily_history
+from modules.portfolio.db import import_audit as import_audit_store
+from modules.portfolio.db import profile_goals as profile_goals_store
 from modules.portfolio.db import weekly_history
 from modules.portfolio.db import tokens as token_store
 from modules.portfolio.services.holdings_view import (
@@ -64,10 +66,15 @@ from modules.portfolio.services.weekly_recorder import (
     sync_family_weekly_snapshot,
 )
 from modules.portfolio.services.portfolio_revalidate import meta_for_family
+from modules.portfolio.services.daily_sheet_import import (
+    DEFAULT_ACCOUNT_ALIASES,
+    import_distribution_history,
+)
 from shared.web.formatters import format_data_as_of_label
 from shared.web.templates import templates
 
 router = APIRouter(tags=["portfolio"])
+API_CONTRACT_VERSION = "2026-05-mobile-mvp-v1"
 
 
 class PortfolioAgentAskPayload(BaseModel):
@@ -107,6 +114,21 @@ class SarwaImportPayload(BaseModel):
     account_id: str = Field(default="sarwa", max_length=32)
 
 
+class DailySheetImportPayload(BaseModel):
+    sheet_url: str = Field(..., min_length=16, max_length=500)
+    sheet_name: str = Field(default="Distribution", min_length=1, max_length=120)
+    overwrite_existing: bool = False
+    account_aliases: dict[str, list[str]] | None = None
+
+
+class PortfolioGoalsPayload(BaseModel):
+    target_return_pct: float = Field(15, ge=0, le=200)
+    max_position_pct: float = Field(12, ge=1, le=100)
+    max_sector_pct: float = Field(30, ge=1, le=100)
+    cash_buffer_pct: float = Field(5, ge=0, le=100)
+    risk_profile: str = Field("moderate", max_length=20)
+
+
 VALID_SORT = {
     "value",
     "pnl",
@@ -124,6 +146,14 @@ VALID_SORT = {
     "weight",
 }
 VALID_GROUP = {"", "cap", "sector", "account", "signal", "asset_class"}
+
+
+@router.get("/api/portfolio/version")
+def api_portfolio_version():
+    return {
+        "contract_version": API_CONTRACT_VERSION,
+        "app_version": os.getenv("APP_VERSION", "dev"),
+    }
 
 
 def _normalize_view_params(sort: str, order: str, group_by: str) -> dict[str, str | None]:
@@ -851,6 +881,58 @@ def api_record_daily_snapshot(refresh: bool = Query(True)):
     return {"recorded": True, "snapshots": recorded, "day_date": daily_history.day_date_for()}
 
 
+@router.post("/api/portfolio/daily/import-sheet")
+def api_daily_import_sheet(payload: DailySheetImportPayload):
+    """Import historical day-wise totals from a Google Sheet tab."""
+    aliases = payload.account_aliases or DEFAULT_ACCOUNT_ALIASES
+    try:
+        result = import_distribution_history(
+            sheet_url=payload.sheet_url,
+            sheet_name=payload.sheet_name,
+            account_aliases=aliases,
+            overwrite_existing=payload.overwrite_existing,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return {
+        "ok": True,
+        "message": "Historical sheet data imported into daily history.",
+        **result,
+    }
+
+
+@router.get("/api/portfolio/profile/goals")
+def api_get_portfolio_goals():
+    """Return saved goals/guardrails (used by Portfolio Agent context)."""
+    return profile_goals_store.get_goals()
+
+
+@router.put("/api/portfolio/profile/goals")
+def api_update_portfolio_goals(payload: PortfolioGoalsPayload):
+    """Persist goal and risk guardrail preferences."""
+    saved = profile_goals_store.save_goals(
+        target_return_pct=payload.target_return_pct,
+        max_position_pct=payload.max_position_pct,
+        max_sector_pct=payload.max_sector_pct,
+        cash_buffer_pct=payload.cash_buffer_pct,
+        risk_profile=payload.risk_profile,
+    )
+    return {"ok": True, "goals": saved}
+
+
+@router.get("/api/portfolio/data-quality")
+def api_data_quality(limit: int = Query(20, ge=1, le=100)):
+    """Recent import audit events (uploads and sheet imports) with unresolved mappings."""
+    events = import_audit_store.latest(limit=limit)
+    unresolved_total = sum(len(e.get("unresolved_codes") or []) for e in events)
+    return {
+        "events": events,
+        "unresolved_total": unresolved_total,
+    }
+
+
 @router.get("/api/portfolio/weekly/status")
 def api_weekly_status():
     """Confirm weekly SQLite history and latest snapshot weeks."""
@@ -1187,6 +1269,8 @@ def portfolio_setup_page(request: Request):
             "setup_stats": {"linked": len(accounts), "ready": ready_count},
             "vision_available": vision_available() or _vision_available(),
             "llm_status": llm_setup_status(),
+            "portfolio_goals": profile_goals_store.get_goals(),
+            "import_quality_events": import_audit_store.latest(limit=12),
         },
     )
 

@@ -70,6 +70,31 @@
     </div>
   </section>
 
+  <section class="dash-panel growth-panel" aria-labelledby="growth-visuals-title">
+    <h2 class="growth-panel-title" id="growth-visuals-title">Insights & visuals</h2>
+    <div class="growth-change-cards" id="growth-insights-cards">
+      <p class="growth-loading text-muted">Calculating insights…</p>
+    </div>
+    <div class="growth-visual-grid">
+      <div class="growth-chart-wrap">
+        <h3 class="growth-subtitle">Indexed performance (base = 100)</h3>
+        <canvas id="growth-performance-chart" height="180" aria-label="Indexed portfolio performance"></canvas>
+      </div>
+      <div class="growth-chart-wrap">
+        <h3 class="growth-subtitle">Account mix over time</h3>
+        <canvas id="growth-account-mix-chart" height="180" aria-label="Account mix area chart"></canvas>
+      </div>
+      <div class="growth-chart-wrap">
+        <h3 class="growth-subtitle">Benchmark overlay</h3>
+        <canvas id="growth-benchmark-chart" height="180" aria-label="Portfolio vs benchmark"></canvas>
+      </div>
+      <div class="growth-chart-wrap">
+        <h3 class="growth-subtitle">Day attribution (accounts)</h3>
+        <canvas id="growth-attribution-chart" height="180" aria-label="Account contribution chart"></canvas>
+      </div>
+    </div>
+  </section>
+
   <section class="dash-panel growth-panel" aria-labelledby="growth-breakdown-title">
     <h2 class="growth-panel-title" id="growth-breakdown-title">Day-over-day change</h2>
     <p class="growth-breakdown-hint text-muted" id="growth-breakdown-hint"></p>
@@ -92,6 +117,23 @@
         </thead>
         <tbody id="growth-breakdown-body">
           <tr><td colspan="5" class="text-muted">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="dash-panel growth-panel" aria-labelledby="growth-timeline-title">
+    <div class="growth-panel-head">
+      <h2 class="growth-panel-title" id="growth-timeline-title">Date-wise timeline</h2>
+      <p class="growth-breakdown-hint text-muted">Family + account invested/value per date.</p>
+    </div>
+    <div class="growth-table-wrap">
+      <table class="growth-table growth-table--timeline" id="growth-timeline-table">
+        <thead id="growth-timeline-head">
+          <tr><th>Date</th><th class="text-right">Family invested</th><th class="text-right">Family value</th><th class="text-right">P&L %</th></tr>
+        </thead>
+        <tbody id="growth-timeline-body">
+          <tr><td colspan="4" class="text-muted">Loading…</td></tr>
         </tbody>
       </table>
     </div>

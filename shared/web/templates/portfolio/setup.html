@@ -85,6 +85,84 @@
     </article>
   </section>
 
+  <section class="setup-goals-section" aria-labelledby="setup-goals-title">
+    <div class="setup-section-head">
+      <h2 id="setup-goals-title" class="setup-section-title">Goals & guardrails</h2>
+      <p class="setup-section-sub">
+        Your risk preferences (target return, concentration limits, cash buffer). Saved locally and injected into every Portfolio Agent prompt and concentration flags in context.
+      </p>
+    </div>
+    <article class="setup-card setup-card--goals">
+      <form id="portfolio-goals-form" class="portfolio-goals-grid">
+        <label class="setup-field">
+          <span class="setup-field-label">Target return %</span>
+          <input type="number" step="0.1" min="0" max="200" name="target_return_pct" value="{{ portfolio_goals.target_return_pct | default(15) }}">
+        </label>
+        <label class="setup-field">
+          <span class="setup-field-label">Max position %</span>
+          <input type="number" step="0.1" min="1" max="100" name="max_position_pct" value="{{ portfolio_goals.max_position_pct | default(12) }}">
+        </label>
+        <label class="setup-field">
+          <span class="setup-field-label">Max sector %</span>
+          <input type="number" step="0.1" min="1" max="100" name="max_sector_pct" value="{{ portfolio_goals.max_sector_pct | default(30) }}">
+        </label>
+        <label class="setup-field">
+          <span class="setup-field-label">Cash buffer %</span>
+          <input type="number" step="0.1" min="0" max="100" name="cash_buffer_pct" value="{{ portfolio_goals.cash_buffer_pct | default(5) }}">
+        </label>
+        <label class="setup-field">
+          <span class="setup-field-label">Risk profile</span>
+          <select name="risk_profile">
+            {% set rp = portfolio_goals.risk_profile | default('moderate') %}
+            <option value="conservative" {% if rp == 'conservative' %}selected{% endif %}>Conservative</option>
+            <option value="moderate" {% if rp == 'moderate' %}selected{% endif %}>Moderate</option>
+            <option value="aggressive" {% if rp == 'aggressive' %}selected{% endif %}>Aggressive</option>
+          </select>
+        </label>
+        <div class="portfolio-goals-actions">
+          <span class="setup-goals-status" id="goals-save-status">Saved</span>
+          <button type="submit" class="setup-btn setup-btn-primary setup-btn-sm">Save goals</button>
+        </div>
+      </form>
+    </article>
+  </section>
+
+  <section class="setup-quality-section" aria-labelledby="setup-quality-title">
+    <div class="setup-section-head">
+      <h2 id="setup-quality-title" class="setup-section-title">Data quality</h2>
+      <p class="setup-section-sub">
+        Audit log after imports (CSV/Excel, Sarwa screenshot, Google Sheet history). Use this to confirm rows were ingested and whether any account column names could not be mapped to your account codes.
+      </p>
+    </div>
+    <div class="portfolio-quality-list">
+      {% if import_quality_events %}
+      {% for evt in import_quality_events %}
+      <article class="quality-item">
+        <div class="quality-item-head">
+          <strong>{{ evt.source }}</strong>
+          {% if evt.created_at %}
+          <time class="quality-time" datetime="{{ evt.created_at }}">{{ format_cache_time(evt.created_at) }}</time>
+          {% endif %}
+        </div>
+        <p class="quality-item-body">
+          Imported <strong>{{ evt.imported_count }}</strong> row(s)
+          {% if evt.broker %} · broker {{ evt.broker }}{% endif %}
+          {% if evt.account_id %} · account {{ evt.account_id }}{% endif %}
+          {% if evt.notes %} · {{ evt.notes }}{% endif %}
+        </p>
+        {% if evt.unresolved_codes %}
+        <p class="quality-warn">Unresolved account mappings: {{ evt.unresolved_codes | join(', ') }} — fix aliases in sheet import or account codes in setup.</p>
+        {% else %}
+        <p class="quality-ok">All account columns mapped successfully.</p>
+        {% endif %}
+      </article>
+      {% endfor %}
+      {% else %}
+      <p class="setup-section-sub">No imports recorded yet. Events appear after you upload holdings or import the Distribution sheet on Growth.</p>
+      {% endif %}
+    </div>
+  </section>
+
   <section class="setup-accounts-section" aria-labelledby="setup-accounts-title">
     <div class="setup-section-head">
       <h2 id="setup-accounts-title" class="setup-section-title">Your accounts</h2>
@@ -210,7 +288,7 @@
 
       <footer class="setup-modal-footer">
         <div class="setup-modal-footer-left">
-          <a href="#" class="setup-btn setup-btn-sm setup-btn-ghost setup-connect-link" id="setup-connect-link" hidden>Connect Zerodha ↗</a>
+          <a href="#" class="setup-btn setup-btn-sm setup-btn-ghost setup-connect-link" id="setup-connect-link" hidden></a>
         </div>
         <div class="setup-modal-footer-right">
           <button type="button" class="setup-btn setup-btn-ghost" id="setup-cancel-btn">Cancel</button>
@@ -260,4 +338,5 @@
 </script>
 <script src="/static/js/portfolio-setup.js"></script>
 <script src="/static/js/portfolio-setup-llm.js"></script>
+<script src="/static/js/portfolio-goals.js"></script>
 {% endblock %}

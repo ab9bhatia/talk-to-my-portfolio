@@ -16,6 +16,7 @@ from modules.portfolio.config import HUB_BASE_URL, get_auth_start_url, reload_ac
 from modules.portfolio.db import custom_holdings as custom_db
 from modules.portfolio.db import tokens as token_store
 from modules.portfolio.services.env_store import env_var_present, read_env_value, upsert_env_vars
+from modules.portfolio.db import import_audit
 
 _ID_RE = re.compile(r"^[a-z][a-z0-9_]{1,30}$")
 
@@ -94,6 +95,24 @@ BROKERS: dict[str, dict[str, Any]] = {
             "For now, use Custom import (CSV/Excel) or Zerodha/Groww.",
         ],
         "fields": [],
+    },
+    "sarwa": {
+        "id": "sarwa",
+        "label": "Sarwa",
+        "description": "Sarwa Trade (USD) — upload a weekly holdings screenshot; parsed with vision when OpenAI is configured.",
+        "docs_url": "/docs/broker-api-keys.md",
+        "available": True,
+        "accept_upload": ".png,.jpg,.jpeg,.webp",
+        "steps": [
+            "Export or screenshot your Sarwa Trade positions (USD).",
+            "Save the account below, then upload PNG or JPEG.",
+            "Re-upload anytime to refresh positions on the dashboard.",
+        ],
+        "fields": [
+            {"name": "label", "label": "Display name", "type": "text", "required": True},
+            {"name": "id", "label": "Account id", "type": "slug", "required": True},
+            {"name": "code", "label": "Short code (2 letters)", "type": "code", "required": True},
+        ],
     },
     "custom": {
         "id": "custom",
@@ -518,7 +537,15 @@ def import_account_upload(
     if broker == "custom":
         from modules.portfolio.services.custom_portfolio import import_file
 
-        return import_file(aid, content, filename=filename)
+        result = import_file(aid, content, filename=filename)
+        import_audit.log_event(
+            source="custom_upload",
+            broker="custom",
+            account_id=aid,
+            imported_count=int(result.get("imported") or 0),
+            notes=f"filename={filename}",
+        )
+        return result
 
     if broker == "sarwa":
         if lower.endswith((".png", ".jpg", ".jpeg", ".webp", ".gif")):
@@ -532,6 +559,13 @@ def import_account_upload(
                 media = "image/webp"
             parsed = parse_sarwa_screenshot(content, media_type=media)
             result = import_sarwa_holdings(parsed["rows"], account_id=aid, notes=parsed.get("notes"))
+            import_audit.log_event(
+                source="sarwa_screenshot",
+                broker="sarwa",
+                account_id=aid,
+                imported_count=len(parsed["rows"]),
+                notes=f"filename={filename}",
+            )
             return {
                 "account_id": aid,
                 "imported": len(parsed["rows"]),

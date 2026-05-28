@@ -28,8 +28,28 @@
     zerodha: { glyph: "Z", color: "zerodha" },
     groww: { glyph: "G", color: "groww" },
     dhan: { glyph: "D", color: "dhan" },
+    sarwa: { glyph: "S", color: "sarwa" },
     custom: { glyph: "◇", color: "custom" },
   };
+
+  function hideConnectLink() {
+    if (!connectLink) return;
+    connectLink.hidden = true;
+    connectLink.setAttribute("hidden", "");
+    connectLink.removeAttribute("href");
+    connectLink.textContent = "";
+  }
+
+  function showConnectLink(account) {
+    if (!connectLink || !account || account.broker !== "zerodha" || !account.connect_url) {
+      hideConnectLink();
+      return;
+    }
+    connectLink.href = account.connect_url;
+    connectLink.textContent = "Connect Zerodha ↗";
+    connectLink.removeAttribute("hidden");
+    connectLink.hidden = false;
+  }
 
   let catalog = [];
   let mode = "add";
@@ -162,6 +182,7 @@
     const broker = currentBroker();
     if (!broker && !isEdit()) return;
 
+    hideConnectLink();
     fieldsEl.innerHTML = "";
     stepsEl.innerHTML = "";
     linksEl.innerHTML = "";
@@ -326,13 +347,7 @@
 
     enabledWrap.hidden = false;
     enabledInput.checked = account.enabled !== false;
-
-    if (account.broker === "zerodha" && account.connect_url) {
-      connectLink.href = account.connect_url;
-      connectLink.hidden = false;
-    } else {
-      connectLink.hidden = true;
-    }
+    showConnectLink(account);
   }
 
   function openAdd() {
@@ -344,7 +359,7 @@
     modalTitle.textContent = "Add account";
     brokerPicker.hidden = false;
     enabledWrap.hidden = true;
-    connectLink.hidden = true;
+    hideConnectLink();
     importBtn.hidden = true;
     saveBtn.textContent = "Save & continue";
     document.getElementById("setup-import-file").value = "";
@@ -363,6 +378,7 @@
     brokerPicker.hidden = true;
     saveBtn.textContent = "Save changes";
     saveBtn.disabled = false;
+    hideConnectLink();
 
     openDialog();
 
