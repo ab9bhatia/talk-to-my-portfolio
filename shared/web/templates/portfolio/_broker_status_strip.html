@@ -23,7 +23,7 @@
       </span>
     </a>
     {% if not account.connected and account.broker == 'zerodha' and account.connect_url %}
-    <a href="/portfolio/setup" class="dash-account-connect broker-status-link js-show-loader" title="Manage API keys for {{ account.code }}">⚙</a>
+    <a href="{{ app_path('/portfolio/setup') }}" class="dash-account-connect broker-status-link js-show-loader" title="Manage API keys for {{ account.code }}">⚙</a>
     {% endif %}
   </div>
   {% endif %}

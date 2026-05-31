@@ -18,7 +18,7 @@
         <p class="dash-lead">Buy / sell / rebalance ideas, red flags, and themes — grounded in your holdings when you click Ask.</p>
       </div>
       <div class="dash-hero-actions">
-        <a href="/portfolio" class="dash-btn dash-btn-ghost js-show-loader">← Dashboard</a>
+        <a href="{{ app_path('/portfolio') }}" class="dash-btn dash-btn-ghost js-show-loader">← Dashboard</a>
       </div>
     </div>
   </header>
@@ -30,6 +30,6 @@
 
 {% if trading_enabled %}
 {% include "portfolio/_trade_modal.html" %}
-<script src="/static/js/trade-order.js"></script>
+<script src="{{ app_path('/static/js/trade-order.js') }}"></script>
 {% endif %}
 {% endblock %}

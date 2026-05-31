@@ -37,7 +37,7 @@ flowchart LR
 
 | Stage | User action | Outcome |
 |-------|-------------|---------|
-| **Onboard** | Clone repo, `init_local_config.sh`, start server | App at `http://127.0.0.1:8000` |
+| **Onboard** | Clone repo, `init_local_config.sh`, start server | App at `http://127.0.0.1:9000` |
 | **Connect** | Setup → Zerodha OAuth / Groww keys / custom file / Sarwa screenshot | Accounts show Live or Configured |
 | **Configure agent** | Setup → LLM provider + model | Agent tab ready |
 | **Set guardrails** | Setup → Goals (target return, max position %, sector cap, risk) | Agent and concentration flags use your limits |

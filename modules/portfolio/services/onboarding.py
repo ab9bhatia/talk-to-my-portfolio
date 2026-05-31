@@ -13,6 +13,7 @@ from modules.portfolio.accounts_loader import (
     suggest_account_code,
 )
 from modules.portfolio.config import HUB_BASE_URL, get_auth_start_url, reload_account_registry
+from shared.config import APP_BASE_URL, APP_PORT
 from modules.portfolio.db import custom_holdings as custom_db
 from modules.portfolio.db import tokens as token_store
 from modules.portfolio.services.env_store import env_var_present, read_env_value, upsert_env_vars
@@ -217,7 +218,7 @@ def add_zerodha_account(payload: dict[str, Any]) -> dict[str, Any]:
         "user_id": str(payload["user_id"]).strip(),
         "enabled": True,
         "redirect_url": redirect,
-        "auth_port": 8000,
+        "auth_port": APP_PORT,
     }
     raw.setdefault("zerodha", []).append(row)
     if not raw.get("legacy_zerodha_account_id"):
@@ -228,7 +229,7 @@ def add_zerodha_account(payload: dict[str, Any]) -> dict[str, Any]:
         f"ZERODHA_API_KEY_{suffix}": str(payload["api_key"]).strip(),
         f"ZERODHA_API_SECRET_{suffix}": str(payload["api_secret"]).strip(),
         f"ZERODHA_REDIRECT_URL_{suffix}": redirect,
-        "HUB_BASE_URL": HUB_BASE_URL or "http://127.0.0.1:8000",
+        "HUB_BASE_URL": HUB_BASE_URL or APP_BASE_URL,
     })
     save_accounts_raw(raw)
     reload_account_registry()

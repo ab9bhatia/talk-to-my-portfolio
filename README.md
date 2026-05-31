@@ -1,5 +1,5 @@
 <p align="center">
-  <strong>Talk to My Portfolio</strong><br>
+  <strong>TalkToMyPortfolio</strong><br>
   <sub>See every holding in one place — then <em>ask</em> what to buy, sell, trim, or hold.</sub>
 </p>
 
@@ -27,7 +27,7 @@
 
 Indian families often hold stocks and funds across **Zerodha**, **Groww**, **Sarwa**, and offline sheets — but decisions still happen in fragments.
 
-**Talk to My Portfolio** is built around: **consolidate first, then converse**. One dashboard plus a **portfolio agent** that reads your real holdings (sector, weights, signals, guardrails) and answers in plain language.
+**TalkToMyPortfolio** is built around: **consolidate first, then converse**. One dashboard plus a **portfolio agent** that reads your real holdings (sector, weights, signals, guardrails) and answers in plain language.
 
 Everything runs **on your machine**. Broker data stays local; only questions you send to the agent use your LLM API key.
 
@@ -47,14 +47,16 @@ source .venv/bin/activate   # Windows: .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 
 bash scripts/init_local_config.sh
-uvicorn main:app --reload --host 127.0.0.1 --port 8000
+uvicorn main:app --reload --host 127.0.0.1 --port 9000
 ```
 
-1. **[Setup](http://127.0.0.1:8000/portfolio/setup)** — brokers, LLM, goals & guardrails  
-2. **[Portfolio](http://127.0.0.1:8000/portfolio)** — holdings  
-3. **[Agent](http://127.0.0.1:8000/portfolio/agent)** — ask your first question  
+1. **[Setup](http://127.0.0.1:9000/talktomyportfolio/portfolio/setup)** — brokers, LLM, goals & guardrails  
+2. **[Portfolio](http://127.0.0.1:9000/talktomyportfolio/portfolio)** — holdings  
+3. **[Agent](http://127.0.0.1:9000/talktomyportfolio/portfolio/agent)** — ask your first question  
 
-**Docker:** `docker build -t talk-to-my-portfolio .` then `docker run --rm -p 8000:8000 --env-file .env talk-to-my-portfolio`
+**Docker:** `docker build -t talk-to-my-portfolio .` then `docker run --rm -p 9000:9000 --env-file .env talk-to-my-portfolio`
+
+Default URL: **http://127.0.0.1:9000/talktomyportfolio**
 
 ---
 

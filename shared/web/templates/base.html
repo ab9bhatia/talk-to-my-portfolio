@@ -3,11 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="app-root" content="{{ app_root }}">
   <title>{% block title %}{{ app_name }}{% endblock %}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   {% block head %}{% endblock %}
-  <link rel="stylesheet" href="/static/css/app.css">
+  <link rel="stylesheet" href="{{ app_path('/static/css/app.css') }}">
+  <script src="{{ app_path('/static/js/app-root.js') }}"></script>
 </head>
 <body class="{% block body_class %}{% endblock %}">
   <div class="layout">
@@ -21,22 +23,22 @@
         <div class="nav-section">Portfolio</div>
         <ul class="nav-list">
           <li>
-            <a href="/portfolio" class="nav-link {% if active_module == 'portfolio' %}active{% endif %}" data-loader-message="Loading portfolio…">
+            <a href="{{ app_path('/portfolio') }}" class="nav-link {% if active_module == 'portfolio' %}active{% endif %}" data-loader-message="Loading portfolio…">
               <span class="nav-icon" aria-hidden="true">◆</span> Dashboard
             </a>
           </li>
           <li>
-            <a href="/portfolio/growth" class="nav-link {% if active_module == 'growth' %}active{% endif %}" data-loader-message="Loading growth…">
+            <a href="{{ app_path('/portfolio/growth') }}" class="nav-link {% if active_module == 'growth' %}active{% endif %}" data-loader-message="Loading growth…">
               <span class="nav-icon" aria-hidden="true">↗</span> Growth
             </a>
           </li>
           <li>
-            <a href="/portfolio/agent" class="nav-link {% if active_module == 'agent' %}active{% endif %}" data-loader-message="Loading portfolio agent…">
+            <a href="{{ app_path('/portfolio/agent') }}" class="nav-link {% if active_module == 'agent' %}active{% endif %}" data-loader-message="Loading portfolio agent…">
               <span class="nav-icon" aria-hidden="true">✦</span> Portfolio Agent
             </a>
           </li>
           <li>
-            <a href="/portfolio/setup" class="nav-link {% if active_module == 'setup' %}active{% endif %}" data-loader-message="Loading setup…">
+            <a href="{{ app_path('/portfolio/setup') }}" class="nav-link {% if active_module == 'setup' %}active{% endif %}" data-loader-message="Loading setup…">
               <span class="nav-icon">◎</span> Setup & Config
             </a>
           </li>
@@ -68,6 +70,6 @@
     </main>
   </div>
   {% include "shared/_page_loader.html" %}
-  <script src="/static/js/nav-loader.js"></script>
+  <script src="{{ app_path('/static/js/nav-loader.js') }}"></script>
 </body>
 </html>

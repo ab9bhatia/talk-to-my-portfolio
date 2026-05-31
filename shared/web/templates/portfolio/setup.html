@@ -22,7 +22,7 @@
             <span class="setup-btn-icon" aria-hidden="true">+</span>
             Add account
           </button>
-          <a href="/portfolio" class="setup-btn setup-btn-ghost js-show-loader">View portfolio</a>
+          <a href="{{ app_path('/portfolio') }}" class="setup-btn setup-btn-ghost js-show-loader">View portfolio</a>
         </div>
       </div>
       <div class="setup-hero-stats">
@@ -336,7 +336,7 @@
   window.__SETUP_CALLBACK__ = "{{ default_callback_url }}";
   window.__SETUP_VISION__ = {% if vision_available %}true{% else %}false{% endif %};
 </script>
-<script src="/static/js/portfolio-setup.js"></script>
-<script src="/static/js/portfolio-setup-llm.js"></script>
-<script src="/static/js/portfolio-goals.js"></script>
+<script src="{{ app_path('/static/js/portfolio-setup.js') }}"></script>
+<script src="{{ app_path('/static/js/portfolio-setup-llm.js') }}"></script>
+<script src="{{ app_path('/static/js/portfolio-goals.js') }}"></script>
 {% endblock %}

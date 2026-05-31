@@ -13,7 +13,8 @@ from fastapi.staticfiles import StaticFiles
 from modules.portfolio.db import portfolio_cache as portfolio_cache_store
 from modules.portfolio.db import tokens as token_store
 from modules.portfolio.router import router as portfolio_router
-from shared.config import APP_NAME, APP_TAGLINE
+from shared.config import APP_BASE_URL, APP_HOST, APP_NAME, APP_PORT, APP_ROOT_PATH, APP_TAGLINE
+from shared.web.app_urls import app_path
 from shared.web.http_auth import add_http_basic_auth, http_auth_enabled
 
 logger = logging.getLogger(__name__)
@@ -53,6 +54,11 @@ async def lifespan(app: FastAPI):
     from modules.portfolio.services.market_data import start_daily_yahoo_refresh_scheduler
 
     start_daily_yahoo_refresh_scheduler()
+    logging.getLogger("uvicorn.error").info(
+        "%s ready — portfolio available at %s",
+        APP_NAME,
+        APP_BASE_URL,
+    )
     yield
 
 
@@ -65,13 +71,21 @@ app = FastAPI(
     openapi_url=None if http_auth_enabled() else "/openapi.json",
 )
 
-app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+app.mount(app_path("/static"), StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
 @app.get("/")
 def home():
     """Default route — portfolio dashboard."""
-    return RedirectResponse(url="/portfolio", status_code=302)
+    return RedirectResponse(url=app_path("/portfolio"), status_code=302)
+
+
+if APP_ROOT_PATH:
+
+    @app.get(APP_ROOT_PATH)
+    @app.get(f"{APP_ROOT_PATH}/")
+    def app_root():
+        return RedirectResponse(url=app_path("/portfolio"), status_code=302)
 
 
 @app.get("/health")
@@ -79,6 +93,12 @@ def health():
     return {"status": "ok", "app": "portfolio"}
 
 
-app.include_router(portfolio_router)
+app.include_router(portfolio_router, prefix=APP_ROOT_PATH)
 
 app = add_http_basic_auth(app)
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run("main:app", host=APP_HOST, port=APP_PORT, reload=True)

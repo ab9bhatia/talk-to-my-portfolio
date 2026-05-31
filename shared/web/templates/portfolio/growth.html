@@ -22,8 +22,8 @@
         </p>
       </div>
       <div class="dash-hero-actions">
-        <a href="/portfolio" class="dash-btn dash-btn-ghost js-show-loader">← Dashboard</a>
-        <a href="/portfolio/growth?refresh=1&amp;days={{ days }}" class="dash-btn dash-btn-primary js-show-loader">
+        <a href="{{ app_path('/portfolio') }}" class="dash-btn dash-btn-ghost js-show-loader">← Dashboard</a>
+        <a href="{{ app_path('/portfolio/growth') }}?refresh=1&amp;days={{ days }}" class="dash-btn dash-btn-primary js-show-loader">
           Record today
         </a>
       </div>
@@ -140,5 +140,5 @@
   </section>
 </div>
 
-<script src="/static/js/portfolio-growth.js" defer></script>
+<script src="{{ app_path('/static/js/portfolio-growth.js') }}" defer></script>
 {% endblock %}

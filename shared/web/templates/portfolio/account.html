@@ -20,7 +20,7 @@
       <span class="cache-meta">
         Updated {{ format_cache_time(cached_at) }}{% if from_cache %} · cached{% endif %}
       </span>
-      <a href="/portfolio/account/{{ portfolio.account_code }}?refresh=1&amp;sort={{ holdings_view.sort }}&amp;order={{ holdings_view.order }}{% if holdings_view.group_by %}&amp;group_by={{ holdings_view.group_by }}{% endif %}" class="btn btn-ghost btn-sm js-show-loader">Refresh</a>
+      <a href="{{ app_path('/portfolio/account/' ~ portfolio.account_code) }}?refresh=1&amp;sort={{ holdings_view.sort }}&amp;order={{ holdings_view.order }}{% if holdings_view.group_by %}&amp;group_by={{ holdings_view.group_by }}{% endif %}" class="btn btn-ghost btn-sm js-show-loader">Refresh</a>
     </div>
     {% endif %}
   </div>
@@ -31,7 +31,7 @@
 {% endwith %}
 
 <div class="toolbar">
-  <a href="/portfolio" class="btn btn-ghost">← Back to dashboard</a>
+  <a href="{{ app_path('/portfolio') }}" class="btn btn-ghost">← Back to dashboard</a>
 </div>
 
 {% if portfolio.holdings %}
@@ -43,11 +43,11 @@
 
 {% if portfolio.holdings %}
 {% include "portfolio/_export_excel_modal.html" %}
-<script src="/static/js/portfolio-export.js"></script>
+<script src="{{ app_path('/static/js/portfolio-export.js') }}"></script>
 {% endif %}
 
 {% if trading_enabled %}
 {% include "portfolio/_trade_modal.html" %}
-<script src="/static/js/trade-order.js"></script>
+<script src="{{ app_path('/static/js/trade-order.js') }}"></script>
 {% endif %}
 {% endblock %}

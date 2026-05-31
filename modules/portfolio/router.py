@@ -71,6 +71,7 @@ from modules.portfolio.services.daily_sheet_import import (
     import_distribution_history,
 )
 from shared.web.formatters import format_data_as_of_label
+from shared.web.app_urls import app_path
 from shared.web.templates import templates
 
 router = APIRouter(tags=["portfolio"])
@@ -259,7 +260,7 @@ def _account_statuses() -> list[dict]:
                 "disabled_reason": account.get("disabled_reason"),
                 "auth_port": None,
                 "redirect_url": None,
-                "connect_url": "/portfolio/setup",
+                "connect_url": app_path("/portfolio/setup"),
                 "connected": has,
                 "needs_login": not has,
                 "custom_hint": "Import CSV/Excel in Setup" if not has else "Imported",
@@ -332,7 +333,7 @@ def portfolio_dashboard(
             "data_as_of_label": data_as_of_label,
             "ltp_refreshed_offline": family.get("ltp_refreshed_offline", False),
             "cache_meta": cache_meta,
-            "controls_action": "/portfolio",
+            "controls_action": app_path("/portfolio"),
             "export_url": f"/api/portfolio/export?{export_qs}",
             "export_api_url": "/api/portfolio/export",
             "export_column_options": export_column_options(include_account=True),
@@ -437,7 +438,7 @@ def portfolio_account(
             "holdings_view": holdings_view,
             "cached_at": portfolio.get("cached_at"),
             "from_cache": portfolio.get("from_cache", False),
-            "controls_action": f"/portfolio/account/{account_code}",
+            "controls_action": app_path(f"/portfolio/account/{account_code}"),
             "export_url": f"/api/portfolio/export/{account_code}?{export_qs}",
             "export_api_url": f"/api/portfolio/export/{account_code}",
             "export_column_options": export_column_options(include_account=False),

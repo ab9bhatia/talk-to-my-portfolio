@@ -8,6 +8,8 @@ import re
 from pathlib import Path
 from typing import Any
 
+from shared.config import APP_PORT
+
 _MODULE_DIR = Path(__file__).resolve().parent
 _EXAMPLE_PATH = _MODULE_DIR / "accounts.example.json"
 _USER_PATH = _MODULE_DIR / "accounts.json"
@@ -71,7 +73,7 @@ def build_account_registry(raw: dict[str, Any]) -> tuple[
             "enabled": bool(row.get("enabled", True)),
             "disabled_reason": row.get("disabled_reason"),
             "redirect_url": row.get("redirect_url"),
-            "auth_port": row.get("auth_port", 8000),
+            "auth_port": row.get("auth_port", APP_PORT),
         }
         codes[aid] = row["code"]
 

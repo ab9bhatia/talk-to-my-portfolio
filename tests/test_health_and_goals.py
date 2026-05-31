@@ -1,6 +1,10 @@
 from fastapi.testclient import TestClient
 
+from shared.config import APP_ROOT_PATH
+
 from main import app
+
+API = f"{APP_ROOT_PATH}/api/portfolio"
 
 
 def test_health_endpoint():
@@ -13,7 +17,7 @@ def test_health_endpoint():
 
 def test_goals_roundtrip():
     client = TestClient(app)
-    get_res = client.get("/api/portfolio/profile/goals")
+    get_res = client.get(f"{API}/profile/goals")
     assert get_res.status_code == 200
     current = get_res.json()
 
@@ -24,18 +28,18 @@ def test_goals_roundtrip():
         "cash_buffer_pct": 6.0,
         "risk_profile": "moderate",
     }
-    put_res = client.put("/api/portfolio/profile/goals", json=payload)
+    put_res = client.put(f"{API}/profile/goals", json=payload)
     assert put_res.status_code == 200
     assert put_res.json()["ok"] is True
 
-    after = client.get("/api/portfolio/profile/goals").json()
+    after = client.get(f"{API}/profile/goals").json()
     assert float(after["target_return_pct"]) == payload["target_return_pct"]
     assert float(after["max_position_pct"]) == payload["max_position_pct"]
     assert after["risk_profile"] == payload["risk_profile"]
 
     # restore prior values so test is non-destructive for local usage
     client.put(
-        "/api/portfolio/profile/goals",
+        f"{API}/profile/goals",
         json={
             "target_return_pct": float(current["target_return_pct"]),
             "max_position_pct": float(current["max_position_pct"]),

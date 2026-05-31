@@ -20,7 +20,7 @@
 - Build image:
   - `docker build -t talk-to-my-portfolio:latest .`
 - Run smoke:
-  - `docker run --rm -p 8000:8000 --env-file .env talk-to-my-portfolio:latest`
+  - `docker run --rm -p 9000:9000 --env-file .env talk-to-my-portfolio:latest`
 - Verify `/health`.
 
 ## Post-release

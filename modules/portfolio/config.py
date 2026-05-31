@@ -7,6 +7,7 @@ import os
 from dotenv import load_dotenv
 
 from modules.portfolio.accounts_loader import build_account_registry, load_accounts_raw
+from shared.config import APP_BASE_URL, APP_PORT, APP_ROOT_PATH
 
 load_dotenv()
 
@@ -40,9 +41,9 @@ ACCOUNTS, GROWW_ACCOUNTS, SARWA_ACCOUNTS, CUSTOM_ACCOUNTS, _ACCOUNT_CODES, LEGAC
     build_account_registry(_raw)
 )
 
-HUB_BASE_URL = os.getenv("HUB_BASE_URL", "http://127.0.0.1:8000")
+HUB_BASE_URL = os.getenv("HUB_BASE_URL", APP_BASE_URL)
 ZERODHA_CALLBACK_URL = os.getenv(
-    "ZERODHA_CALLBACK_URL", "http://127.0.0.1:8000/auth/zerodha/callback"
+    "ZERODHA_CALLBACK_URL", f"{APP_BASE_URL}/auth/zerodha/callback"
 )
 
 # Short codes → internal account_id (AB → primary, etc.)
@@ -301,8 +302,8 @@ def get_auth_start_url(ref: str) -> str:
     code = account["code"]
     base = (HUB_BASE_URL or "").strip().rstrip("/")
     if not base:
-        port = account.get("auth_port") or 8000
-        base = f"http://127.0.0.1:{port}"
+        port = account.get("auth_port") or APP_PORT
+        base = f"http://127.0.0.1:{port}{APP_ROOT_PATH}"
     return f"{base}/auth/zerodha/{code}"
 
 

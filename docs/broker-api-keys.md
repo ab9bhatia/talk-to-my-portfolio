@@ -13,7 +13,7 @@ How to get credentials for **Talk to My Portfolio**. Store them only in `.env` a
 | Portfolio **Ask** | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) | — | `OPENAI_API_KEY` |
 
 **Redirect URL** (all Zerodha apps on one machine):  
-`http://127.0.0.1:8000/auth/zerodha/callback`  
+`http://127.0.0.1:9000/auth/zerodha/callback`  
 Must match `HUB_BASE_URL`, the Kite app settings, and `redirect_url` in JSON.
 
 ---
@@ -28,7 +28,7 @@ Used for holdings, OAuth login, and optional live orders.
 2. Open [developers.kite.trade](https://developers.kite.trade/) and sign in with that account.
 3. **Create new app** (repeat for each family member — each login needs its own app).
 4. Set:
-   - **Redirect URL:** `http://127.0.0.1:8000/auth/zerodha/callback`
+   - **Redirect URL:** `http://127.0.0.1:9000/auth/zerodha/callback`
    - **Permissions:** **Read** (minimum); **Order** only if `TRADING_ENABLED=true`
 5. After approval, copy **API key** and **API secret** into `.env`:
 
@@ -36,7 +36,7 @@ Used for holdings, OAuth login, and optional live orders.
 # If accounts.json has "id": "primary"
 ZERODHA_API_KEY_PRIMARY=<api key>
 ZERODHA_API_SECRET_PRIMARY=<api secret>
-ZERODHA_REDIRECT_URL_PRIMARY=http://127.0.0.1:8000/auth/zerodha/callback
+ZERODHA_REDIRECT_URL_PRIMARY=http://127.0.0.1:9000/auth/zerodha/callback
 ```
 
 ### Wire `accounts.json`
@@ -48,7 +48,7 @@ ZERODHA_REDIRECT_URL_PRIMARY=http://127.0.0.1:8000/auth/zerodha/callback
   "label": "My Zerodha",
   "user_id": "YOUR_KITE_CLIENT_ID",
   "enabled": true,
-  "redirect_url": "http://127.0.0.1:8000/auth/zerodha/callback"
+  "redirect_url": "http://127.0.0.1:9000/auth/zerodha/callback"
 }
 ```
 
@@ -56,8 +56,8 @@ ZERODHA_REDIRECT_URL_PRIMARY=http://127.0.0.1:8000/auth/zerodha/callback
 
 ### Connect in the app
 
-1. `uvicorn main:app --reload --host 127.0.0.1 --port 8000`
-2. Open [http://127.0.0.1:8000/portfolio](http://127.0.0.1:8000/portfolio)
+1. `uvicorn main:app --reload --host 127.0.0.1 --port 9000`
+2. Open [http://127.0.0.1:9000/portfolio](http://127.0.0.1:9000/portfolio)
 3. Click **Connect Zerodha** for that account.
 4. Tokens expire around **6:00 AM IST** daily — reconnect when prompted.
 
@@ -82,7 +82,7 @@ Zerodha whitelists IP at the **developer profile**, not on each app:
 Notes:
 
 - Applies to **all** Kite apps under that developer login (AB/RB/SB apps share one whitelist).
-- Do **not** use `127.0.0.1` or LAN IPs — only the public IP Zerodha sees.
+- Do **not** mix `127.0.0.1` and `localhost` in redirect URLs — pick one and use it in Kite, `.env`, and `accounts.json`.
 - VPN: whitelist the VPN egress IP, or disable VPN while placing orders.
 - You can change the whitelist about **once per calendar week** (Zerodha rule).
 - [Zerodha help: static IP](https://support.zerodha.com/category/trading-and-markets/general-kite/kite-api/articles/static-ip)
@@ -186,7 +186,7 @@ Get a key: [platform.openai.com/api-keys](https://platform.openai.com/api-keys).
 |--------|-----|
 | `Missing credentials for AB` | `"id"` in JSON must match `.env` suffix (`primary` → `PRIMARY`, not a different name) |
 | `Token exchange failed` | Wrong API secret or redirect URL mismatch on Kite app |
-| Redirect to wrong port | Use `127.0.0.1` vs `localhost` consistently |
+| Redirect to wrong port | Use `127.0.0.1:9000` consistently (not `:8000`) |
 | Groww 401 | Re-approve API key or switch to TOTP |
 | Empty portfolio after connect | **Refresh** on `/portfolio` or `?refresh=1` |
 | `No IPs configured for this app` (Zerodha order) | [developers.kite.trade](https://developers.kite.trade/) → **Profile** (top-right) → **IP Whitelist** = output of `curl -s https://api.ipify.org` (not on the app details page) |

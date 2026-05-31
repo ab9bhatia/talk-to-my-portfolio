@@ -12,12 +12,21 @@ from starlette.requests import Request
 from starlette.responses import Response
 from starlette.types import ASGIApp
 
+from shared.config import APP_ROOT_PATH
+
 # Zerodha OAuth redirects cannot send Authorization headers.
 _PUBLIC_PATH_PREFIXES = (
     "/auth/zerodha",
     "/zerodha/auth/",
 )
 _PUBLIC_EXACT = frozenset({"/health"})
+
+
+def _path_without_root(path: str) -> str:
+    if APP_ROOT_PATH and path.startswith(APP_ROOT_PATH):
+        rest = path[len(APP_ROOT_PATH) :]
+        return rest if rest.startswith("/") else f"/{rest}" if rest else "/"
+    return path
 
 
 def http_auth_username() -> str:
@@ -34,6 +43,7 @@ def http_auth_enabled() -> bool:
 
 
 def _path_is_public(path: str) -> bool:
+    path = _path_without_root(path)
     if path in _PUBLIC_EXACT:
         return True
     return any(path.startswith(prefix) for prefix in _PUBLIC_PATH_PREFIXES)
@@ -42,7 +52,7 @@ def _path_is_public(path: str) -> bool:
 def _unauthorized() -> Response:
     return Response(
         status_code=401,
-        headers={"WWW-Authenticate": 'Basic realm="Talk to My Portfolio", charset="UTF-8"'},
+        headers={"WWW-Authenticate": 'Basic realm="TalkToMyPortfolio", charset="UTF-8"'},
         content="Authentication required. Set PORTFOLIO_HTTP_USER and PORTFOLIO_HTTP_PASSWORD in .env.",
     )
 

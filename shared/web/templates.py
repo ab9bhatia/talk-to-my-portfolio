@@ -4,7 +4,8 @@ from pathlib import Path
 
 from fastapi.templating import Jinja2Templates
 
-from shared.config import APP_NAME, APP_TAGLINE, EXPENSES_APP_URL, LEARNINGS_APP_URL
+from shared.config import APP_NAME, APP_TAGLINE, APP_ROOT_PATH, EXPENSES_APP_URL, LEARNINGS_APP_URL
+from shared.web.app_urls import app_path
 from shared.web.formatters import (
     account_column_compact,
     build_sort_url,
@@ -36,6 +37,8 @@ templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
 templates.env.globals.update(
     app_name=APP_NAME,
     app_tagline=APP_TAGLINE,
+    app_root=APP_ROOT_PATH,
+    app_path=app_path,
     expenses_app_url=EXPENSES_APP_URL,
     learnings_app_url=LEARNINGS_APP_URL,
     cap_badge_class=cap_badge_class,

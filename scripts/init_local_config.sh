@@ -25,7 +25,7 @@ Next:
   1. Edit modules/portfolio/accounts.json — enable brokers, set unique "id" per account
   2. Edit .env — ZERODHA_* / GROWW_* suffix must match each "id" (UPPERCASE)
   3. Get keys: docs/broker-api-keys.md
-  4. uvicorn main:app --reload --host 127.0.0.1 --port 8000
-     → http://127.0.0.1:8000/portfolio → Connect Zerodha
+  4. uvicorn main:app --reload --host 127.0.0.1 --port 9000
+     → http://127.0.0.1:9000/talktomyportfolio
 
 EOF

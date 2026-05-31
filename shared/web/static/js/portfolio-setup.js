@@ -24,6 +24,11 @@
   const callbackDefault = window.__SETUP_CALLBACK__ || "";
   const visionOk = !!window.__SETUP_VISION__;
 
+  function appHref(path) {
+    if (!path) return window.appUrl("/");
+    return path.startsWith("http") ? path : window.appUrl(path);
+  }
+
   const BROKER_META = {
     zerodha: { glyph: "Z", color: "zerodha" },
     groww: { glyph: "G", color: "groww" },
@@ -45,7 +50,7 @@
       hideConnectLink();
       return;
     }
-    connectLink.href = account.connect_url;
+    connectLink.href = appHref(account.connect_url);
     connectLink.textContent = "Connect Zerodha ↗";
     connectLink.removeAttribute("hidden");
     connectLink.hidden = false;
@@ -558,7 +563,7 @@
         showToast(`Saved — ${impData.imported} holdings imported`);
       } else if (!isEdit() && data.connect_url) {
         showToast("Saved — opening Zerodha login");
-        window.location.href = data.connect_url;
+        window.location.href = appHref(data.connect_url);
         return;
       } else {
         showToast(isEdit() ? "Account updated" : "Account saved");

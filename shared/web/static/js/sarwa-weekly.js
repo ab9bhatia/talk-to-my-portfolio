@@ -110,7 +110,7 @@
           return;
         }
         importStatus.textContent = `Imported ${data.parsed_count || 0} positions`;
-        window.location.href = "/portfolio?refresh=1";
+        window.location.href = window.appUrl("/portfolio?refresh=1");
       } catch (_e) {
         importStatus.textContent = "Network error";
       }
@@ -128,7 +128,7 @@
           return;
         }
         importStatus.textContent = `Updated ${data.updated || 0} positions`;
-        window.location.href = "/portfolio?refresh=1";
+        window.location.href = window.appUrl("/portfolio?refresh=1");
       } catch (_e) {
         importStatus.textContent = "Network error";
       }

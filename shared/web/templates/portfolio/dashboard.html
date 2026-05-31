@@ -19,15 +19,15 @@
         <p class="dash-lead">All brokers in one view — then <strong>talk to your portfolio</strong> for buy, sell, hold, and rebalance guidance per holding.</p>
       </div>
       <div class="dash-hero-actions">
-        <a href="/portfolio/setup" class="dash-btn dash-btn-ghost js-show-loader">Setup & config</a>
+        <a href="{{ app_path('/portfolio/setup') }}" class="dash-btn dash-btn-ghost js-show-loader">Setup & config</a>
         {% if cached_at %}
         <a
-          href="/portfolio?refresh=1&amp;sort={{ holdings_view.sort }}&amp;order={{ holdings_view.order }}{% if holdings_view.group_by %}&amp;group_by={{ holdings_view.group_by }}{% endif %}"
+          href="{{ app_path('/portfolio') }}?refresh=1&amp;sort={{ holdings_view.sort }}&amp;order={{ holdings_view.order }}{% if holdings_view.group_by %}&amp;group_by={{ holdings_view.group_by }}{% endif %}"
           class="dash-btn dash-btn-primary js-show-loader"
         >Refresh live</a>
         {% else %}
         <a
-          href="/portfolio?refresh=1&amp;sort={{ holdings_view.sort }}&amp;order={{ holdings_view.order }}{% if holdings_view.group_by %}&amp;group_by={{ holdings_view.group_by }}{% endif %}"
+          href="{{ app_path('/portfolio') }}?refresh=1&amp;sort={{ holdings_view.sort }}&amp;order={{ holdings_view.order }}{% if holdings_view.group_by %}&amp;group_by={{ holdings_view.group_by }}{% endif %}"
           class="dash-btn dash-btn-primary js-show-loader"
         >Load portfolio</a>
         {% endif %}
@@ -60,7 +60,7 @@
       <a href="{{ account.connect_url }}" class="dash-btn dash-btn-sm dash-btn-primary">Log in to Zerodha ({{ account.code }})</a>
       {% endif %}
       {% endfor %}
-      <a href="/portfolio/setup" class="dash-btn dash-btn-sm dash-btn-ghost js-show-loader">Manage API keys</a>
+      <a href="{{ app_path('/portfolio/setup') }}" class="dash-btn dash-btn-sm dash-btn-ghost js-show-loader">Manage API keys</a>
     </p>
   </div>
   {% elif stale or cache_meta.revalidating %}
@@ -77,7 +77,7 @@
     Showing saved snapshot — refreshing shortly.
     {% endif %}
   </div>
-  <script src="/static/js/portfolio-revalidate.js"></script>
+  <script src="{{ app_path('/static/js/portfolio-revalidate.js') }}"></script>
   {% endif %}
 
   {% if errors %}
@@ -130,7 +130,7 @@
   <div class="dash-empty">
     <h3>No holdings yet</h3>
     <p>Connect Zerodha or Groww, or import a custom portfolio from the account hub.</p>
-    <a href="/portfolio/setup" class="dash-btn dash-btn-primary js-show-loader">Open setup</a>
+    <a href="{{ app_path('/portfolio/setup') }}" class="dash-btn dash-btn-primary js-show-loader">Open setup</a>
   </div>
   {% endif %}
 
@@ -143,11 +143,11 @@
 
 {% if holdings_view.holdings %}
 {% include "portfolio/_export_excel_modal.html" %}
-<script src="/static/js/portfolio-export.js"></script>
+<script src="{{ app_path('/static/js/portfolio-export.js') }}"></script>
 {% endif %}
 
 {% if trading_enabled %}
 {% include "portfolio/_trade_modal.html" %}
-<script src="/static/js/trade-order.js"></script>
+<script src="{{ app_path('/static/js/trade-order.js') }}"></script>
 {% endif %}
 {% endblock %}

@@ -6,7 +6,7 @@
       Weekly snapshots are stored in <code>portfolio_history.db</code> (qty, avg, LTP, P&amp;L, sector, signal, etc.).
     </p>
     <p class="weekly-export-row">
-      <a href="/api/portfolio/weekly/export?scope=family&amp;weeks=52" class="btn btn-primary btn-sm">
+      <a href="{{ app_path('/api/portfolio/weekly/export') }}?scope=family&amp;weeks=52" class="btn btn-primary btn-sm">
         Download weekly history (Excel)
       </a>
       <span class="text-muted">Summary, every position by week, and week-over-week qty changes.</span>
@@ -59,4 +59,4 @@
     </div>
   </div>
 </details>
-<script src="/static/js/sarwa-weekly.js" defer></script>
+<script src="{{ app_path('/static/js/sarwa-weekly.js') }}" defer></script>
