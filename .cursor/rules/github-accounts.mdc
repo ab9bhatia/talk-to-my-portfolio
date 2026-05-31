@@ -1,0 +1,30 @@
+---
+description: GitHub account to use for commits and pushes by workspace folder
+alwaysApply: true
+---
+
+# GitHub accounts by folder
+
+Use the correct GitHub identity for git operations (commit, push, PR, gh CLI).
+
+## Personal — `~/PA/` repos
+
+- **GitHub account:** `ab9bhatia`
+- **Email:** `ab9.bhatia@gmail.com`
+- Before push: `gh auth switch -u ab9bhatia` then `gh auth setup-git` if credentials are wrong
+
+## Work — Cortex repos
+
+- **GitHub account:** `ankit-bhatia_incepai`
+- Before push: `gh auth switch -u ankit-bhatia_incepai` then `gh auth setup-git` if needed
+
+## How to decide
+
+Check the workspace path:
+
+- Under `/Users/ankit.bhatia/PA/` → personal (`ab9bhatia`)
+- Cortex / Inception work → work (`ankit-bhatia_incepai`)
+
+If push fails with `Permission denied to <wrong-account>`, switch the active `gh` account and run `gh auth setup-git` before retrying.
+
+Never change global git config unless the user explicitly asks. Do not commit `.env`, credentials, or other secrets.
