@@ -4,6 +4,13 @@
   let holdingsPageByTable = new Map();
   const DEFAULT_PAGE_SIZE = 50;
 
+  let patternsOnlyActive = false;
+  const PATTERN_STATUS_LABEL = {
+    confirmed: "Breakout",
+    forming: "Near breakout",
+    early: "Building",
+  };
+
   function loadHoldingsFinancials() {
     const el = document.getElementById("holdings-financials-data");
     if (!el?.textContent) return {};
@@ -287,6 +294,7 @@
   function rowMatchesFilters(row, selectedCodes, selectedAssets, query) {
     if (!rowMatchesAccounts(row, selectedCodes)) return false;
     if (!rowMatchesAssetClass(row, selectedAssets)) return false;
+    if (patternsOnlyActive && row.dataset.hasPattern !== "1") return false;
     const haystack = (row.dataset.search || row.dataset.symbol || "").toLowerCase();
     if (query && !haystack.includes(query)) return false;
     const fin = rowFinancials(row, selectedCodes);
@@ -1180,6 +1188,167 @@
       </section>`;
   }
 
+  function renderPatterns(patterns, patternCanvasId, hasChart) {
+    if (!patterns?.length) {
+      return '<p class="detail-empty">No chart pattern detected on recent daily prices.</p>';
+    }
+    const statusLabel = {
+      confirmed: "Formed / breakout",
+      forming: "Near breakout",
+      early: "Building",
+    };
+    const primary = patterns[0];
+    const overlay =
+      hasChart && primary.points?.length
+        ? `<div class="pattern-overlay-wrap">
+             <div class="chart-wrap pattern-overlay-chart"><canvas id="${patternCanvasId}"></canvas></div>
+             <p class="pattern-overlay-legend">
+               Dots mark the points the detector used (${primary.points
+                 .map((pt) => escapeHtml(pt.label))
+                 .join(", ")}).
+               Dashed line = neckline/breakout level; dotted line = measured target.
+               Source: Yahoo daily closes — heuristic, verify before acting.
+             </p>
+           </div>`
+        : "";
+    const rows = patterns
+      .map((p) => {
+        const bias = p.bias === "bearish" ? "negative" : "positive";
+        return `<tr>
+          <td>${escapeHtml(p.label)}</td>
+          <td>${statusLabel[p.status] || p.status}</td>
+          <td>${p.confidence}%</td>
+          <td>${formatInr(p.target_price)}</td>
+          <td class="${bias}">${formatPct(p.upside_to_target_pct)}</td>
+          <td>~${p.duration_days}d</td>
+        </tr>`;
+      })
+      .join("");
+    return `${overlay}
+    <table class="patterns-inline-table">
+      <thead><tr><th>Pattern</th><th>Status</th><th>Conf.</th><th>Target</th><th>Upside</th><th>Horizon</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <p class="detail-note">${escapeHtml(primary.note || "")}</p>`;
+  }
+
+  function renderPatternOverlayChart(canvasId, fullChart, primary) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas || !window.Chart || !fullChart?.labels?.length) return;
+    if (chartInstances.has(canvasId)) {
+      chartInstances.get(canvasId).destroy();
+    }
+
+    const labels = fullChart.labels;
+    const prices = fullChart.prices;
+    // Window: from a bit before the pattern start through the latest bar.
+    const startIdx = Math.max(0, labels.indexOf(primary.start_date));
+    const fromIdx = startIdx > 8 ? startIdx - 8 : 0;
+    const sliceLabels = labels.slice(fromIdx);
+    const slicePrices = prices.slice(fromIdx);
+
+    const isBear = primary.bias === "bearish";
+    const lineColor = isBear ? "#fca5a5" : "#86efac";
+
+    const pointData = sliceLabels.map((label) => {
+      const pt = (primary.points || []).find((p) => p.date === label);
+      return pt ? pt.price : null;
+    });
+
+    const necklineData = primary.neckline != null ? sliceLabels.map(() => primary.neckline) : null;
+    const targetData = primary.target_price != null ? sliceLabels.map(() => primary.target_price) : null;
+
+    const datasets = [
+      {
+        label: "Price",
+        data: slicePrices,
+        borderColor: lineColor,
+        backgroundColor: "transparent",
+        borderWidth: 1.6,
+        pointRadius: 0,
+        tension: 0.15,
+        spanGaps: true,
+      },
+      {
+        label: "Pattern points",
+        data: pointData,
+        showLine: false,
+        pointRadius: 6,
+        pointHoverRadius: 8,
+        pointStyle: "circle",
+        pointBackgroundColor: "#fbbf24",
+        pointBorderColor: "#1e293b",
+        pointBorderWidth: 2,
+        spanGaps: false,
+      },
+    ];
+    if (necklineData) {
+      datasets.push({
+        label: "Neckline / breakout",
+        data: necklineData,
+        borderColor: "#60a5fa",
+        borderWidth: 1.4,
+        borderDash: [6, 4],
+        pointRadius: 0,
+      });
+    }
+    if (targetData) {
+      datasets.push({
+        label: "Target",
+        data: targetData,
+        borderColor: lineColor,
+        borderWidth: 1.2,
+        borderDash: [2, 3],
+        pointRadius: 0,
+      });
+    }
+
+    const pointLabelByDate = {};
+    (primary.points || []).forEach((p) => {
+      pointLabelByDate[p.date] = p.label;
+    });
+
+    const chart = new Chart(canvas, {
+      type: "line",
+      data: { labels: sliceLabels, datasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: "nearest", intersect: false },
+        plugins: {
+          legend: { labels: { color: "#94a3b8", boxWidth: 12, font: { size: 10 } } },
+          tooltip: {
+            callbacks: {
+              label(context) {
+                const label = context.dataset.label || "";
+                const raw = context.parsed.y;
+                if (raw === null || raw === undefined) return null;
+                if (label === "Pattern points") {
+                  const name = pointLabelByDate[context.label] || "Point";
+                  return `${name}: ${formatInr(raw)}`;
+                }
+                return `${label}: ${formatInr(raw)}`;
+              },
+            },
+          },
+        },
+        scales: {
+          x: {
+            ticks: { maxTicksLimit: 6, color: "#94a3b8", maxRotation: 0 },
+            grid: { color: "rgba(148, 163, 184, 0.1)" },
+          },
+          y: {
+            ticks: { color: "#94a3b8" },
+            grid: { color: "rgba(148, 163, 184, 0.1)" },
+            title: { display: true, text: "Price (₹)", color: "#94a3b8", font: { size: 10 } },
+          },
+        },
+      },
+    });
+
+    chartInstances.set(canvasId, chart);
+  }
+
   function renderForecast(forecast) {
     if (!forecast || !forecast.projected_value_1y) {
       return '<p class="detail-empty">1Y forecast unavailable — no analyst target or price history.</p>';
@@ -1404,6 +1573,7 @@
     const quantity = detailRow.dataset.quantity || "0";
     const lastPrice = detailRow.dataset.lastPrice || "0";
     const canvasId = `chart-${detailRow.dataset.detailFor.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+    const patternCanvasId = `${canvasId}-pattern`;
 
     asyncSlot.classList.add("is-loading");
     asyncSlot.innerHTML = `<div class="detail-loading">Loading chart &amp; news for ${symbol}…</div>`;
@@ -1469,15 +1639,23 @@
             <h5>1Y forecast (your holding)</h5>
             ${renderForecast(data.forecast)}
           </section>
+          <section class="detail-section detail-section-full">
+            <h5>Chart patterns</h5>
+            ${renderPatterns(data.patterns, patternCanvasId, hasChart)}
+          </section>
           ${renderSignalContextPanel(rating, data.events, data.news)}
         </div>`;
 
       asyncSlot.dataset.loaded = "true";
+      const primaryPattern = data.pattern_primary || (data.patterns && data.patterns[0]);
       if (hasChart) {
         const chartSection = asyncSlot.querySelector(".chart-section");
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
             if (chartSection) initChartRangeControls(chartSection, canvasId, data.chart);
+            if (primaryPattern?.points?.length) {
+              renderPatternOverlayChart(patternCanvasId, data.chart, primaryPattern);
+            }
           });
         });
       }
@@ -1632,10 +1810,116 @@
     });
   }
 
+  function patternPillMarkup(primary) {
+    const bias = primary.bias === "bearish" ? "bear" : "bull";
+    const arrow = primary.bias === "bearish" ? "▼" : "▲";
+    const statusLabel = PATTERN_STATUS_LABEL[primary.status] || primary.status;
+    const upside =
+      primary.upside_to_target_pct != null
+        ? `${primary.upside_to_target_pct > 0 ? "+" : ""}${primary.upside_to_target_pct}%`
+        : "";
+    const tip =
+      `${primary.label} · ${statusLabel}` +
+      (primary.target_price != null ? ` · target ₹${primary.target_price}` : "") +
+      (upside ? ` (${upside})` : "") +
+      (primary.duration_days ? ` · ~${primary.duration_days}d` : "") +
+      ` · ${primary.confidence}% confidence`;
+    return (
+      `<button type="button" class="pattern-pill pattern-pill-${bias} pattern-pill-${primary.status}" ` +
+      `title="${tip.replace(/"/g, "&quot;")}" data-pattern-expand="1">` +
+      `<span class="pattern-pill-arrow" aria-hidden="true">${arrow}</span>` +
+      `<span class="pattern-pill-text">${primary.label}</span>` +
+      (upside ? `<span class="pattern-pill-upside">${upside}</span>` : "") +
+      `</button>`
+    );
+  }
+
+  function attachPatternPill(row, primary) {
+    const symbolCell = row.querySelector(".col-symbol");
+    if (!symbolCell || symbolCell.querySelector(".pattern-pill")) return;
+    const wrap = document.createElement("span");
+    wrap.className = "pattern-pill-wrap";
+    wrap.innerHTML = patternPillMarkup(primary);
+    symbolCell.appendChild(wrap);
+
+    const pill = wrap.querySelector("[data-pattern-expand]");
+    pill?.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const expander = row.querySelector(".row-expander");
+      if (expander && expander.getAttribute("aria-expanded") !== "true") {
+        toggleRow(expander);
+      }
+      row.querySelector(".holding-row")?.scrollIntoView?.({ block: "nearest" });
+    });
+  }
+
+  function applyPatternToggleState(count) {
+    const toggle = document.getElementById("patterns-filter-toggle");
+    const countEl = document.getElementById("patterns-filter-count");
+    if (!toggle) return;
+    if (count > 0) {
+      toggle.disabled = false;
+      if (countEl) {
+        countEl.textContent = String(count);
+        countEl.hidden = false;
+      }
+    } else {
+      toggle.disabled = true;
+      toggle.setAttribute("aria-pressed", "false");
+      patternsOnlyActive = false;
+      if (countEl) countEl.hidden = true;
+    }
+  }
+
+  function initPatternsToggle() {
+    const toggle = document.getElementById("patterns-filter-toggle");
+    if (!toggle) return;
+    toggle.addEventListener("click", () => {
+      if (toggle.disabled) return;
+      patternsOnlyActive = !patternsOnlyActive;
+      toggle.setAttribute("aria-pressed", patternsOnlyActive ? "true" : "false");
+      toggle.classList.toggle("is-active", patternsOnlyActive);
+      resetPaginationForFilterChange();
+      applySymbolSearch();
+    });
+  }
+
+  async function decorateHoldingsWithPatterns() {
+    const rows = [...document.querySelectorAll(".holding-row")];
+    if (!rows.length) return;
+    try {
+      const res = await fetch("/api/portfolio/patterns");
+      if (!res.ok) return;
+      const data = await res.json();
+      const bySymbol = new Map();
+      (data.holdings || []).forEach((row) => {
+        const primary = row.primary || (row.patterns && row.patterns[0]);
+        if (primary) bySymbol.set((row.symbol || "").toUpperCase(), primary);
+      });
+      if (!bySymbol.size) {
+        applyPatternToggleState(0);
+        return;
+      }
+      let matched = 0;
+      rows.forEach((row) => {
+        const symbol = (row.dataset.symbol || "").toUpperCase();
+        const primary = bySymbol.get(symbol);
+        if (!primary) return;
+        row.dataset.hasPattern = "1";
+        attachPatternPill(row, primary);
+        matched += 1;
+      });
+      applyPatternToggleState(matched);
+    } catch {
+      applyPatternToggleState(0);
+    }
+  }
+
   function initHoldingsTable() {
     initPageLoader();
     initSearch();
     initPortfolioFilters();
+    initPatternsToggle();
     initGroupBySelect();
     initGroupCharts();
     initGroupExpanders();
@@ -1649,6 +1933,7 @@
     });
 
     hideLoader();
+    decorateHoldingsWithPatterns();
   }
 
   if (document.readyState === "loading") {

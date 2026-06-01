@@ -135,6 +135,7 @@
   {% endif %}
 
   <div class="dash-secondary">
+    {% include "portfolio/_chart_patterns_panel.html" %}
     <div class="dash-panel dash-panel--compact">
       {% include "portfolio/_sarwa_weekly_panel.html" %}
     </div>
@@ -150,4 +151,5 @@
 {% include "portfolio/_trade_modal.html" %}
 <script src="{{ app_path('/static/js/trade-order.js') }}"></script>
 {% endif %}
+<script src="{{ app_path('/static/js/portfolio-patterns.js') }}"></script>
 {% endblock %}

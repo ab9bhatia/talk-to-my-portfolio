@@ -47,6 +47,21 @@
       <span>Mutual funds</span>
     </label>
 
+    <span class="toolbar-sep" aria-hidden="true"></span>
+
+    <button
+      type="button"
+      class="filter-chip filter-chip-patterns"
+      id="patterns-filter-toggle"
+      aria-pressed="false"
+      title="Show only holdings forming a chart pattern (cup & handle, inverse H&S, double bottom, ascending triangle)"
+      disabled
+    >
+      <span class="patterns-toggle-icon" aria-hidden="true">📈</span>
+      <span class="patterns-toggle-label">Setups</span>
+      <span class="patterns-toggle-count" id="patterns-filter-count" hidden></span>
+    </button>
+
     <form class="toolbar-line toolbar-table-controls" method="get" action="{{ controls_action }}" id="holdings-controls-form">
       {% if refresh %}<input type="hidden" name="refresh" value="1">{% endif %}
       {% if holdings_view.sort %}<input type="hidden" name="sort" value="{{ holdings_view.sort }}">{% endif %}

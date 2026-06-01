@@ -79,14 +79,48 @@ Goals set under **Setup → Goals & guardrails** are injected into agent context
 
 ---
 
+## Chart patterns (momentum setups)
+
+Scans your equity holdings for common technical setups and shows them **inline in the holdings table** — so momentum signals sit next to weight, signal, and P&L where decisions happen.
+
+**Patterns detected**
+
+| Pattern | Bias | Target rule |
+|---------|------|-------------|
+| Cup with handle | Bullish | rim + cup depth |
+| Inverse head & shoulders | Bullish | neckline + head depth |
+| Double bottom | Bullish | breakout level + depth |
+| Ascending triangle | Bullish | resistance + ~½ triangle height |
+| Head & shoulders | Bearish | neckline − head height |
+
+Each match shows **status** (Breakout / Near breakout / Building), a heuristic **confidence**, **target price**, **upside %**, and an estimated **horizon** (trading days).
+
+**Where to find it**
+
+- **Holdings table** — a pattern pill appears on each holding with a setup. The **📈 Setups** toolbar toggle filters the book to only those holdings.
+- **Dashboard** — *Chart patterns* panel → **Scan holdings** for a full table.
+- **Holding detail** (expand a row) — an overlay chart marks the exact anchor points the detector used (shoulders, head, cup rim, neckline, target) so you can verify the setup on the real price line.
+
+**How it works (and its limits)**
+
+- Source: **Yahoo Finance daily closes** (`yfinance`), computed locally — no external pattern API or AI.
+- Lookback policy: fetch ~18 months; detect reversals within ~1 year and require the right edge to be recent (~3 months); cup base up to ~15 months; triangle uses the last ~100 bars.
+- These are **heuristics on close prices** (no volume) — treat them as a screen, not advice. Always confirm on the chart before acting.
+- Tunable via env: `CHART_PATTERNS_HISTORY`, `CHART_PATTERNS_MAX_SPAN`, `CHART_PATTERNS_RECENCY_BARS`, `CHART_PATTERNS_CUP_WINDOW`, `CHART_PATTERNS_CACHE_TTL`.
+
+APIs: `GET /api/portfolio/patterns` (whole portfolio) · `GET /api/portfolio/patterns/{symbol}?exchange=NSE` (one symbol). Results cached ~6h per symbol.
+
+---
+
 ## Routes
 
 | Route | Purpose |
 |-------|---------|
-| `/portfolio` | Family dashboard |
+| `/portfolio` | Family dashboard (holdings + chart pattern pills) |
 | `/portfolio/agent` | Agent chat (SSE) |
 | `/portfolio/growth` | Growth & benchmarks |
 | `/portfolio/setup` | Accounts, LLM, goals, import audit |
+| `/api/portfolio/patterns` | Chart-pattern scan (JSON) |
 | `/docs` | Swagger (hidden if HTTP auth on) |
 
 ---

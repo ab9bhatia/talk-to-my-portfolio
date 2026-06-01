@@ -513,6 +513,41 @@ def api_family_portfolio_meta():
     return meta_for_family(fresh_ttl=CACHE_TTL_SECONDS)
 
 
+@router.get("/api/portfolio/patterns")
+def api_portfolio_patterns(refresh: bool = Query(False)):
+    """
+    Scan portfolio equities for chart patterns (cup & handle, inverse H&S, etc.).
+    Uses Yahoo daily history; results are cached per symbol (~6h).
+    """
+    from modules.portfolio.services.chart_patterns import scan_holdings
+    from modules.portfolio.services.holdings_view import all_holdings_from_view, prepare_holdings_view
+    from modules.portfolio.services.portfolio import fetch_family_portfolio
+
+    family = fetch_family_portfolio(refresh=refresh, stale_ok=True)
+    raw = [h for p in family.get("portfolios", []) for h in p.get("holdings", [])]
+    holdings_view = prepare_holdings_view(raw, aggregate_across_accounts=True)
+    holdings = all_holdings_from_view(holdings_view)
+    scanned = scan_holdings(holdings)
+    hits = [row for row in scanned if row.get("patterns")]
+    return {
+        "scanned": len(scanned),
+        "with_patterns": len(hits),
+        "as_of": hits[0]["primary"]["as_of"] if hits and hits[0].get("primary") else None,
+        "holdings": hits,
+    }
+
+
+@router.get("/api/portfolio/patterns/{symbol}")
+def api_symbol_patterns(
+    symbol: str,
+    exchange: str = Query("NSE"),
+):
+    """Pattern scan for a single symbol."""
+    from modules.portfolio.services.chart_patterns import detect_patterns_for_symbol
+
+    return detect_patterns_for_symbol(symbol.upper(), exchange, use_cache=False)
+
+
 @router.get("/api/portfolio/{account_ref}")
 def api_account_portfolio(account_ref: str, refresh: bool = Query(False)):
     """JSON API — single account portfolio (account_ref: AB, RB, SB, HB)."""

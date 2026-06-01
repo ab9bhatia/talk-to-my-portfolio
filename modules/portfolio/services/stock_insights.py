@@ -9,6 +9,7 @@ from typing import Any
 import yfinance as yf
 
 from modules.portfolio.services.analyst_rating import compute_rating
+from modules.portfolio.services.chart_patterns import detect_patterns_for_symbol
 from modules.portfolio.services.market_data import _quiet_yfinance, resolve_yahoo_ticker
 
 _INSIGHTS_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
@@ -485,6 +486,7 @@ def get_stock_insights(
         info = {}
 
     chart = _price_history(ticker)
+    pattern_scan = detect_patterns_for_symbol(symbol, exchange)
     results = _recent_results(ticker)
     forecast = _forecast(info, chart, quantity=quantity, last_price=last_price)
 
@@ -502,6 +504,8 @@ def get_stock_insights(
         "chart": chart,
         "results": results,
         "forecast": forecast,
+        "patterns": pattern_scan.get("patterns") or [],
+        "pattern_primary": pattern_scan.get("primary"),
         "events": context["events"],
         "news": context["news"],
     }
