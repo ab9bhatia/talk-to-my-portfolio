@@ -30,6 +30,7 @@ DECISION_FIELDS = {
     "is_suspended",
     "is_tradable",
 }
+SCREENING_RETURN_SOURCE_TYPES = {"derived_market_model"}
 
 
 class EvidenceProvider(Protocol):
@@ -71,7 +72,13 @@ def _validate(row: dict[str, Any], *, provider: str, now: float) -> dict[str, An
     field = str(row["field"])
     source_type = str(row["source_type"]).lower()
     authoritative = source_type in AUTHORITATIVE_TYPES
-    if field in DECISION_FIELDS and not authoritative:
+    screening_return = (
+        field == "expected_return_inputs"
+        and source_type in SCREENING_RETURN_SOURCE_TYPES
+        and isinstance(row.get("value"), dict)
+        and row["value"].get("model_quality") == "screening_proxy"
+    )
+    if field in DECISION_FIELDS and not authoritative and not screening_return:
         raise ValueError(
             f"Decision field {field} requires an authoritative source_type; got {source_type}"
         )

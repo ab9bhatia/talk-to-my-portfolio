@@ -218,12 +218,13 @@
     const labels = accountSeries[0].series.map((p) => p.day_date);
     const datasets = accountSeries.map((acc, idx) => ({
       label: acc.code || acc.account_id,
-      data: acc.series.map((p) => Number(p.total_current || 0)),
+      data: acc.series.map((p) => (p.total_current == null ? null : Number(p.total_current))),
       borderColor: PALETTE[idx % PALETTE.length],
       backgroundColor: `${PALETTE[idx % PALETTE.length]}33`,
       fill: true,
       tension: 0.2,
       pointRadius: 0,
+      spanGaps: true,
       stack: "mix",
     }));
     if (accountMixChart) accountMixChart.destroy();
@@ -331,18 +332,23 @@
     `;
     timelineBody.innerHTML = timelineRows
       .map((r) => {
+        const cfTitle = ' title="Amount carried from previous date — no snapshot for this day"';
         const accountCols = accountCodes
           .map((code) => {
             const cell = r.accounts?.[code] || {};
-            return `<td class="text-right">${formatInr(cell.invested)}</td><td class="text-right">${formatInr(cell.value)}</td>`;
+            const cf = cell.carried_forward ? " growth-carried-forward" : "";
+            const tip = cell.carried_forward ? cfTitle : "";
+            return `<td class="text-right${cf}"${tip}>${formatInr(cell.invested)}</td><td class="text-right${cf}"${tip}>${formatInr(cell.value)}</td>`;
           })
           .join("");
+        const familyCf = r.carried_forward ? " growth-carried-forward" : "";
+        const familyTip = r.carried_forward ? cfTitle : "";
         return `
           <tr>
             <td>${escapeHtml(r.day_date || "")}</td>
-            <td class="text-right">${formatInr(r.family_invested)}</td>
-            <td class="text-right">${formatInr(r.family_value)}</td>
-            <td class="text-right ${changeClass(r.family_pnl_pct)}">${formatPct(r.family_pnl_pct)}</td>
+            <td class="text-right${familyCf}"${familyTip}>${formatInr(r.family_invested)}</td>
+            <td class="text-right${familyCf}"${familyTip}>${formatInr(r.family_value)}</td>
+            <td class="text-right ${changeClass(r.family_pnl_pct)}${familyCf}"${familyTip}>${formatPct(r.family_pnl_pct)}</td>
             ${accountCols}
           </tr>
         `;

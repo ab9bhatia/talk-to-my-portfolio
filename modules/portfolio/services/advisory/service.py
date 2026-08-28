@@ -277,6 +277,13 @@ def _recommendation(
         family_weight_pct=float(holding.get("family_weight_pct") or 0),
         account_weights={row.account_code: row.account_weight_pct for row in positions},
         action=decision.action,
+        evidence_state=(
+            "NEEDS_DATA"
+            if not expected.available
+            else "SCREENING_MODEL"
+            if expected.evidence_tier == "screening_proxy"
+            else "DOCUMENTED_MODEL"
+        ),
         sell_type=decision.sell_type,
         action_confidence=confidence,
         sell_pct=decision.sell_pct,
@@ -502,6 +509,15 @@ def build_advisory_payload(
         deadlines=deadlines,
         evidence_status={
             "recommendations": len(recommendations),
+            "screening_models": sum(
+                item.evidence_state == "SCREENING_MODEL" for item in recommendations
+            ),
+            "documented_models": sum(
+                item.evidence_state == "DOCUMENTED_MODEL" for item in recommendations
+            ),
+            "needs_data": sum(
+                item.evidence_state == "NEEDS_DATA" for item in recommendations
+            ),
             "with_dated_evidence": sum(bool(item.evidence) for item in recommendations),
             "stale_items": sum(
                 flag.code.startswith("STALE_") for flag in all_flags

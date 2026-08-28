@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 # In-memory cache: symbol -> (timestamp, metrics dict)
 _CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
 _CACHE_TTL_SECONDS = int(os.getenv("YAHOO_METRICS_TTL_SECONDS", str(24 * 60 * 60)))
+YAHOO_METRICS_SCHEMA_VERSION = 2
 _OFFHOURS_REFRESH_HOUR_IST = int(os.getenv("YAHOO_REFRESH_HOUR_IST", "23"))
 _TZ_IST = ZoneInfo("Asia/Kolkata")
 _SCHEDULER_STARTED = False
@@ -598,7 +599,7 @@ def resolve_yahoo_ticker(symbol: str, exchange: str | None) -> str | None:
 
 
 def _fetch_yahoo_metrics(symbol: str, exchange: str | None) -> dict[str, Any]:
-    """Load PE, 52w high, market cap, and sector from Yahoo Finance."""
+    """Load dated market and estimate fields from Yahoo Finance."""
     for ticker in _yahoo_ticker_candidates(symbol, exchange):
         try:
             with _quiet_yfinance():
@@ -630,7 +631,27 @@ def _fetch_yahoo_metrics(symbol: str, exchange: str | None) -> dict[str, Any]:
             if sector:
                 _remember_sector_reference(symbol, exchange, sector, source="yahoo")
             return {
+                "metrics_schema_version": YAHOO_METRICS_SCHEMA_VERSION,
+                "market_data_as_of": datetime.now().date().isoformat(),
+                "yahoo_ticker": ticker,
+                "quote_type": qt,
                 "pe_ratio": info.get("trailingPE") or info.get("forwardPE"),
+                "trailing_pe": info.get("trailingPE"),
+                "forward_pe": info.get("forwardPE"),
+                "trailing_eps": info.get("trailingEps"),
+                "forward_eps": info.get("forwardEps"),
+                "earnings_growth_pct": _percentage_from_fraction(info.get("earningsGrowth")),
+                "revenue_growth_pct": _percentage_from_fraction(info.get("revenueGrowth")),
+                "dividend_yield_pct": _percentage_from_fraction(info.get("dividendYield")),
+                "three_year_average_return_pct": _percentage_from_fraction(
+                    info.get("threeYearAverageReturn")
+                ),
+                "five_year_average_return_pct": _percentage_from_fraction(
+                    info.get("fiveYearAverageReturn")
+                ),
+                "expense_ratio_pct": _percentage_from_fraction(
+                    info.get("annualReportExpenseRatio")
+                ),
                 "roce": info.get("returnOnCapital") or info.get("returnOnEquity"),
                 "debt_to_equity": _normalize_debt_to_equity(info.get("debtToEquity")),
                 "high_52w": info.get("fiftyTwoWeekHigh"),
@@ -645,7 +666,21 @@ def _fetch_yahoo_metrics(symbol: str, exchange: str | None) -> dict[str, Any]:
 
     mcap = _resolve_indian_market_cap_inr(symbol, exchange, None)
     return {
+        "metrics_schema_version": YAHOO_METRICS_SCHEMA_VERSION,
+        "market_data_as_of": datetime.now().date().isoformat(),
+        "yahoo_ticker": None,
+        "quote_type": None,
         "pe_ratio": None,
+        "trailing_pe": None,
+        "forward_pe": None,
+        "trailing_eps": None,
+        "forward_eps": None,
+        "earnings_growth_pct": None,
+        "revenue_growth_pct": None,
+        "dividend_yield_pct": None,
+        "three_year_average_return_pct": None,
+        "five_year_average_return_pct": None,
+        "expense_ratio_pct": None,
         "roce": None,
         "debt_to_equity": None,
         "high_52w": None,
@@ -660,6 +695,8 @@ def _fetch_yahoo_metrics(symbol: str, exchange: str | None) -> dict[str, Any]:
 
 def _cached_base_metrics_usable(metrics: dict[str, Any], exchange: str | None) -> bool:
     """True when Yahoo fundamentals were fetched — not an empty fallback blob."""
+    if metrics.get("metrics_schema_version") != YAHOO_METRICS_SCHEMA_VERSION:
+        return False
     if metrics.get("high_52w") or metrics.get("target_price") or metrics.get("recommendation_key"):
         return True
     if metrics.get("pe_ratio") is not None and metrics.get("sector"):
@@ -732,7 +769,7 @@ def get_stock_metrics(
     now = time.time()
 
     metrics: dict[str, Any] | None = None
-    cached = _CACHE.get(cache_key)
+    cached = None if force_refresh_base else _CACHE.get(cache_key)
     if cached and (now - cached[0]) < _CACHE_TTL_SECONDS:
         if _cached_base_metrics_usable(cached[1], exchange):
             metrics = cached[1].copy()
@@ -740,7 +777,7 @@ def get_stock_metrics(
             _CACHE.pop(cache_key, None)
             cached = None
 
-    disk_cached = _disk_cached_base_metrics(cache_key)
+    disk_cached = None if force_refresh_base else _disk_cached_base_metrics(cache_key)
     if metrics is None and disk_cached:
         disk_ts, disk_metrics = disk_cached
         if _cached_base_metrics_usable(disk_metrics, exchange):
@@ -778,7 +815,25 @@ def get_stock_metrics(
                     cap = None
 
         metrics = {
+            "metrics_schema_version": YAHOO_METRICS_SCHEMA_VERSION,
+            "market_data_as_of": yahoo.get("market_data_as_of"),
+            "yahoo_ticker": yahoo.get("yahoo_ticker"),
+            "quote_type": yahoo.get("quote_type"),
             "pe_ratio": _safe_round(yahoo.get("pe_ratio")),
+            "trailing_pe": _safe_round(yahoo.get("trailing_pe")),
+            "forward_pe": _safe_round(yahoo.get("forward_pe")),
+            "trailing_eps": _safe_round(yahoo.get("trailing_eps"), 4),
+            "forward_eps": _safe_round(yahoo.get("forward_eps"), 4),
+            "earnings_growth_pct": _safe_round(yahoo.get("earnings_growth_pct")),
+            "revenue_growth_pct": _safe_round(yahoo.get("revenue_growth_pct")),
+            "dividend_yield_pct": _safe_round(yahoo.get("dividend_yield_pct")),
+            "three_year_average_return_pct": _safe_round(
+                yahoo.get("three_year_average_return_pct")
+            ),
+            "five_year_average_return_pct": _safe_round(
+                yahoo.get("five_year_average_return_pct")
+            ),
+            "expense_ratio_pct": _safe_round(yahoo.get("expense_ratio_pct")),
             "roce": _safe_round(yahoo.get("roce")),
             "debt_to_equity": yahoo.get("debt_to_equity"),
             "high_52w": yahoo.get("high_52w"),
@@ -938,6 +993,14 @@ def _safe_round(value: Any, digits: int = 2) -> float | None:
         return round(float(value), digits)
     except (TypeError, ValueError):
         return None
+
+
+def _percentage_from_fraction(value: Any) -> float | None:
+    """Normalize Yahoo ratio-style percentages to percentage points."""
+    number = _safe_round(value, 6)
+    if number is None:
+        return None
+    return round(number * 100, 2) if abs(number) <= 2 else round(number, 2)
 
 
 def enrich_holdings(

@@ -81,6 +81,7 @@ class ExpectedThreeYearIrr:
     probability_above_target: float | None
     method: str
     assumptions: list[str] = field(default_factory=list)
+    evidence_tier: str = "documented"
 
     @property
     def available(self) -> bool:
@@ -160,6 +161,7 @@ class HoldingRecommendation:
     family_weight_pct: float
     account_weights: dict[str, float]
     action: Action
+    evidence_state: str
     sell_type: SellType
     action_confidence: int
     sell_pct: float

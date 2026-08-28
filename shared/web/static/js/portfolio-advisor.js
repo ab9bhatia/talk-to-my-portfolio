@@ -120,6 +120,7 @@
       rows = rows.filter((row) => [
         row.symbol,
         row.action,
+        row.evidence_state,
         row.sell_type,
         row.chart_pattern?.label,
         patternLifecycle(row.chart_pattern),
@@ -144,10 +145,17 @@
         ? `<div class="advisor-conflict">△ ${esc(item.decision_conflicts.join(", "))}</div>`
         : "";
       const meterWidth = Math.max(2, Math.min(100, Number(item.family_weight_pct || 0) * 5));
+      const visibleAction = item.evidence_state === "NEEDS_DATA" ? "NEEDS DATA" : item.action;
+      const actionKind = item.evidence_state === "NEEDS_DATA" ? "needs-data" : item.action;
+      const modelTier = item.evidence_state === "SCREENING_MODEL"
+        ? badge("SCREENING MODEL", "screening-model")
+        : item.evidence_state === "DOCUMENTED_MODEL"
+          ? badge("DOCUMENTED", "documented-model")
+          : badge("RESEARCH REQUIRED", "needs-data");
       return `<tr class="advisor-main-row">
         <td><strong class="advisor-symbol">${esc(item.symbol)}</strong><small>${esc(item.instrument_type)} · decision confidence ${item.action_confidence}%</small>${conflict}</td>
-        <td>${badge(item.action, item.action)}<br>${item.sell_type !== "NONE" ? badge(item.sell_type, "sell-type") : ""}<small>${item.sell_pct ? `${pct(item.sell_pct)} staged sale` : "No sale modeled"}</small></td>
-        <td><span class="advisor-scenarios">${pct(item.expected_3y_irr?.bear_pct)} / <strong>${pct(item.expected_3y_irr?.base_pct)}</strong> / ${pct(item.expected_3y_irr?.bull_pct)}</span><small>Bear / base / bull · ${esc(item.expected_3y_irr?.method || "unavailable")}</small></td>
+        <td>${badge(visibleAction, actionKind)}<br>${item.sell_type !== "NONE" ? badge(item.sell_type, "sell-type") : ""}<small>${item.sell_pct ? `${pct(item.sell_pct)} staged sale` : "No sale modeled"}</small></td>
+        <td><span class="advisor-scenarios">${pct(item.expected_3y_irr?.bear_pct)} / <strong>${pct(item.expected_3y_irr?.base_pct)}</strong> / ${pct(item.expected_3y_irr?.bull_pct)}</span><small>Bear / base / bull · ${esc(item.expected_3y_irr?.method || "unavailable")}</small>${modelTier}</td>
         <td>${badge(item.momentum_regime || "UNKNOWN", "momentum")}<br>${patternSummary(item.chart_pattern)}</td>
         <td>${pct(item.family_weight_pct)} → <strong>${pct(item.target_weight_pct)}</strong><div class="advisor-weight-meter"><i style="width:${meterWidth}%"></i></div><small>${money(item.consolidated_value)}</small></td>
         <td>${esc(item.hold_until?.type || "—")}<small>${esc(item.hold_until?.value || "—")}</small></td>
@@ -162,8 +170,10 @@
   function renderSummary() {
     const recs = payload.recommendations || [];
     const activePatterns = recs.filter((row) => patternBucket(row.chart_pattern) === "ACTIVE").length;
+    const screeningModels = recs.filter((row) => row.evidence_state === "SCREENING_MODEL").length;
+    const needsData = recs.filter((row) => row.evidence_state === "NEEDS_DATA").length;
     const stats = [
-      ["Holdings", recs.length, "across the family portfolio"],
+      ["Holdings", recs.length, `${screeningModels} screened · ${needsData} need research`],
       ["Sell / reduce", recs.filter((row) => ["SELL", "REDUCE"].includes(row.action)).length, "deterministic action queue"],
       ["Add / build", recs.filter((row) => ["ADD", "STRONG_ADD"].includes(row.action)).length, "within allocation limits"],
       ["Active setups", activePatterns, `${recs.filter((row) => row.decision_conflicts?.length).length} timing conflicts`],
@@ -185,7 +195,7 @@
       .map((row) => `<p><strong>${esc(row.symbol)}</strong> · ${esc(row.hold_until?.type)}<br><small>${esc(row.hold_until?.value)}</small></p>`).join("") || "<p>No pending review triggers.</p>";
     const status = payload.evidence_status || {};
     const runtime = payload.runtime || {};
-    document.getElementById("advisor-evidence-status").innerHTML = `<p><strong>${status.with_dated_evidence || 0}/${status.recommendations || 0}</strong> recommendations have dated evidence.</p><p>${status.stale_items || 0} stale · ${status.blocking_items || 0} blocking flags.</p><p>${runtime.patterns?.with_patterns || 0} local pattern scans attached. Shape scores are not calibrated probabilities.</p>`;
+    document.getElementById("advisor-evidence-status").innerHTML = `<p><strong>${status.documented_models || 0}</strong> documented models · <strong>${status.screening_models || 0}</strong> screening models · <strong>${status.needs_data || 0}</strong> need research.</p><p>${status.stale_items || 0} stale · ${status.blocking_items || 0} blocking flags.</p><p>Screening models are capped-confidence research signals, never automatic full exits.</p><p>${runtime.patterns?.with_patterns || 0} local pattern scans attached. Shape scores are not calibrated probabilities.</p>`;
   }
 
   async function load(refresh) {

@@ -21,10 +21,14 @@ def _mf_yahoo_candidates(isin: str) -> list[str]:
     return [f"{code}.NS", f"{code}.BO", code]
 
 
-def _nav_history(ticker_symbol: str) -> list[float]:
+def _nav_history(ticker_symbol: str, *, period: str = "3y") -> list[float]:
     try:
         with _quiet_yfinance():
-            frame = yf.Ticker(ticker_symbol).history(period="1y", interval="1d", auto_adjust=True)
+            frame = yf.Ticker(ticker_symbol).history(
+                period=period,
+                interval="1d",
+                auto_adjust=True,
+            )
     except Exception:
         return []
     if frame is None or frame.empty:
@@ -39,6 +43,16 @@ def _return_1y(closes: list[float]) -> float | None:
     if not first or first <= 0:
         return None
     return round(((last / first) - 1) * 100, 2)
+
+
+def _return_cagr(closes: list[float]) -> float | None:
+    if len(closes) < 500:
+        return None
+    first, last = closes[0], closes[-1]
+    years = len(closes) / 252
+    if first <= 0 or last <= 0 or years <= 0:
+        return None
+    return round((((last / first) ** (1 / years)) - 1) * 100, 2)
 
 
 def _recovery_upside(pct_from_52w_high: float | None) -> float | None:
@@ -62,12 +76,14 @@ def get_mf_metrics(isin: str, last_price: float | None) -> dict[str, Any]:
             if len(closes) >= 20:
                 break
 
-        high_52w = max(closes) if closes else None
-        return_1y = _return_1y(closes)
+        closes_1y = closes[-252:]
+        high_52w = max(closes_1y) if closes_1y else None
+        return_1y = _return_1y(closes_1y)
 
         metrics = {
             "high_52w": _safe_round(high_52w, 4) if high_52w else None,
             "return_1y_pct": return_1y,
+            "return_3y_cagr_pct": _return_cagr(closes),
             "nav_history_ok": bool(closes),
         }
         _MF_CACHE[cache_key] = (now, metrics)

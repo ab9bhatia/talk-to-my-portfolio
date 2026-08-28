@@ -70,6 +70,7 @@ def expected_three_year_irr(
     scenarios = inputs.get("scenarios") or {}
     current_price = _number(holding.get("last_price"))
     flags: list[DataQualityFlag] = []
+    evidence_tier = str(inputs.get("model_quality") or "documented")
 
     if method not in {"eps", "fund_build_up"}:
         flags.append(
@@ -88,6 +89,7 @@ def expected_three_year_irr(
                 probability_above_target=None,
                 method="unavailable",
                 assumptions=["No sourced, instrument-appropriate three-year model inputs."],
+                evidence_tier="needs_data",
             ),
             flags,
         )
@@ -102,7 +104,15 @@ def expected_three_year_irr(
             )
         )
         return (
-            ExpectedThreeYearIrr(None, None, None, None, "unavailable", []),
+            ExpectedThreeYearIrr(
+                None,
+                None,
+                None,
+                None,
+                "unavailable",
+                [],
+                "needs_data",
+            ),
             flags,
         )
 
@@ -131,6 +141,18 @@ def expected_three_year_irr(
             )
         )
 
+    if evidence_tier == "screening_proxy":
+        flags.append(
+            DataQualityFlag(
+                code="EXPECTED_RETURN_SCREENING_PROXY",
+                severity="info",
+                message=(
+                    "Three-year scenarios are a dated market-data screening model, "
+                    "not a filing/AMC-backed forecast."
+                ),
+            )
+        )
+
     return (
         ExpectedThreeYearIrr(
             bear_pct=values["bear"],
@@ -138,7 +160,15 @@ def expected_three_year_irr(
             bull_pct=values["bull"],
             probability_above_target=None,
             method=method,
-            assumptions=_assumption_lines(method, scenarios),
+            assumptions=(
+                [
+                    "Screening proxy only; verify against filings or AMC factsheets before execution."
+                ]
+                if evidence_tier == "screening_proxy"
+                else []
+            )
+            + _assumption_lines(method, scenarios),
+            evidence_tier=evidence_tier,
         ),
         flags,
     )

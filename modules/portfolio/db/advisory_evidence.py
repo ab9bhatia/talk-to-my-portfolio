@@ -126,3 +126,19 @@ def status(*, now: float | None = None) -> dict[str, Any]:
         "authoritative": int(row["authoritative"] or 0),
         "last_fetched_at": row["last_fetched_at"],
     }
+
+
+def delete_provider_source_types(provider: str, source_types: set[str]) -> int:
+    """Delete only a provider's explicitly selected source tiers."""
+    if not source_types:
+        return 0
+    init_db()
+    placeholders = ",".join("?" for _ in source_types)
+    params: list[Any] = [provider, *sorted(source_types)]
+    with connect() as conn:
+        cursor = conn.execute(
+            f"DELETE FROM advisory_evidence WHERE provider = ? "
+            f"AND source_type IN ({placeholders})",
+            params,
+        )
+    return int(cursor.rowcount or 0)

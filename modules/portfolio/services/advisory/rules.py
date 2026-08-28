@@ -44,6 +44,8 @@ def _confidence(
         confidence = min(confidence, 45)
     if _has_flag(flags, "EXPECTED_RETURN_PROVENANCE_MISSING"):
         confidence = min(confidence, 60)
+    if _has_flag(flags, "EXPECTED_RETURN_SCREENING_PROXY"):
+        confidence = min(confidence, 55)
     if any(flag.blocking for flag in flags):
         confidence = min(confidence, 45)
     return max(10, min(95, confidence))
@@ -95,6 +97,8 @@ def select_action(
     trace: list[dict[str, Any]] = []
     weight = float(holding.get("family_weight_pct") or 0)
     confidence = _confidence(assessment, expected_return, flags)
+    screening_proxy = expected_return.evidence_tier == "screening_proxy"
+    scenario_label = "screening" if screening_proxy else "documented"
     pattern = holding.get("_chart_pattern")
     if pattern and pattern.active:
         trace.append(
@@ -263,12 +267,20 @@ def select_action(
             )
         else:
             candidate = _decision(
-                action=Action.STRONG_ADD,
+                action=Action.ADD if screening_proxy else Action.STRONG_ADD,
                 sell_type=SellType.NONE,
                 sell_pct=0,
-                target_weight=min(max_position_pct, max(1.0, weight + 2.0)),
+                target_weight=min(
+                    max_position_pct,
+                    max(1.0, weight + (0.5 if screening_proxy else 2.0)),
+                ),
                 confidence=confidence,
-                why="The documented base scenario exceeds the strong-add return band.",
+                why=(
+                    "The screening base scenario clears the add band; confirm it against "
+                    "filings before execution."
+                    if screening_proxy
+                    else "The documented base scenario exceeds the strong-add return band."
+                ),
                 hold_type="result",
                 hold_value="Next result or material thesis change",
                 trace=trace,
@@ -284,7 +296,10 @@ def select_action(
             if action is Action.CAP
             else min(max_position_pct, max(1.0, weight + 1.0)),
             confidence=confidence,
-            why="The documented base scenario is in the add band, subject to position limits.",
+            why=(
+                f"The {scenario_label} base scenario is in the add band, subject to "
+                "position limits."
+            ),
             hold_type="result",
             hold_value="Next result or material thesis change",
             trace=trace,
@@ -296,7 +311,7 @@ def select_action(
             sell_pct=0,
             target_weight=min(weight, max_position_pct),
             confidence=confidence,
-            why="The documented base scenario supports holding, but not an unconditional add.",
+            why=f"The {scenario_label} base scenario supports holding, but not an unconditional add.",
             hold_type="result",
             hold_value="Next result and valuation refresh",
             trace=trace,
@@ -308,7 +323,7 @@ def select_action(
             sell_pct=0,
             target_weight=min(weight, max_position_pct),
             confidence=confidence,
-            why="The documented base scenario is adequate for holding but below the add hurdle.",
+            why=f"The {scenario_label} base scenario is adequate for holding but below the add hurdle.",
             hold_type="result",
             hold_value="Next result and valuation refresh",
             trace=trace,
@@ -333,17 +348,36 @@ def select_action(
         has_overlap or weight < 0.5 or holding.get("replacement_available") is True
     )
     if consolidation:
-        action = Action.SELL
-        sell_type = SellType.PORTFOLIO_CONSOLIDATION
-        sell_pct = 100.0
-        target = 0.0
-        why = "Low expected return plus overlap/subscale portfolio fit supports consolidation."
+        if screening_proxy:
+            action = Action.REDUCE
+            sell_type = SellType.TACTICAL_REDUCE
+            sell_pct = 25.0
+            target = weight * 0.75
+            why = (
+                "Low proxy return plus overlap/subscale fit supports only a staged research "
+                "reduction; a full exit requires documented evidence."
+            )
+            trace.append(
+                {
+                    "rule": "SCREENING_PROXY_BLOCKS_FULL_EXIT",
+                    "matched": True,
+                    "selected_sell_pct": sell_pct,
+                }
+            )
+        else:
+            action = Action.SELL
+            sell_type = SellType.PORTFOLIO_CONSOLIDATION
+            sell_pct = 100.0
+            target = 0.0
+            why = "Low expected return plus overlap/subscale portfolio fit supports consolidation."
     else:
         action = Action.REDUCE
         sell_type = SellType.TACTICAL_REDUCE
         sell_pct = 25.0 if base_irr >= 8 else 50.0
         if weight > max_position_pct:
             sell_pct = max(sell_pct, (1 - (max_position_pct / weight)) * 100)
+        if screening_proxy:
+            sell_pct = min(sell_pct, 25.0)
         target = weight * (1 - sell_pct / 100)
         why = "Expected return is below the hold hurdle; use a staged tactical reduction."
         if holding.get("is_cyclical") and holding.get("momentum_regime") in {
@@ -389,6 +423,21 @@ def select_action(
                 "matched": True,
                 "original_sell_pct": round(original_sell_pct, 2),
                 "selected_sell_pct": round(sell_pct, 2),
+            }
+        )
+
+    if screening_proxy and sell_type is not SellType.NONE and sell_pct > 25:
+        original_sell_pct = sell_pct
+        action = Action.REDUCE
+        sell_type = SellType.TACTICAL_REDUCE
+        sell_pct = 25.0
+        target = weight * 0.75
+        trace.append(
+            {
+                "rule": "SCREENING_PROXY_CAPS_REDUCTION",
+                "matched": True,
+                "original_sell_pct": round(original_sell_pct, 2),
+                "selected_sell_pct": sell_pct,
             }
         )
 

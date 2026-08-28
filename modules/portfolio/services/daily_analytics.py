@@ -18,6 +18,74 @@ def _pct_change(current: float, previous: float) -> float | None:
     return round((current - previous) / previous * 100, 2)
 
 
+def _carry_forward_amount(
+    current: float | None,
+    *,
+    previous: float | None,
+    has_snapshot: bool,
+) -> tuple[float | None, bool]:
+    """
+    When a date has no snapshot, reuse the previous amount instead of zero.
+
+    If a snapshot exists but reports 0 while we already had a non-zero balance,
+    treat that as missing data as well (common with sparse sheet imports).
+    """
+    if current is None or not has_snapshot:
+        if previous is not None:
+            return previous, True
+        return None, False
+    value = float(current)
+    if value == 0 and previous not in (None, 0):
+        return previous, True
+    return value, False
+
+
+def _forward_fill_growth_series(series: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Carry family totals forward across days with missing snapshots."""
+    out: list[dict[str, Any]] = []
+    prev_current: float | None = None
+    prev_invested: float | None = None
+    prev_pnl: float | None = None
+    prev_pnl_pct: float | None = None
+
+    for row in series:
+        carried = False
+        current, cf_cur = _carry_forward_amount(
+            row.get("total_current"), previous=prev_current, has_snapshot=True
+        )
+        invested, cf_inv = _carry_forward_amount(
+            row.get("total_invested"), previous=prev_invested, has_snapshot=True
+        )
+        carried = cf_cur or cf_inv
+
+        pnl = row.get("total_pnl")
+        pnl_pct = row.get("total_pnl_pct")
+        if carried and prev_pnl is not None:
+            pnl = prev_pnl
+            pnl_pct = prev_pnl_pct
+
+        if current is not None:
+            prev_current = current
+        if invested is not None:
+            prev_invested = float(invested)
+        if pnl is not None:
+            prev_pnl = float(pnl)
+        if pnl_pct is not None:
+            prev_pnl_pct = float(pnl_pct)
+
+        out.append(
+            {
+                **row,
+                "total_current": current,
+                "total_invested": invested,
+                "total_pnl": pnl,
+                "total_pnl_pct": pnl_pct,
+                "carried_forward": carried,
+            }
+        )
+    return out
+
+
 def _delta_row(
     *,
     key: str,
@@ -53,7 +121,9 @@ def _group_positions(
 def build_growth_dashboard(*, days: int = 90) -> dict[str, Any]:
     """Family-level series plus day-over-day breakdown by account, cap, asset class."""
     status = daily_history.daily_status()
-    series = daily_history.growth_series(scope="family", account_id=None, days=days)
+    series = _forward_fill_growth_series(
+        daily_history.growth_series(scope="family", account_id=None, days=days)
+    )
 
     latest_day = series[-1]["day_date"] if series else None
     previous_day = series[-2]["day_date"] if len(series) >= 2 else None
@@ -230,23 +300,48 @@ def _account_matrix_for_days(
         key=lambda aid: latest_by_account.get(aid, 0.0),
         reverse=True,
     )
+    filled_by_day: dict[str, dict[str, dict[str, Any]]] = {d: {} for d in day_dates}
     account_series: list[dict[str, Any]] = []
     for aid in ordered_accounts:
         meta = account_meta[aid]
-        account_series.append(
-            {
-                **meta,
-                "series": [
-                    {
-                        "day_date": day,
-                        "total_current": by_day[day].get(aid, {}).get("value"),
-                        "total_invested": by_day[day].get(aid, {}).get("invested"),
-                        "source": by_day[day].get(aid, {}).get("source"),
-                    }
-                    for day in day_dates
-                ],
+        last_value: float | None = None
+        last_invested: float | None = None
+        points: list[dict[str, Any]] = []
+        for day in day_dates:
+            raw = by_day[day].get(aid)
+            has_snapshot = raw is not None
+            raw_value = float(raw["value"]) if raw and raw.get("value") is not None else None
+            raw_invested = float(raw["invested"]) if raw and raw.get("invested") is not None else None
+
+            value, cf_value = _carry_forward_amount(
+                raw_value, previous=last_value, has_snapshot=has_snapshot
+            )
+            invested, cf_invested = _carry_forward_amount(
+                raw_invested, previous=last_invested, has_snapshot=has_snapshot
+            )
+            carried = cf_value or cf_invested
+            if value is not None:
+                last_value = value
+            if invested is not None:
+                last_invested = invested
+
+            cell = {
+                "value": round(value, 2) if value is not None else None,
+                "invested": round(invested, 2) if invested is not None else None,
+                "source": "carried_forward" if carried else (raw or {}).get("source"),
+                "carried_forward": carried,
             }
-        )
+            filled_by_day[day][aid] = cell
+            points.append(
+                {
+                    "day_date": day,
+                    "total_current": cell["value"],
+                    "total_invested": cell["invested"],
+                    "source": cell["source"],
+                    "carried_forward": carried,
+                }
+            )
+        account_series.append({**meta, "series": points})
 
     family_map = {str(s["day_date"]): s for s in family_series}
     timeline_table: list[dict[str, Any]] = []
@@ -255,12 +350,15 @@ def _account_matrix_for_days(
         timeline_table.append(
             {
                 "day_date": day,
-                "family_value": float(fam.get("total_current") or 0),
-                "family_invested": float(fam.get("total_invested") or 0),
-                "family_pnl_pct": float(fam.get("total_pnl_pct") or 0),
+                "family_value": fam.get("total_current"),
+                "family_invested": fam.get("total_invested"),
+                "family_pnl_pct": fam.get("total_pnl_pct"),
                 "source": fam.get("source"),
+                "carried_forward": bool(fam.get("carried_forward")),
                 "accounts": {
-                    account_meta[aid]["code"]: by_day[day].get(aid, {"value": None, "invested": None})
+                    account_meta[aid]["code"]: filled_by_day[day].get(
+                        aid, {"value": None, "invested": None}
+                    )
                     for aid in ordered_accounts
                 },
             }

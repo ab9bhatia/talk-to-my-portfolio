@@ -22,6 +22,13 @@ _PROFILE_FIELDS = (
 _MERGED_FIELDS = (
     "last_price",
     "pe_ratio",
+    "trailing_pe",
+    "forward_pe",
+    "trailing_eps",
+    "forward_eps",
+    "dividend_yield_pct",
+    "return_3y_cagr_pct",
+    "three_year_average_return_pct",
     "roce",
     "debt_to_equity",
     "free_cash_flow_positive",
