@@ -12,6 +12,8 @@
   const timelineHead = document.getElementById("growth-timeline-head");
   const timelineBody = document.getElementById("growth-timeline-body");
   const daysSelect = document.getElementById("growth-days-select");
+  const insightsPanel = document.getElementById("growth-insights-panel");
+  const comparisonPanel = document.getElementById("growth-comparison-panel");
   const tabs = document.querySelectorAll(".growth-tab[data-breakdown]");
 
   let growthChart = null;
@@ -49,37 +51,51 @@
         '<p class="text-muted">Record at least two days (refresh portfolio on consecutive days) to see day-over-day movement.</p>';
       return;
     }
-    const changeHtml =
-      dc.change != null
-        ? `<span class="${changeClass(dc.change)}">${formatInr(dc.change)} (${formatPct(dc.change_pct)})</span>`
-        : "<span class=\"text-muted\">First day recorded</span>";
+    const firstDay = dc.change == null;
+    const changeHtml = firstDay
+      ? '<span class="growth-stat-guidance">1 more market close</span>'
+      : `<span class="${changeClass(dc.change)}">${formatInr(dc.change)} (${formatPct(dc.change_pct)})</span>`;
+    const investedHtml = firstDay
+      ? '<span class="growth-stat-guidance">5 sessions</span>'
+      : `<span class="${changeClass(dc.invested_change)}">${dc.invested_change != null ? formatInr(dc.invested_change) : "—"}</span>`;
     cardsEl.innerHTML = `
       <article class="growth-stat-card">
         <p class="growth-stat-label">Portfolio value · ${dc.latest_day || "—"}</p>
         <p class="growth-stat-value">${formatInr(dc.value)}</p>
       </article>
       <article class="growth-stat-card">
-        <p class="growth-stat-label">vs ${dc.previous_day || "prior day"}</p>
+        <p class="growth-stat-label">${firstDay ? "Trend unlock" : `vs ${dc.previous_day || "prior day"}`}</p>
         <p class="growth-stat-value">${changeHtml}</p>
       </article>
       <article class="growth-stat-card">
-        <p class="growth-stat-label">Invested change</p>
-        <p class="growth-stat-value ${changeClass(dc.invested_change)}">${dc.invested_change != null ? formatInr(dc.invested_change) : "—"}</p>
+        <p class="growth-stat-label">${firstDay ? "Useful baseline" : "Invested change"}</p>
+        <p class="growth-stat-value">${investedHtml}</p>
       </article>
     `;
   }
 
   function renderChart(series) {
     if (!chartEl || typeof Chart === "undefined") return;
-    if (!series || series.length < 1) {
-      if (chartEmpty) chartEmpty.hidden = false;
+    const points = series || [];
+    const hasComparison = points.length >= 2;
+    if (insightsPanel) insightsPanel.hidden = !hasComparison;
+    if (comparisonPanel) comparisonPanel.hidden = !hasComparison;
+    if (!hasComparison) {
+      chartEl.hidden = true;
+      if (chartEmpty) {
+        chartEmpty.hidden = false;
+        chartEmpty.innerHTML = points.length === 1
+          ? '<strong>Baseline recorded.</strong><span>Record another market close to unlock the trend. Five sessions gives a useful weekly baseline; 20 sessions makes drawdown and benchmark comparison meaningful.</span>'
+          : '<strong>No market-close snapshot yet.</strong><span>Open Dashboard, refresh live after the market closes, then return here.</span>';
+      }
       if (growthChart) {
         growthChart.destroy();
         growthChart = null;
       }
       return;
     }
-    if (chartEmpty) chartEmpty.hidden = series.length >= 1;
+    chartEl.hidden = false;
+    if (chartEmpty) chartEmpty.hidden = true;
     const labels = series.map((p) => p.day_date);
     const values = series.map((p) => p.total_current);
     const invested = series.map((p) => p.total_invested);

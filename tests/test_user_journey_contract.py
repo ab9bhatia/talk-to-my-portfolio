@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+from shared.web.formatters import format_quote_price_whole
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -20,6 +22,31 @@ def test_growth_single_snapshot_has_a_finite_explanation():
     script = _read("shared/web/static/js/portfolio-growth.js")
     assert "Need two daily snapshots" in script
     assert "pct: -Infinity" not in script
+
+
+def test_growth_single_snapshot_is_guided_instead_of_charting_one_point():
+    script = _read("shared/web/static/js/portfolio-growth.js")
+    template = _read("shared/web/templates/portfolio/growth.html")
+    assert "const hasComparison = points.length >= 2;" in script
+    assert "Five sessions gives a useful weekly baseline" in script
+    assert 'id="growth-insights-panel"' in template
+    assert 'id="growth-comparison-panel"' in template
+
+
+def test_holding_target_shows_native_price_and_setup_stays_in_symbol_column():
+    row = _read("shared/web/templates/portfolio/_holding_row.html")
+    script = _read("shared/web/static/js/holdings.js")
+    styles = _read("shared/web/static/css/app.css")
+    assert "format_quote_price_whole(h.get('target_price'), h.exchange)" in row
+    assert "const compactMove" in script
+    assert ".pattern-pill-wrap {\n  display: block;\n  max-width: 100%;" in styles
+    assert ".pattern-pill-text {\n  min-width: 0;\n  overflow: hidden;" in styles
+
+
+def test_target_price_uses_native_quote_currency():
+    assert format_quote_price_whole(2037.4, "NSE") == "₹2,037"
+    assert format_quote_price_whole(187.6, "US") == "$188"
+    assert format_quote_price_whole(None, "US") == "—"
 
 
 def test_action_center_uses_progressive_pattern_enrichment():

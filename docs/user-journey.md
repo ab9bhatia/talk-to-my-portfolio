@@ -47,14 +47,15 @@ Pass conditions:
 
 ### 3. Growth — track
 
-1. Open Growth after at least one live dashboard refresh.
-2. Select a time range.
-3. Compare portfolio value, indexed performance, account mix, benchmark, and attribution.
-4. Inspect account, market-cap, asset-class, or sector breakdowns.
+1. Record one snapshot after each market close; do not use intraday refreshes as performance history.
+2. Open Growth for the weekly review rather than as the daily landing page.
+3. After two closes, select a time range and compare portfolio value, indexed performance, account mix, benchmark, and attribution.
+4. Inspect account, market-cap, asset-class, or sector breakdowns; treat invested change as a contribution/trading proxy, not true time-weighted return.
 
 Pass conditions:
 
 - One recorded day shows `Need two daily snapshots` for best-day analysis, never an infinite value.
+- One recorded day replaces the empty one-point chart with the next useful recording milestones.
 - Missing history explains how to create the first snapshot.
 - Tables remain usable on desktop and mobile without page-level horizontal overflow.
 
@@ -88,6 +89,30 @@ Pass conditions:
 - The UI clearly reports a missing provider key or stream error.
 - No prompt is sent until the user explicitly submits it.
 - Account IDs, quantities, values, tax details, and proceeds remain local unless the explicit privacy override permits them.
+
+## Daily operating rhythm
+
+### After market close — 5 minutes
+
+1. Open Dashboard and confirm every enabled account is `Live` or clearly labelled as a cached snapshot.
+2. Click **Refresh live** once, check account freshness, and investigate only failed or stale accounts.
+3. Scan holdings for concentration, unusual price moves, and setup/street conflicts; expand evidence before acting.
+4. Open Action Center and review `SELL / REDUCE`, `ADD / BUILD`, and signal conflicts. Fundamentals decide the action; patterns only time execution.
+5. Open Growth and record the market close once. A single day is a baseline, five sessions is a useful weekly view, and roughly 20 sessions makes drawdown and benchmark comparisons more meaningful.
+
+### Weekly — 20 minutes
+
+1. Review Growth for portfolio trend, drawdown, benchmark gap, account attribution, and allocation drift.
+2. Review Action Center changes since the prior week and inspect evidence dates before making a broker-side trade.
+3. Use Portfolio Agent for one focused question, such as concentration risk or why two signals conflict.
+
+### Monthly — 45 minutes
+
+1. Reconfirm goals and allocation guardrails in Setup & Config.
+2. Review cash flows, tax lots, stale evidence, duplicated exposure, and positions too small to matter.
+3. Record any external broker actions in the source system, refresh all accounts, and verify that the consolidated portfolio reconciles.
+
+Growth should remain in the product, but it is a review surface—not the daily command center. Today its value-change view can mix market movement with contributions and trades. A future performance milestone should add a cash-flow ledger plus time-weighted return/XIRR before the app presents return attribution as investment skill.
 
 ## Failure recovery
 

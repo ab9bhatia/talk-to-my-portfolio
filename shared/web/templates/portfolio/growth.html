@@ -17,14 +17,14 @@
         <p class="dash-eyebrow">Daily history</p>
         <h1 class="dash-title">Portfolio growth</h1>
         <p class="dash-lead">
-          Day-by-day portfolio value after each <strong>Refresh live</strong> on the dashboard.
-          Compare movement across accounts, market cap, and asset class.
+          Record one snapshot after each market close, then review this page weekly.
+          Compare value, drawdown, benchmark, and allocation movement without reacting to intraday noise.
         </p>
       </div>
       <div class="dash-hero-actions">
         <a href="{{ app_path('/portfolio') }}" class="dash-btn dash-btn-ghost js-show-loader">← Dashboard</a>
         <a href="{{ app_path('/portfolio/growth') }}?refresh=1&amp;days={{ days }}" class="dash-btn dash-btn-primary js-show-loader">
-          Record today
+          Record market close
         </a>
       </div>
     </div>
@@ -64,13 +64,13 @@
     </div>
     <div class="growth-chart-wrap">
       <canvas id="growth-daily-chart" height="200" aria-label="Daily portfolio value"></canvas>
-      <p id="growth-chart-empty" class="text-muted growth-chart-empty" hidden>
+      <p id="growth-chart-empty" class="text-muted growth-chart-empty growth-chart-empty--guide" hidden>
         Need at least one live refresh to record today. Open the dashboard and click <strong>Refresh live</strong>.
       </p>
     </div>
   </section>
 
-  <section class="dash-panel growth-panel" aria-labelledby="growth-visuals-title">
+  <section class="dash-panel growth-panel" id="growth-insights-panel" aria-labelledby="growth-visuals-title">
     <h2 class="growth-panel-title" id="growth-visuals-title">Insights & visuals</h2>
     <div class="growth-change-cards" id="growth-insights-cards">
       <p class="growth-loading text-muted">Calculating insights…</p>
@@ -95,7 +95,7 @@
     </div>
   </section>
 
-  <section class="dash-panel growth-panel" aria-labelledby="growth-breakdown-title">
+  <section class="dash-panel growth-panel" id="growth-comparison-panel" aria-labelledby="growth-breakdown-title">
     <h2 class="growth-panel-title" id="growth-breakdown-title">Day-over-day change</h2>
     <p class="growth-breakdown-hint text-muted" id="growth-breakdown-hint"></p>
     <div class="growth-tabs" role="tablist">
@@ -140,5 +140,5 @@
   </section>
 </div>
 
-<script src="{{ app_path('/static/js/portfolio-growth.js') }}?v=20260828-user-journey-2" defer></script>
+<script src="{{ app_path('/static/js/portfolio-growth.js') }}?v=20260828-guided-growth" defer></script>
 {% endblock %}

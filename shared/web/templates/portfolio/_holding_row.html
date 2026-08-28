@@ -56,7 +56,10 @@
     {{ format_na_compact(h.get('pct_from_52w_high'), "%") }}
   </td>
   <td class="col-upside text-right {{ pnl_class(h.get('upside_pct')) }}">
-    {{ format_na_compact(h.get('upside_pct'), "%") }}
+    <span class="target-upside-value">{{ format_na_compact(h.get('upside_pct'), "%") }}</span>
+    {% if h.get('target_price') is not none %}
+    <span class="cell-sub target-price">({{ format_quote_price_whole(h.get('target_price'), h.exchange) }})</span>
+    {% endif %}
   </td>
   <td class="col-signal">
     {% include "portfolio/_rating_cell_compact.html" %}

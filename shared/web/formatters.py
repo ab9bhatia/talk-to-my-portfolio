@@ -37,6 +37,18 @@ def format_inr_whole(value: float | int | None) -> str:
     return f"₹{num:,.0f}"
 
 
+def format_quote_price_whole(
+    value: float | int | None,
+    exchange: str | None = None,
+) -> str:
+    """Compact native quote price for analyst targets."""
+    num = _coerce_number(value)
+    if num is None:
+        return "—"
+    symbol = "$" if str(exchange or "").upper() == "US" else "₹"
+    return f"{symbol}{num:,.0f}"
+
+
 def format_aed(value: float | int | None) -> str:
     """Format a number as UAE Dirhams."""
     if value is None:

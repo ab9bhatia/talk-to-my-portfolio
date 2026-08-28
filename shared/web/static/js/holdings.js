@@ -1928,6 +1928,9 @@
     const move = primary.bias === "bearish"
       ? `Risk ${remaining.toFixed(1)}% downside`
       : `Potential +${remaining.toFixed(1)}%`;
+    const compactMove = primary.bias === "bearish"
+      ? `−${remaining.toFixed(1)}%`
+      : `+${remaining.toFixed(1)}%`;
     const horizon = primary.estimated_horizon || {};
     const window = horizon.min_trading_days != null
       ? `${horizon.min_trading_days}–${horizon.max_trading_days} sessions`
@@ -1944,7 +1947,7 @@
       `title="${tip.replace(/"/g, "&quot;")}" data-pattern-expand="1">` +
       `<span class="pattern-pill-arrow" aria-hidden="true">${arrow}</span>` +
       `<span class="pattern-pill-text">${primary.label}</span>` +
-      `<span class="pattern-pill-upside">${escapeHtml(move)}</span>` +
+      `<span class="pattern-pill-upside">${escapeHtml(compactMove)}</span>` +
       `</button>`
     );
   }
