@@ -44,7 +44,7 @@
   let scanData = null;
   let sortKey = "lifecycle";
   let sortOrder = "asc";
-  let activeFilter = "all";
+  let activeFilter = "actionable";
 
   function escapeHtml(value) {
     return String(value ?? "")
@@ -71,6 +71,14 @@
       pattern.bias === "bearish"
         ? pattern.remaining_downside_pct ?? Math.abs(pattern.upside_to_target_pct ?? 0)
         : pattern.remaining_upside_pct ?? Math.max(0, pattern.upside_to_target_pct ?? 0),
+    );
+  }
+
+  function isActionable(pattern) {
+    return (
+      pattern?.target_status === "ACTIVE" &&
+      ["BUILDING", "NEAR_BREAKOUT", "CONFIRMED", "RETESTING"].includes(lifecycleOf(pattern)) &&
+      remainingOf(pattern) >= 14.9
     );
   }
 
@@ -104,6 +112,7 @@
     const pattern = primaryOf(row);
     if (!pattern || activeFilter === "all") return Boolean(pattern);
     const lifecycle = lifecycleOf(pattern);
+    if (activeFilter === "actionable") return isActionable(pattern);
     if (activeFilter === "bullish") {
       return pattern.bias === "bullish" && ["CONFIRMED", "RETESTING"].includes(lifecycle) && pattern.target_status === "ACTIVE";
     }
@@ -162,7 +171,9 @@
         : "patterns-move--bull";
     const moveText = completed
       ? targetStatus.replaceAll("_", " ").toLowerCase()
-      : `${remaining.toFixed(1)}% ${pattern.bias === "bearish" ? "downside" : "upside"}`;
+      : pattern.bias === "bearish"
+        ? `Risk ${remaining.toFixed(1)}% downside`
+        : `Potential +${remaining.toFixed(1)}%`;
     const probability = pattern.calibrated_target_hit_probability;
     const probabilityText = probability == null
       ? "Not calibrated"
@@ -186,25 +197,26 @@
   function render(data) {
     const all = (data.holdings || []).filter((row) => primaryOf(row));
     const count = (predicate) => all.filter((row) => predicate(primaryOf(row))).length;
-    const active = count((pattern) => ["CONFIRMED", "RETESTING"].includes(lifecycleOf(pattern)) && pattern.target_status === "ACTIVE");
     const bullish = count((pattern) => pattern.bias === "bullish" && ["CONFIRMED", "RETESTING"].includes(lifecycleOf(pattern)) && pattern.target_status === "ACTIVE");
     const bearish = count((pattern) => pattern.bias === "bearish" && ["CONFIRMED", "RETESTING"].includes(lifecycleOf(pattern)) && pattern.target_status === "ACTIVE");
     const building = count((pattern) => ["BUILDING", "NEAR_BREAKOUT"].includes(lifecycleOf(pattern)));
     const completed = count((pattern) => ["TARGET_ACHIEVED", "TARGET_OVERSHOT"].includes(lifecycleOf(pattern)));
     const inactive = count((pattern) => ["FAILED_BREAKOUT", "EXPIRED", "INVALIDATED"].includes(lifecycleOf(pattern)));
+    const actionable = count(isActionable);
     const rows = visibleRows(data);
     const asOf = data.as_of ? `Data through ${escapeHtml(data.as_of)}` : "Latest available daily bar";
 
     body.innerHTML = `
       <div class="patterns-overview">
-        <article class="patterns-metric"><strong>${all.length}</strong><span>Setups detected</span></article>
-        <article class="patterns-metric"><strong>${active}</strong><span>Active confirmed</span></article>
+        <article class="patterns-metric"><strong>${all.length}</strong><span>Patterns detected</span></article>
+        <article class="patterns-metric"><strong>${actionable}</strong><span>Actionable setups</span></article>
         <article class="patterns-metric"><strong>${building}</strong><span>Building / near</span></article>
         <article class="patterns-metric"><strong>${completed}</strong><span>Targets completed</span></article>
       </div>
       <div class="patterns-radar-toolbar">
         <div class="patterns-filter-list" role="group" aria-label="Filter pattern lifecycle">
-          ${filterButton("all", "All", all.length)}
+          ${filterButton("actionable", "Actionable now", actionable)}
+          ${filterButton("all", "All history", all.length)}
           ${filterButton("bullish", "Confirmed bullish", bullish)}
           ${filterButton("bearish", "Confirmed bearish", bearish)}
           ${filterButton("building", "Building", building)}

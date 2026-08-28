@@ -6,8 +6,6 @@ import time
 from typing import Any
 
 import yfinance as yf
-
-from modules.portfolio.services.analyst_rating import compute_rating
 from modules.portfolio.services.market_data import _pct_from_52w_high, _quiet_yfinance, _safe_round
 
 _MF_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
@@ -98,29 +96,15 @@ def get_mf_metrics(isin: str, last_price: float | None) -> dict[str, Any]:
         return metrics
 
     metrics["pct_from_52w_high"] = _pct_from_52w_high(nav, metrics.get("high_52w"))
-    metrics["upside_pct"] = _recovery_upside(metrics.get("pct_from_52w_high"))
-
-    rating = compute_rating(
-        upside_pct=metrics.get("upside_pct"),
-        target_price=metrics.get("high_52w"),
-        last_price=nav,
+    metrics["recovery_to_52w_high_pct"] = _recovery_upside(
+        metrics.get("pct_from_52w_high")
     )
-    if rating.get("label") and metrics.get("nav_history_ok"):
-        rating["source"] = "nav_52w"
-        reasons = [
-            "Mutual fund signal uses NAV vs 52-week high and trailing 1Y NAV return (no analyst targets).",
-        ]
-        pct = metrics.get("pct_from_52w_high")
-        if pct is not None:
-            reasons.append(f"Current NAV is {pct:+.1f}% vs 52-week NAV high.")
-        ret = metrics.get("return_1y_pct")
-        if ret is not None:
-            reasons.append(f"Trailing 1Y NAV return: {ret:+.1f}%.")
-        rating["reasons"] = reasons
-
-    metrics["rating_label"] = rating.get("label")
-    metrics["rating_slug"] = rating.get("slug")
-    metrics["rating_source"] = rating.get("source")
-    metrics["rating_reasons"] = rating.get("reasons", [])
-    metrics["rating_rank"] = rating.get("rank")
+    metrics["upside_pct"] = None
+    metrics["rating_label"] = None
+    metrics["rating_slug"] = None
+    metrics["rating_source"] = "unavailable"
+    metrics["rating_reasons"] = [
+        "Mutual-fund NAV distance and trailing return are context, not analyst recommendations."
+    ]
+    metrics["rating_rank"] = None
     return metrics

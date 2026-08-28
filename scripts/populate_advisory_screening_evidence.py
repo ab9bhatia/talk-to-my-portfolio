@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import time
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime
@@ -154,7 +155,13 @@ def _enrich_one(
     return row, observations
 
 
-def populate(*, output: Path, workers: int, force_refresh: bool) -> dict[str, Any]:
+def populate(
+    *,
+    output: Path,
+    workers: int,
+    force_refresh: bool,
+    ttl_days: int = 7,
+) -> dict[str, Any]:
     family = fetch_family_portfolio(refresh=False, stale_ok=True)
     holdings = _unique_holdings(family)
     existing = _load_existing(output)
@@ -189,6 +196,12 @@ def populate(*, output: Path, workers: int, force_refresh: bool) -> dict[str, An
                 model_type = str(getattr(instrument_value, "value", instrument_value))
                 modeled_types[model_type] += 1
             generated.extend(observations)
+
+    fetched_at = time.time()
+    expires_at = fetched_at + max(1, ttl_days) * 24 * 60 * 60
+    for observation in generated:
+        observation["fetched_at"] = fetched_at
+        observation["expires_at"] = expires_at
 
     output.parent.mkdir(parents=True, exist_ok=True)
     payload = {
@@ -228,6 +241,7 @@ def main() -> int:
     )
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--workers", type=int, default=6)
+    parser.add_argument("--ttl-days", type=int, default=7)
     parser.add_argument(
         "--cached-only",
         action="store_true",
@@ -238,6 +252,7 @@ def main() -> int:
         output=args.output,
         workers=args.workers,
         force_refresh=not args.cached_only,
+        ttl_days=args.ttl_days,
     )
     print(json.dumps(summary, indent=2, sort_keys=True))
     return 0

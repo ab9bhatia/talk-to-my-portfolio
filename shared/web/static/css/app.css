@@ -306,6 +306,26 @@ a:hover {
   background: rgba(248, 113, 113, 0.12);
 }
 
+.rating-badge.rating-conflict {
+  color: #fcd34d;
+  border-color: rgba(251, 191, 36, 0.62);
+  background: rgba(120, 53, 15, 0.28);
+  box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.08);
+}
+
+.rating-badge.rating-conflict span {
+  display: inline-grid;
+  place-items: center;
+  width: 0.9rem;
+  height: 0.9rem;
+  margin-left: 0.22rem;
+  border-radius: 50%;
+  color: #1c1917;
+  background: #fcd34d;
+  font-size: 0.62rem;
+  letter-spacing: 0;
+}
+
 .detail-header-row {
   display: flex;
   align-items: center;

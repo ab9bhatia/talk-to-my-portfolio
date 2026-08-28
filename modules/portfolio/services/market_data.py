@@ -365,6 +365,7 @@ def apply_symbol_metric_overrides(metrics: dict[str, Any], symbol: str) -> None:
     if sector:
         metrics["sector"] = sector
         _remember_sector_reference(symbol, metrics.get("exchange") or "NSE", sector, source="seed")
+    enforce_rating_semantics(metrics)
 
 
 def apply_holdings_metric_overrides(holdings: list[dict[str, Any]]) -> None:
@@ -865,55 +866,60 @@ def get_stock_metrics(
     metrics["rating_rank"] = rating.get("rank")
     if technical if technical is not None else _technical_on_load():
         _attach_technical_metrics(metrics, symbol, exchange, last_price)
-    _apply_price_based_signal(metrics, last_price=last_price, exchange=exchange)
+    _apply_price_context(metrics, last_price=last_price, exchange=exchange)
     apply_symbol_metric_overrides(metrics, symbol)
 
     return metrics
 
 
-def _apply_price_based_signal(
+def enforce_rating_semantics(metrics: dict[str, Any]) -> None:
+    """Keep recovery-to-high context separate from analyst ratings and targets.
+
+    A previous fallback converted distance from the 52-week high into both upside
+    and a Strong buy/Buy grade. That is not analyst evidence and made falling
+    securities look like recommendations. This also sanitizes already-cached
+    portfolio snapshots, so a broker refresh is not required for the correction.
+    """
+    source = str(metrics.get("rating_source") or "").strip().lower()
+    non_analyst_sources = {"price_52w", "nav_52w", "52w", "price_momentum"}
+    inconsistent_target_rating = source == "upside" and metrics.get("target_price") is None
+    if source not in non_analyst_sources and not inconsistent_target_rating:
+        return
+
+    recovery = metrics.get("recovery_to_52w_high_pct")
+    if recovery is None:
+        recovery = metrics.get("upside_pct")
+    if recovery is None:
+        recovery = _recovery_upside(metrics.get("pct_from_52w_high"))
+    metrics["recovery_to_52w_high_pct"] = _safe_round(recovery)
+    metrics["upside_pct"] = None
+    metrics["rating_label"] = None
+    metrics["rating_slug"] = None
+    metrics["rating_rank"] = None
+    metrics["rating_source"] = "unavailable"
+    metrics["buy_thesis"] = None
+    metrics["rating_reasons"] = [
+        "Distance from the 52-week high is recovery context, not an analyst rating or buy signal."
+    ]
+
+
+def _apply_price_context(
     metrics: dict[str, Any],
     *,
     last_price: float | None,
     exchange: str | None,
 ) -> None:
-    """Fill upside + signal from 52W price action when Yahoo has no analyst coverage (common for US ETFs)."""
-    if metrics.get("rating_label"):
-        return
+    """Attach recovery context without manufacturing an analyst target or rating."""
     pct = metrics.get("pct_from_52w_high")
     if pct is None:
         return
-
-    if metrics.get("upside_pct") is None:
-        metrics["upside_pct"] = _recovery_upside(pct)
-
-    upside = metrics.get("upside_pct")
-    if upside is None:
+    metrics["recovery_to_52w_high_pct"] = _recovery_upside(pct)
+    if metrics.get("rating_label"):
         return
-
-    rating = compute_rating(
-        upside_pct=upside,
-        target_price=metrics.get("high_52w"),
-        last_price=last_price,
-    )
-    if not rating.get("label"):
-        return
-
-    rating["source"] = "price_52w"
-    rating["reasons"] = [
-        "US listing / ETF: signal from price vs 52-week high (Yahoo has no analyst consensus).",
-        f"Price is {pct:+.1f}% vs 52-week high; room to high ≈ {upside:.1f}%.",
+    metrics["rating_source"] = "unavailable"
+    metrics["rating_reasons"] = [
+        "No analyst consensus or analyst target is available. 52-week distance is shown separately."
     ]
-    if is_us_exchange(exchange):
-        rating["reasons"][0] = (
-            "US listing / ETF: signal from price vs 52-week high (no analyst targets on Yahoo)."
-        )
-
-    metrics["rating_label"] = rating.get("label")
-    metrics["rating_slug"] = rating.get("slug")
-    metrics["rating_source"] = rating.get("source")
-    metrics["rating_reasons"] = rating.get("reasons", [])
-    metrics["rating_rank"] = rating.get("rank")
 
 
 def _rsi(closes: list[float], period: int = 14) -> float | None:

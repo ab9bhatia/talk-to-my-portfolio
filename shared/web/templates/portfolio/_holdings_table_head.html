@@ -44,17 +44,17 @@
     <th class="col-upside text-right sortable" data-col-id="upside">
       <div class="th-resize-wrap">
         <a class="sort-link js-show-loader" href="{{ build_sort_url(controls_action, 'upside', holdings_view.sort, holdings_view.order, gb, refresh) }}">
-          Ups <span class="sort-arrow">{{ sort_indicator('upside', holdings_view.sort, holdings_view.order) }}</span>
+          Tgt% <span class="sort-arrow">{{ sort_indicator('upside', holdings_view.sort, holdings_view.order) }}</span>
         </a>
-        <span class="col-resize-handle" role="separator" aria-label="Resize Upside column"></span>
+        <span class="col-resize-handle" role="separator" aria-label="Resize analyst target upside column"></span>
       </div>
     </th>
     <th class="col-signal sortable" data-col-id="signal">
       <div class="th-resize-wrap">
         <a class="sort-link js-show-loader" href="{{ build_sort_url(controls_action, 'signal', holdings_view.sort, holdings_view.order, gb, refresh) }}">
-          Sig <span class="sort-arrow">{{ sort_indicator('signal', holdings_view.sort, holdings_view.order) }}</span>
+          Street <span class="sort-arrow">{{ sort_indicator('signal', holdings_view.sort, holdings_view.order) }}</span>
         </a>
-        <span class="col-resize-handle" role="separator" aria-label="Resize Signal column"></span>
+        <span class="col-resize-handle" role="separator" aria-label="Resize Street view column"></span>
       </div>
     </th>
     <th class="col-weight text-right sortable" data-col-id="weight">

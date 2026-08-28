@@ -58,6 +58,12 @@ _LIFECYCLE_BY_LEGACY_STATUS = {
     "forming": "NEAR_BREAKOUT",
     "confirmed": "CONFIRMED",
 }
+ACTIONABLE_LIFECYCLE_STATES = {
+    "BUILDING",
+    "NEAR_BREAKOUT",
+    "CONFIRMED",
+    "RETESTING",
+}
 
 
 @dataclass(frozen=True)
@@ -278,6 +284,32 @@ def _meets_upside_threshold(last_price: float, target_price: float) -> bool:
         return False
     move_pct = abs(target_price - last_price) / last_price * 100
     return move_pct >= _MIN_UPSIDE_PCT
+
+
+def is_actionable_pattern(pattern: dict[str, Any] | None) -> bool:
+    """True only for a live, directionally coherent setup with move remaining."""
+    if not isinstance(pattern, dict):
+        return False
+    lifecycle = str(
+        pattern.get("lifecycle_state")
+        or _LIFECYCLE_BY_LEGACY_STATUS.get(str(pattern.get("status") or "").lower(), "")
+    ).upper()
+    if lifecycle not in ACTIONABLE_LIFECYCLE_STATES:
+        return False
+    if str(pattern.get("target_status") or "ACTIVE").upper() != "ACTIVE":
+        return False
+    bias = str(pattern.get("bias") or "").lower()
+    if bias == "bearish":
+        remaining = pattern.get("remaining_downside_pct")
+    elif bias == "bullish":
+        remaining = pattern.get("remaining_upside_pct")
+    else:
+        return False
+    try:
+        remaining_value = float(remaining)
+    except (TypeError, ValueError):
+        return False
+    return math.isfinite(remaining_value) and remaining_value >= (_MIN_UPSIDE_PCT - 0.1)
 
 
 def _detect_inverse_head_shoulders(series: _Series) -> dict[str, Any] | None:
@@ -653,12 +685,15 @@ def detect_patterns_for_symbol(
         cached = _CACHE.get(key)
         if cached and now - cached[0] < _CACHE_TTL:
             patterns = cached[1]
+            actionable = [pattern for pattern in patterns if is_actionable_pattern(pattern)]
             return {
                 "symbol": symbol,
                 "exchange": exchange,
                 "currency": currency_code,
                 "patterns": patterns,
                 "primary": patterns[0] if patterns else None,
+                "actionable_patterns": actionable,
+                "actionable_primary": actionable[0] if actionable else None,
                 "available": True,
                 "cached": True,
             }
@@ -676,6 +711,7 @@ def detect_patterns_for_symbol(
         return payload
 
     patterns = analyze_series(series, currency=currency_code)
+    actionable = [pattern for pattern in patterns if is_actionable_pattern(pattern)]
     _CACHE[key] = (now, patterns)
     return {
         "symbol": symbol,
@@ -684,6 +720,8 @@ def detect_patterns_for_symbol(
         "patterns": patterns,
         "available": True,
         "primary": patterns[0] if patterns else None,
+        "actionable_patterns": actionable,
+        "actionable_primary": actionable[0] if actionable else None,
     }
 
 
@@ -737,7 +775,7 @@ def scan_holdings(
                 )
 
     def sort_key(row: dict[str, Any]) -> tuple:
-        primary = row.get("primary")
+        primary = row.get("actionable_primary")
         if not primary:
             return (1, 0, 0, row.get("symbol", ""))
         remaining = max(
@@ -745,8 +783,7 @@ def scan_holdings(
             primary.get("remaining_downside_pct") or 0,
         )
         score = primary.get("heuristic_score") or primary.get("confidence") or 0
-        active = primary.get("target_status") == "ACTIVE"
-        return (0, not active, -remaining, -score, row.get("symbol", ""))
+        return (0, -remaining, -score, row.get("symbol", ""))
 
     results.sort(key=sort_key)
     return results

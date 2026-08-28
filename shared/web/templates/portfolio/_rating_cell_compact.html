@@ -1,7 +1,7 @@
 {% if h.get('rating_label') %}
 <span
   class="rating-badge rating-badge-compact rating-{{ h.get('rating_slug') or 'unknown' }}"
-  title="{% if h.get('buy_thesis') %}{{ h.buy_thesis }}{% else %}{{ h.get('rating_label') }}{% endif %}"
+  title="Street view from {% if h.get('rating_source') == 'analyst' %}Yahoo analyst consensus{% elif h.get('rating_source') == 'analyst_mean' %}Yahoo mean analyst score{% else %}Yahoo analyst target{% endif %}: {{ h.get('rating_label') }}. This is not the portfolio advisor decision."
 >{{ signal_short(h.get('rating_label')) }}</span>
 {% else %}
 <span class="cell-muted">—</span>

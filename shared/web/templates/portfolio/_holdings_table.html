@@ -46,8 +46,8 @@
 <p class="table-footnote">
   <strong>Cap (India):</strong> AMFI/SEBI ranks (top 100 Large · 101–250 Mid · 251+ Small); live mcap vs AMFI cutoffs when not on list; thematic ETFs = Multi-cap.
   <strong>MF cap:</strong> from scheme category (Large / Mid / Small / Multi-cap); debt funds ungrouped.
-  <strong>Equity:</strong> 52W Δ and signal from Yahoo (price vs 52W high, analysts). <strong>SW (US):</strong> same source; ETFs use fund AUM for cap and 52W-based signal when analysts are absent.
-  <strong>MF:</strong> same columns use NAV vs 52W high; upside = room to 52W NAV high; signal from NAV momentum.
+  <strong>52W:</strong> distance from the high is price context only. <strong>Tgt%:</strong> upside/downside to a published Yahoo analyst target only.
+  <strong>Street:</strong> external analyst consensus or target-derived view—not the portfolio advisor decision. A dash means no analyst coverage. ETFs and mutual funds never receive a rating from distance-to-high.
   % of total = portfolio weight. Sort via headers ▲▼.
   <span class="table-footnote-resize">Drag the <strong>⋮⋮</strong> grip on the right edge of any column header to resize; <button type="button" class="btn-link" id="reset-col-widths">reset widths</button>.</span>
 </p>
@@ -66,4 +66,4 @@
 {% endif %}
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-<script src="{{ app_path('/static/js/holdings.js') }}"></script>
+<script src="{{ app_path('/static/js/holdings.js') }}?v=20260828-signal-semantics"></script>

@@ -10,6 +10,8 @@
   data-pnl="{{ h.pnl | default(0) }}"
   data-quantity="{{ h.quantity | default(0) }}"
   data-avg-price="{{ h.avg_price | default(0) }}"
+  data-rating-label="{{ h.get('rating_label') or '' }}"
+  data-rating-source="{{ h.get('rating_source') or 'unavailable' }}"
   {% if h.account_breakdown %}data-account-breakdown='{{ h.account_breakdown | tojson }}'{% endif %}
 >
   <td class="col-expander">

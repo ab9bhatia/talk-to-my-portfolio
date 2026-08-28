@@ -406,18 +406,12 @@ def _forecast(
     method = "analyst_target"
     note = "Analyst mean target from Yahoo Finance × your quantity."
 
-    trend_prices = chart["prices"]
-    if len(trend_prices) > _TRADING_DAYS_1Y:
-        trend_prices = trend_prices[-_TRADING_DAYS_1Y:]
-
-    if not target_price and trend_prices:
-        first = trend_prices[0]
-        last = trend_prices[-1]
-        if first and first > 0:
-            growth = (last / first) - 1
-            target_price = round(last * (1 + growth), 2) if last else None
-            method = "trailing_trend"
-            note = "1Y price trend extrapolated from Yahoo history (no analyst target available)."
+    if not target_price:
+        method = "unavailable"
+        note = (
+            "No analyst target is available; historical price movement is not extrapolated "
+            "into a forecast."
+        )
 
     projected_value = round(target_price * qty, 2) if target_price and qty else None
     upside_pct = None
@@ -431,7 +425,7 @@ def _forecast(
     rating = compute_rating(
         recommendation_key=info.get("recommendationKey"),
         recommendation_mean=_safe_float(info.get("recommendationMean")),
-        upside_pct=price_upside_pct if price_upside_pct is not None else upside_pct,
+        upside_pct=price_upside_pct,
         target_price=target_price,
         last_price=current_price,
         analyst_count=info.get("numberOfAnalystOpinions"),
@@ -506,6 +500,7 @@ def get_stock_insights(
         "forecast": forecast,
         "patterns": pattern_scan.get("patterns") or [],
         "pattern_primary": pattern_scan.get("primary"),
+        "pattern_actionable_primary": pattern_scan.get("actionable_primary"),
         "events": context["events"],
         "news": context["news"],
     }

@@ -153,3 +153,6 @@ def test_symbol_pattern_api_keeps_legacy_fields_and_adds_stage_6a(monkeypatch):
     assert pattern["target_status"] == "ACTIVE"
     assert pattern["target_date"] is None
     assert pattern["estimated_horizon"]["method"] == "heuristic_until_calibrated"
+    payload = response.json()
+    assert payload["actionable_primary"]["pattern"] == "fixture"
+    assert len(payload["actionable_patterns"]) == 1

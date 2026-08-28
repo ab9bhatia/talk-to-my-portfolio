@@ -11,9 +11,9 @@
   <div class="detail-metrics-line detail-metrics-tech">
     <span class="strip-tag">Tech</span>
     <span class="strip-item"><b>52W</b> <span class="{{ pnl_class(h.get('pct_from_52w_high')) }}">{{ format_na(h.get('pct_from_52w_high'), '%') }}</span></span>
-    <span class="strip-item"><b>Room</b> {{ format_na(h.get('upside_pct'), '%') }}</span>
+    <span class="strip-item"><b>Recovery to 52W high</b> {{ format_na(h.get('recovery_to_52w_high_pct'), '%') }}</span>
     <span class="strip-item"><b>1Y</b> <span class="{{ pnl_class(h.get('return_1y_pct')) }}">{{ format_na(h.get('return_1y_pct'), '%') }}</span></span>
-    <span class="strip-item"><b>Sig</b> {% include "portfolio/_rating_cell_detail.html" %}</span>
+    <span class="strip-item"><b>Street</b> {% include "portfolio/_rating_cell_detail.html" %}</span>
   </div>
   {% if h.get('buy_thesis') %}
   <p class="buy-thesis-detail">{{ h.buy_thesis }}</p>
@@ -25,7 +25,7 @@
     <span class="strip-item"><b>ROCE</b> {{ format_pct_metric(h.get('roce')) }}</span>
     <span class="strip-item"><b>D/E</b> {{ format_debt_equity(h.get('debt_to_equity')) }}</span>
     <span class="strip-item"><b>Cap</b> {{ h.get('market_cap') or '—' }}</span>
-    <span class="strip-item"><b>Ups</b> {{ format_na(h.get('upside_pct'), '%') }}</span>
+    <span class="strip-item"><b>Analyst target</b> {{ format_na(h.get('upside_pct'), '%') }}</span>
   </div>
   <div class="detail-metrics-line detail-metrics-tech">
     <span class="strip-tag">Tech</span>
@@ -33,7 +33,7 @@
     <span class="strip-item"><b>RSI</b> {{ format_na(h.get('rsi_14')) }}</span>
     <span class="strip-item"><b>DMA</b> <span class="{{ pnl_class(h.get('pct_vs_dma200')) }}">{{ format_na(h.get('pct_vs_dma200'), '%') }}</span></span>
     <span class="strip-item"><b>Rng</b> {{ format_na(h.get('pct_in_52w_range'), '%') }}</span>
-    <span class="strip-item"><b>Sig</b> {% include "portfolio/_rating_cell_detail.html" %}</span>
+    <span class="strip-item"><b>Street</b> {% include "portfolio/_rating_cell_detail.html" %}</span>
   </div>
   {% if h.get('buy_thesis') %}
   <p class="buy-thesis-detail">{{ h.buy_thesis }}</p>

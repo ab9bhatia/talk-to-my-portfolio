@@ -66,7 +66,7 @@
     cap: "Grouping by market cap…",
     sector: "Grouping by sector…",
     account: "Grouping by account…",
-    signal: "Grouping by signal…",
+    signal: "Grouping by external Street view…",
     asset_class: "Grouping by asset class…",
   };
 
@@ -1120,19 +1120,25 @@
     return short ? `${label} (${short})` : label;
   }
 
-  function renderRatingBadge(rating, { full = false } = {}) {
+  function renderRatingBadge(rating, { full = false, pattern = null } = {}) {
     if (!rating?.label) {
       return '<span class="rating-badge rating-badge-compact rating-hold">—</span>';
     }
     const slug = rating.slug || "hold";
     const text = full ? signalDisplayFull(rating.label) : signalShortLabel(rating.label);
     const compactClass = full ? "" : " rating-badge-compact";
-    return `<span class="rating-badge${compactClass} rating-${slug}" title="${rating.label}">${text}</span>`;
+    const conflict = streetLabelConflictsWithPattern(rating.label, pattern);
+    const conflictClass = conflict ? " rating-conflict" : "";
+    const suffix = conflict ? '<span aria-hidden="true">!</span>' : "";
+    const title = conflict
+      ? `CONFLICT: external Street view is ${rating.label}, while ${pattern.label} shows ${patternRemainingMove(pattern).toFixed(1)}% ${pattern.bias === "bearish" ? "downside risk" : "upside potential"}. Not a unified recommendation.`
+      : `External Street view: ${rating.label}. Not the portfolio advisor decision.`;
+    return `<span class="rating-badge${compactClass} rating-${slug}${conflictClass}" title="${escapeHtml(title)}">${escapeHtml(text)}${suffix}</span>`;
   }
 
   function renderRatingReasons(rating) {
     if (!rating?.reasons?.length) {
-      return '<p class="detail-empty">No signal rationale available for this symbol.</p>';
+      return '<p class="detail-empty">No analyst rationale available for this symbol.</p>';
     }
     const items = rating.reasons
       .map((reason) => `<li>${reason}</li>`)
@@ -1188,7 +1194,7 @@
     if (!hasSignal && !hasNews) {
       return `
         <section class="signal-context-panel rating-reasons-section">
-          <p class="detail-empty">No signal rationale or recent news available for this symbol.</p>
+          <p class="detail-empty">No analyst rationale or recent news available for this symbol.</p>
         </section>`;
     }
 
@@ -1196,9 +1202,9 @@
       <section class="signal-context-panel rating-reasons-section">
         <div class="signal-context-grid">
           <div class="signal-context-col signal-context-col-reasons">
-            <h5 class="signal-col-title">Why this signal?</h5>
+            <h5 class="signal-col-title">Why this Street view?</h5>
             <div class="signal-col-scroll">
-              ${hasSignal ? `${reasons}${eventsHtml}` : '<p class="detail-empty">No signal rationale available.</p>'}
+              ${hasSignal ? `${reasons}${eventsHtml}` : '<p class="detail-empty">No analyst rationale available.</p>'}
             </div>
           </div>
           <div class="signal-context-col signal-context-col-news">
@@ -1250,7 +1256,9 @@
           : p.remaining_upside_pct ?? Math.max(0, p.upside_to_target_pct ?? 0);
         const move = p.target_status && p.target_status !== "ACTIVE"
           ? p.target_status.replaceAll("_", " ").toLowerCase()
-          : `${Number(remaining).toFixed(1)}% ${p.bias === "bearish" ? "downside" : "upside"}`;
+          : p.bias === "bearish"
+            ? `Risk ${Number(remaining).toFixed(1)}% downside`
+            : `Potential +${Number(remaining).toFixed(1)}%`;
         return `<tr>
           <td>${escapeHtml(p.label)}</td>
           <td>${escapeHtml(PATTERN_STATUS_LABEL[lifecycle] || lifecycle)}</td>
@@ -1409,7 +1417,7 @@
         <div class="forecast-value">${formatInr(forecast.target_price)}</div>
       </div>
       <div class="forecast-card">
-        <div class="forecast-label">Upside</div>
+        <div class="forecast-label">Analyst target upside</div>
         <div class="forecast-value ${upsideClass}">${formatPct(forecast.upside_pct)}</div>
       </div>
     </div>
@@ -1646,6 +1654,11 @@
       }
 
       const rating = data.forecast?.rating;
+      const primaryPattern =
+        data.pattern_actionable_primary ||
+        (data.patterns || []).find(isActionablePattern) ||
+        data.pattern_primary ||
+        (data.patterns && data.patterns[0]);
       const hasChart = Boolean(data.chart?.prices?.length);
       const chartBody = hasChart
         ? `<div class="chart-wrap"><canvas id="${canvasId}"></canvas></div>`
@@ -1657,7 +1670,7 @@
             <h4>${data.name || symbol}</h4>
             <span class="detail-sub">${data.yahoo_ticker || ""}</span>
           </div>
-          ${renderRatingBadge(rating, { full: true })}
+          ${renderRatingBadge(rating, { full: true, pattern: primaryPattern })}
         </div>
         <div class="detail-grid detail-grid-insights">
           <section class="detail-section chart-section detail-section-full" data-chart-canvas="${canvasId}">
@@ -1674,7 +1687,7 @@
             ${renderResultsTable(data.results)}
           </section>
           <section class="detail-section detail-section-half">
-            <h5>1Y forecast (your holding)</h5>
+            <h5>1Y analyst target (your holding)</h5>
             ${renderForecast(data.forecast)}
           </section>
           <section class="detail-section detail-section-full">
@@ -1685,7 +1698,6 @@
         </div>`;
 
       asyncSlot.dataset.loaded = "true";
-      const primaryPattern = data.pattern_primary || (data.patterns && data.patterns[0]);
       if (hasChart) {
         const chartSection = asyncSlot.querySelector(".chart-section");
         requestAnimationFrame(() => {
@@ -1848,17 +1860,74 @@
     });
   }
 
+  function patternLifecycle(primary) {
+    return primary?.lifecycle_state || ({
+      confirmed: "CONFIRMED",
+      forming: "NEAR_BREAKOUT",
+      early: "BUILDING",
+    }[primary?.status]);
+  }
+
+  function patternRemainingMove(primary) {
+    const raw = primary?.bias === "bearish"
+      ? primary?.remaining_downside_pct
+      : primary?.remaining_upside_pct;
+    const value = Number(raw);
+    return Number.isFinite(value) ? value : 0;
+  }
+
+  function isActionablePattern(primary) {
+    if (!primary || primary.target_status !== "ACTIVE") return false;
+    if (!["BUILDING", "NEAR_BREAKOUT", "CONFIRMED", "RETESTING"].includes(patternLifecycle(primary))) {
+      return false;
+    }
+    return ["bullish", "bearish"].includes(primary.bias) && patternRemainingMove(primary) >= 14.9;
+  }
+
+  function actionablePrimaryOf(scanRow) {
+    if (isActionablePattern(scanRow?.actionable_primary)) return scanRow.actionable_primary;
+    return (scanRow?.actionable_patterns || scanRow?.patterns || []).find(isActionablePattern) || null;
+  }
+
+  function streetLabelConflictsWithPattern(label, primary) {
+    if (!label || !isActionablePattern(primary)) return false;
+    const streetBullish = ["Strong buy", "Buy"].includes(label);
+    const streetBearish = ["Sell", "Strong sell"].includes(label);
+    return (
+      (primary.bias === "bearish" && streetBullish) ||
+      (primary.bias === "bullish" && streetBearish)
+    );
+  }
+
+  function reconcileStreetViewWithPattern(row, primary) {
+    const label = row.dataset.ratingLabel || "";
+    const source = row.dataset.ratingSource || "unavailable";
+    if (!label || !["analyst", "analyst_mean", "upside"].includes(source)) return;
+    if (!streetLabelConflictsWithPattern(label, primary)) return;
+
+    const cell = row.querySelector(".col-signal");
+    const badge = cell?.querySelector(".rating-badge");
+    if (!cell || !badge) return;
+    const direction = primary.bias === "bearish" ? "downside risk" : "upside setup";
+    const remaining = patternRemainingMove(primary).toFixed(1);
+    cell.classList.add("street-pattern-conflict");
+    badge.classList.add("rating-conflict");
+    badge.innerHTML = `${escapeHtml(badge.textContent.trim())}<span aria-hidden="true">!</span>`;
+    badge.title =
+      `CONFLICT: external Street view is ${label}, while the active ${primary.label} ` +
+      `shows ${remaining}% ${direction}. This is not a unified buy/sell recommendation.`;
+    row.dataset.signalConflict = "1";
+  }
+
   function patternPillMarkup(primary) {
     const bias = primary.bias === "bearish" ? "bear" : "bull";
     const arrow = primary.bias === "bearish" ? "▼" : "▲";
-    const lifecycle = primary.lifecycle_state || ({ confirmed: "CONFIRMED", forming: "NEAR_BREAKOUT", early: "BUILDING" }[primary.status]);
+    const lifecycle = patternLifecycle(primary);
     const statusLabel = PATTERN_STATUS_LABEL[lifecycle] || lifecycle;
-    const remaining = primary.bias === "bearish"
-      ? primary.remaining_downside_pct ?? Math.abs(primary.upside_to_target_pct ?? 0)
-      : primary.remaining_upside_pct ?? Math.max(0, primary.upside_to_target_pct ?? 0);
-    const move = primary.target_status && primary.target_status !== "ACTIVE"
-      ? primary.target_status.replaceAll("_", " ").toLowerCase()
-      : `${Number(remaining).toFixed(1)}% ${primary.bias === "bearish" ? "downside" : "upside"}`;
+    const remaining = patternRemainingMove(primary);
+    const move = primary.bias === "bearish"
+      ? `Risk ${remaining.toFixed(1)}% downside`
+      : `Potential +${remaining.toFixed(1)}%`;
     const horizon = primary.estimated_horizon || {};
     const window = horizon.min_trading_days != null
       ? `${horizon.min_trading_days}–${horizon.max_trading_days} sessions`
@@ -1867,7 +1936,7 @@
     const tip =
       `${primary.label} · ${statusLabel}` +
       (primary.target_price != null ? ` · target ${formatCurrency(primary.target_price, primary.currency)}` : "") +
-      ` · ${move}` +
+      ` · implied ${move.toLowerCase()}` +
       (window ? ` · ${window}` : "") +
       ` · quality ${Number(score).toFixed(0)}/100 (not probability)`;
     return (
@@ -1939,7 +2008,7 @@
       const data = await res.json();
       const bySymbol = new Map();
       (data.holdings || []).forEach((row) => {
-        const primary = row.primary || (row.patterns && row.patterns[0]);
+        const primary = actionablePrimaryOf(row);
         if (primary) bySymbol.set((row.symbol || "").toUpperCase(), primary);
       });
       if (!bySymbol.size) {
@@ -1953,6 +2022,7 @@
         if (!primary) return;
         row.dataset.hasPattern = "1";
         attachPatternPill(row, primary);
+        reconcileStreetViewWithPattern(row, primary);
         matched += 1;
       });
       applyPatternToggleState(matched);

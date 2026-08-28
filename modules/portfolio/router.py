@@ -557,9 +557,11 @@ def api_portfolio_patterns(refresh: bool = Query(False)):
     holdings = all_holdings_from_view(holdings_view)
     scanned = scan_holdings(holdings)
     hits = [row for row in scanned if row.get("patterns")]
+    actionable = [row for row in scanned if row.get("actionable_primary")]
     return {
         "scanned": len(scanned),
         "with_patterns": len(hits),
+        "actionable_setups": len(actionable),
         "as_of": hits[0]["primary"]["as_of"] if hits and hits[0].get("primary") else None,
         "holdings": hits,
     }
