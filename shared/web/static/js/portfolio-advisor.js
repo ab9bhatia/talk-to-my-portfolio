@@ -12,6 +12,7 @@
   const searchEl = document.getElementById("advisor-search");
   const resultCount = document.getElementById("advisor-result-count");
   let payload = null;
+  let loadVersion = 0;
 
   function esc(value) {
     const div = document.createElement("div");
@@ -198,24 +199,65 @@
     document.getElementById("advisor-evidence-status").innerHTML = `<p><strong>${status.documented_models || 0}</strong> documented models · <strong>${status.screening_models || 0}</strong> screening models · <strong>${status.needs_data || 0}</strong> need research.</p><p>${status.stale_items || 0} stale · ${status.blocking_items || 0} blocking flags.</p><p>Screening models are capped-confidence research signals, never automatic full exits.</p><p>${runtime.patterns?.with_patterns || 0} local pattern scans attached. Shape scores are not calibrated probabilities.</p>`;
   }
 
+  function renderPayload(body) {
+    payload = body;
+    fillSelect(actionFilter, payload.recommendations.map((row) => row.action));
+    fillSelect(sellFilter, payload.recommendations.map((row) => row.sell_type));
+    renderSummary();
+    renderRows();
+  }
+
+  function decisionSetLabel(body) {
+    const errors = body.runtime?.account_errors || 0;
+    return `${body.schema_version} · generated ${new Date(body.generated_at).toLocaleString()} · ${errors ? `${errors} account sync warning(s)` : "all loaded accounts included"} · execution disabled`;
+  }
+
+  async function loadPatternOverlay(version) {
+    noticeEl.textContent = `${decisionSetLabel(payload)} · refreshing pattern timing in background…`;
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 120000);
+    try {
+      const scanResponse = await fetch("/api/portfolio/patterns", { signal: controller.signal });
+      const scanBody = await scanResponse.json();
+      if (!scanResponse.ok) throw new Error(scanBody.detail || `Pattern scan failed (${scanResponse.status})`);
+      if (version !== loadVersion) return;
+
+      const response = await fetch("/api/portfolio/advisory?refresh=false&patterns=true");
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.detail || `Pattern overlay failed (${response.status})`);
+      if (version !== loadVersion) return;
+
+      renderPayload(body);
+      noticeEl.textContent = `${decisionSetLabel(body)} · pattern timing ready`;
+      noticeEl.className = body.runtime?.account_errors ? "advisor-notice advisor-notice--warning" : "advisor-notice advisor-notice--ok";
+    } catch (error) {
+      if (version !== loadVersion) return;
+      const message = error.name === "AbortError" ? "scan exceeded 120 seconds" : (error.message || "scan failed");
+      noticeEl.textContent = `${decisionSetLabel(payload)} · decisions ready; pattern timing unavailable (${message})`;
+      noticeEl.className = "advisor-notice advisor-notice--warning";
+    } finally {
+      window.clearTimeout(timeoutId);
+    }
+  }
+
   async function load(refresh) {
+    const version = ++loadVersion;
     noticeEl.className = "advisor-notice";
-    noticeEl.textContent = refresh ? "Refreshing brokers, evidence, and lifecycle-aware pattern timing…" : "Building deterministic recommendations…";
+    noticeEl.textContent = refresh ? "Refreshing brokers and deterministic evidence…" : "Building deterministic recommendations…";
     const refreshButton = document.getElementById("advisor-refresh");
     refreshButton.disabled = true;
     try {
-      const response = await fetch(`/api/portfolio/advisory?refresh=${refresh ? "true" : "false"}&patterns=true`);
+      const response = await fetch(`/api/portfolio/advisory?refresh=${refresh ? "true" : "false"}&patterns=false`);
       const body = await response.json();
       if (!response.ok) throw new Error(body.detail || `Action Center failed (${response.status})`);
-      payload = body;
-      fillSelect(actionFilter, payload.recommendations.map((row) => row.action));
-      fillSelect(sellFilter, payload.recommendations.map((row) => row.sell_type));
-      renderSummary();
-      renderRows();
+      if (version !== loadVersion) return;
+      renderPayload(body);
       const errors = payload.runtime?.account_errors || 0;
-      noticeEl.textContent = `${payload.schema_version} · generated ${new Date(payload.generated_at).toLocaleString()} · ${errors ? `${errors} account sync warning(s)` : "all loaded accounts included"} · execution disabled`;
+      noticeEl.textContent = `${decisionSetLabel(payload)} · decisions ready`;
       noticeEl.className = errors ? "advisor-notice advisor-notice--warning" : "advisor-notice advisor-notice--ok";
+      loadPatternOverlay(version);
     } catch (error) {
+      if (version !== loadVersion) return;
       noticeEl.textContent = error.message || "Could not load Action Center.";
       noticeEl.className = "advisor-notice advisor-notice--error";
     } finally {

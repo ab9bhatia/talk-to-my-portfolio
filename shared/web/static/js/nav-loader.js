@@ -15,8 +15,12 @@
     try {
       const url = new URL(href, window.location.origin);
       if (url.origin !== window.location.origin) return false;
+      const appRoot = document.querySelector('meta[name="app-root"]')?.content || "";
+      const pathname = appRoot && url.pathname.startsWith(appRoot)
+        ? url.pathname.slice(appRoot.length) || "/"
+        : url.pathname;
       return LOADER_PATHS.some(
-        (p) => url.pathname === p || url.pathname.startsWith(p + "/")
+        (p) => pathname === p || pathname.startsWith(p + "/")
       );
     } catch {
       return false;
@@ -36,12 +40,10 @@
     showLoader(msg);
   });
 
-  window.addEventListener("pageshow", (event) => {
+  window.addEventListener("pageshow", () => {
     const loader = document.getElementById("page-loader");
     if (!loader) return;
-    if (event.persisted) {
-      loader.classList.add("is-hidden");
-      loader.setAttribute("aria-busy", "false");
-    }
+    loader.classList.add("is-hidden");
+    loader.setAttribute("aria-busy", "false");
   });
 })();

@@ -26,6 +26,8 @@
       id="agent-question"
       class="agent-question"
       rows="2"
+      required
+      aria-describedby="agent-hint agent-error"
       placeholder="e.g. Should I trim banking and add to AI infra themes?"
     ></textarea>
     <div class="agent-actions">
@@ -39,7 +41,7 @@
     <p class="agent-status-line" id="agent-status-line" hidden></p>
   </div>
 
-  <div class="agent-error alert alert-warning" id="agent-error" hidden></div>
+  <div class="agent-error alert alert-warning" id="agent-error" role="alert" hidden></div>
 
   <details class="agent-outcome" id="agent-outcome" hidden>
     <summary class="agent-outcome-summary">
@@ -80,4 +82,4 @@
   </div>
 </section>
 
-<script src="{{ app_path('/static/js/portfolio-agent.js') }}"></script>
+<script src="{{ app_path('/static/js/portfolio-agent.js') }}?v=20260828-user-journey-2"></script>

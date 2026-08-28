@@ -8,6 +8,8 @@
   ·
   <a href="docs/product.md">Product guide</a>
   ·
+  <a href="docs/user-journey.md">User journey</a>
+  ·
   <a href="code_flow_and_index.md">Code index</a>
   ·
   <a href="docs/broker-api-keys.md">Broker setup</a>
@@ -142,6 +144,7 @@ Design and Stage 6A contract: [docs/pattern-execution-overlay.md](docs/pattern-e
 | Document | Contents |
 |----------|----------|
 | [docs/product.md](docs/product.md) | Product journey, features, roadmap |
+| [docs/user-journey.md](docs/user-journey.md) | Connect-to-ask flow and acceptance test |
 | [code_flow_and_index.md](code_flow_and_index.md) | Folders, files, request flows |
 | [docs/api-contract-v1.md](docs/api-contract-v1.md) | Stable API for mobile clients |
 | [docs/release-checklist.md](docs/release-checklist.md) | Release steps |

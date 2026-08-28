@@ -20,6 +20,7 @@ from __future__ import annotations
 import logging
 import math
 import os
+import threading
 import time
 from dataclasses import dataclass
 from typing import Any, Literal
@@ -35,6 +36,7 @@ PatternBias = Literal["bullish", "bearish"]
 
 _CACHE: dict[str, tuple[float, list[dict[str, Any]]]] = {}
 _CACHE_TTL = int(os.getenv("CHART_PATTERNS_CACHE_TTL", str(6 * 60 * 60)))
+_SCAN_LOCK = threading.Lock()
 
 # Lookback policy (trading days). Fetch ~18 months so the longest cup base
 # (up to ~15 months) plus lead-in fits; detect mostly within the last year.
@@ -725,7 +727,7 @@ def detect_patterns_for_symbol(
     }
 
 
-def scan_holdings(
+def _scan_holdings_unlocked(
     holdings: list[dict[str, Any]],
     *,
     max_workers: int = 4,
@@ -787,3 +789,13 @@ def scan_holdings(
 
     results.sort(key=sort_key)
     return results
+
+
+def scan_holdings(
+    holdings: list[dict[str, Any]],
+    *,
+    max_workers: int = 4,
+) -> list[dict[str, Any]]:
+    """Scan once per process so overlapping pages do not duplicate Yahoo requests."""
+    with _SCAN_LOCK:
+        return _scan_holdings_unlocked(holdings, max_workers=max_workers)

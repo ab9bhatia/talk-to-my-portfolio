@@ -153,13 +153,13 @@
       }
     }
 
-    let bestMove = { date: null, pct: -Infinity };
+    let bestMove = null;
     for (let i = 1; i < series.length; i++) {
       const prev = Number(series[i - 1].total_current || 0);
       const cur = Number(series[i].total_current || 0);
       if (!prev) continue;
       const p = ((cur - prev) / prev) * 100;
-      if (p > bestMove.pct) bestMove = { date: series[i].day_date, pct: p };
+      if (!bestMove || p > bestMove.pct) bestMove = { date: series[i].day_date, pct: p };
     }
 
     insightsCards.innerHTML = `
@@ -173,7 +173,7 @@
       </article>
       <article class="growth-stat-card">
         <p class="growth-stat-label">Best recorded day</p>
-        <p class="growth-stat-value ${changeClass(bestMove.pct)}">${bestMove.date || "—"} · ${formatPct(bestMove.pct)}</p>
+        <p class="growth-stat-value ${bestMove ? changeClass(bestMove.pct) : ""}">${bestMove ? `${bestMove.date} · ${formatPct(bestMove.pct)}` : "Need two daily snapshots"}</p>
       </article>
       <article class="growth-stat-card">
         <p class="growth-stat-label">Latest source</p>

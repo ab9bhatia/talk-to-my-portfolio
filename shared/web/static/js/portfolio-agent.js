@@ -424,7 +424,11 @@
   async function streamAsk(question, { isFollowUp } = { isFollowUp: false }) {
     if (busy) return;
     const msg = (question || "").trim();
-    if (!msg) return;
+    if (!msg) {
+      showError(isFollowUp ? "Enter a follow-up question." : "Enter a question before asking the portfolio agent.");
+      (isFollowUp ? followupInput : questionEl)?.focus();
+      return;
+    }
 
     showError("");
     setBusy(true, "Connecting…");

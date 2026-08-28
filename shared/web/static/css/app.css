@@ -43,7 +43,7 @@ a:hover {
 
 .layout {
   display: grid;
-  grid-template-columns: var(--sidebar-width) 1fr;
+  grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
   min-height: 100vh;
 }
 
@@ -119,6 +119,7 @@ a:hover {
 }
 
 .main {
+  min-width: 0;
   padding: 2rem 2.5rem 3rem;
   max-width: 1200px;
 }
@@ -5935,7 +5936,7 @@ body.setup-modal-open {
 
 .page-growth .growth-change-cards {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr));
   gap: 1rem;
 }
 
@@ -6031,7 +6032,7 @@ body.setup-modal-open {
 
 .page-growth .growth-visual-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
   gap: 1rem;
   margin-top: 0.75rem;
 }
