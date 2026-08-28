@@ -61,6 +61,19 @@ class DataQualityFlag:
 
 
 @dataclass(frozen=True)
+class TaxRuleReference:
+    rule_id: str
+    jurisdiction: str
+    reference: str
+    effective_from: str
+    effective_to: str | None
+    source: str
+    source_url: str
+    last_reviewed: str
+    required_inputs: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
 class ExpectedThreeYearIrr:
     bear_pct: float | None
     base_pct: float | None
@@ -132,6 +145,8 @@ class HoldingRecommendation:
     exit_triggers: list[str]
     tax_note: str
     settlement_note: str
+    requires_ca_review: bool
+    tax_rule_refs: list[TaxRuleReference]
     replacement_plan: list[dict[str, Any]]
     evidence: list[Evidence]
     data_quality_flags: list[DataQualityFlag]

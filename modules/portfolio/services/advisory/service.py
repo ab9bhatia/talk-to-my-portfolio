@@ -24,7 +24,7 @@ from modules.portfolio.services.advisory.rules import select_action
 from modules.portfolio.services.advisory.tax import assess_tax_and_settlement
 
 
-SCHEMA_VERSION = "advisor-v2-milestone-1"
+SCHEMA_VERSION = "advisor-v2-milestone-2"
 
 
 def _flag(code: str, severity: str, message: str, *, blocking: bool = False) -> DataQualityFlag:
@@ -47,6 +47,29 @@ def _operational_flags(
     family_stale: bool,
 ) -> list[DataQualityFlag]:
     flags: list[DataQualityFlag] = []
+    source_flag_details = {
+        "DISPLAYED_COST_BASIS_DOES_NOT_RECONCILE": (
+            "error",
+            "Displayed average price does not reconcile to broker current value and P&L.",
+            True,
+        ),
+        "SCREENSHOT_COST_BASIS_UNAVAILABLE": (
+            "warning",
+            "Screenshot supplies position value but not lot-level acquisition cost.",
+            False,
+        ),
+        "SCREENSHOT_QUANTITY_ROUNDED_VALUE_DOES_NOT_RECONCILE": (
+            "warning",
+            "Displayed screenshot quantity is rounded and does not reproduce displayed value.",
+            False,
+        ),
+    }
+    for code in holding.get("source_data_quality_flags") or []:
+        severity, message, blocking = source_flag_details.get(
+            str(code),
+            ("warning", f"Imported source data-quality flag: {code}.", False),
+        )
+        flags.append(_flag(str(code), severity, message, blocking=blocking))
     if not holding.get("symbol") or holding.get("symbol_resolved") is False:
         flags.append(
             _flag(
@@ -234,6 +257,8 @@ def _recommendation(
         exit_triggers=exit_triggers,
         tax_note=tax.tax_note,
         settlement_note=tax.settlement_note,
+        requires_ca_review=tax.requires_ca_review,
+        tax_rule_refs=tax.rule_refs,
         replacement_plan=[],
         evidence=evidence,
         data_quality_flags=flags,

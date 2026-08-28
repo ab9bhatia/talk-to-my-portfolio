@@ -6,6 +6,20 @@
       "label": "Primary Zerodha",
       "user_id": "YOUR_KITE_USER_ID",
       "enabled": true,
+      "owner_ref": null,
+      "country_of_residence": "UNKNOWN",
+      "india_residency_status": "UNKNOWN",
+      "tax_profile": "UNKNOWN",
+      "base_currency": "INR",
+      "account_type": "UNKNOWN",
+      "risk_profile": "unknown",
+      "target_return_pct": null,
+      "max_position_pct": null,
+      "max_sector_pct": null,
+      "max_group_exposure_pct": null,
+      "cash_buffer_pct": null,
+      "tax_loss_harvesting_mode": "off",
+      "tax_lots_available": false,
       "redirect_url": "http://127.0.0.1:9000/talktomyportfolio/auth/zerodha/callback",
       "auth_port": 9000
     },
@@ -15,6 +29,9 @@
       "label": "Family account 2",
       "user_id": "YOUR_KITE_USER_ID_2",
       "enabled": false,
+      "base_currency": "INR",
+      "account_type": "UNKNOWN",
+      "india_residency_status": "UNKNOWN",
       "redirect_url": "http://127.0.0.1:9000/talktomyportfolio/auth/zerodha/callback",
       "auth_port": 9000
     },
@@ -24,6 +41,9 @@
       "label": "Family account 3",
       "user_id": "YOUR_KITE_USER_ID_3",
       "enabled": false,
+      "base_currency": "INR",
+      "account_type": "UNKNOWN",
+      "india_residency_status": "UNKNOWN",
       "redirect_url": "http://127.0.0.1:9000/talktomyportfolio/auth/zerodha/callback",
       "auth_port": 9000
     }
@@ -35,7 +55,10 @@
       "label": "Groww account",
       "relation": "",
       "user_id": "groww",
-      "enabled": false
+      "enabled": false,
+      "base_currency": "INR",
+      "account_type": "UNKNOWN",
+      "india_residency_status": "UNKNOWN"
     }
   ],
   "sarwa": [
@@ -43,7 +66,11 @@
       "id": "sarwa",
       "code": "SW",
       "label": "Sarwa (USD)",
-      "enabled": false
+      "enabled": false,
+      "base_currency": "USD",
+      "account_type": "UNKNOWN",
+      "country_of_residence": "UNKNOWN",
+      "tax_profile": "UNKNOWN"
     }
   ],
   "custom": [],

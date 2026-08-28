@@ -68,6 +68,17 @@ _MERGED_FIELDS = (
     "is_cyclical",
 )
 
+_ANY_TRUE_FIELDS = (
+    "corporate_action_pending",
+    "cost_basis_unreconciled",
+    "is_suspended",
+)
+
+_ANY_FALSE_FIELDS = (
+    "is_tradable",
+    "symbol_resolved",
+)
+
 
 def instrument_type_for(holding: dict[str, Any]) -> InstrumentType:
     asset = str(holding.get("asset_class") or holding.get("instrument_type") or "equity").lower()
@@ -159,6 +170,29 @@ def consolidate_family(family: dict[str, Any]) -> list[dict[str, Any]]:
                 if row.get(field) is not None:
                     merged[field] = row[field]
                     break
+        for field in _ANY_TRUE_FIELDS:
+            values = [row.get(field) for _, row in rows if row.get(field) is not None]
+            if values:
+                merged[field] = any(value is True for value in values)
+        for field in _ANY_FALSE_FIELDS:
+            values = [row.get(field) for _, row in rows if row.get(field) is not None]
+            if values:
+                merged[field] = all(value is not False for value in values)
+        lot_values = [
+            row.get("tax_lots_available")
+            for _, row in rows
+            if row.get("tax_lots_available") is not None
+        ]
+        if lot_values:
+            merged["tax_lots_available"] = all(value is True for value in lot_values)
+        source_data_quality_flags = sorted(
+            {
+                str(flag)
+                for _, row in rows
+                for flag in (row.get("data_quality_flags") or [])
+                if flag
+            }
+        )
         if quantity and not merged.get("last_price"):
             merged["last_price"] = current_value / quantity
 
@@ -181,6 +215,7 @@ def consolidate_family(family: dict[str, Any]) -> list[dict[str, Any]]:
                 else 0.0,
                 "positions": positions,
                 "account_profiles": account_profiles,
+                "source_data_quality_flags": source_data_quality_flags,
                 "source_rows": [row for _, row in rows],
             }
         )

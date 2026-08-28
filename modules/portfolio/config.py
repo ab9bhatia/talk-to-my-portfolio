@@ -163,6 +163,20 @@ def get_account(account_id: str) -> dict:
     return ACCOUNTS[account_id]
 
 
+def get_account_metadata(account_id: str) -> dict:
+    """Return non-secret registry metadata for any configured broker account."""
+    account_id = resolve_account_ref(account_id)
+    metadata = _all_account_meta().get(account_id)
+    if metadata is None:
+        raise KeyError(f"Unknown account: {account_id}")
+    return metadata
+
+
+def get_account_profile(account_id: str) -> dict:
+    """Return a copy of the validated local advisory profile for any account."""
+    return dict(get_account_metadata(account_id).get("account_profile") or {})
+
+
 def get_enabled_accounts() -> dict[str, dict]:
     """Return only Zerodha accounts enabled for OAuth and portfolio fetch."""
     return {

@@ -314,6 +314,27 @@ def test_same_isin_consolidates_accounts_and_exact_proceeds():
     assert payload["proceeds_by_account"] == {"A1": 50.0, "A2": 100.0}
 
 
+def test_any_account_cost_basis_mismatch_forces_consolidated_reconciliation():
+    first = _holding("SAME", isin="INE000000002", cost_basis_unreconciled=False)
+    second = _holding("SAMEALT", isin="INE000000002", cost_basis_unreconciled=True)
+    rec = _payload([first], second_account=[second])["recommendations"][0]
+    assert rec["action"] == "RECONCILE"
+    assert "CORPORATE_ACTION_RECONCILIATION" in {
+        flag["code"] for flag in rec["data_quality_flags"]
+    }
+
+
+def test_imported_screenshot_quality_flags_are_preserved():
+    row = _holding(
+        "SCREEN",
+        data_quality_flags=["SCREENSHOT_COST_BASIS_UNAVAILABLE"],
+    )
+    rec = _recommendation(_payload([row]), "SCREEN")
+    assert "SCREENSHOT_COST_BASIS_UNAVAILABLE" in {
+        flag["code"] for flag in rec["data_quality_flags"]
+    }
+
+
 def test_api_v1_contract_version_is_unchanged():
     client = TestClient(app)
     response = client.get(f"{APP_ROOT_PATH}/api/portfolio/version")
@@ -325,5 +346,5 @@ def test_malformed_llm_json_keeps_deterministic_output_usable():
     advisory = _payload([_holding()])
     fallback = _malformed_json_fallback("not-json", context={"advisory": advisory})
     assert fallback["answer"] == "not-json"
-    assert fallback["deterministic_advisory"]["schema_version"] == "advisor-v2-milestone-1"
+    assert fallback["deterministic_advisory"]["schema_version"] == "advisor-v2-milestone-2"
     assert fallback["deterministic_advisory"]["recommendations"][0]["action"] == "WATCH"

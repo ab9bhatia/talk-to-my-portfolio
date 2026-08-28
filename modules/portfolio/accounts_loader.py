@@ -8,6 +8,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+from modules.portfolio.account_profile import normalize_account_profile
 from shared.config import APP_PORT
 
 _MODULE_DIR = Path(__file__).resolve().parent
@@ -74,6 +75,7 @@ def build_account_registry(raw: dict[str, Any]) -> tuple[
             "disabled_reason": row.get("disabled_reason"),
             "redirect_url": row.get("redirect_url"),
             "auth_port": row.get("auth_port", APP_PORT),
+            "account_profile": normalize_account_profile(row, broker="zerodha"),
         }
         codes[aid] = row["code"]
 
@@ -86,6 +88,7 @@ def build_account_registry(raw: dict[str, Any]) -> tuple[
             "user_id": row.get("user_id") or "groww",
             "enabled": bool(row.get("enabled", True)),
             "disabled_reason": row.get("disabled_reason"),
+            "account_profile": normalize_account_profile(row, broker="groww"),
         }
         codes[aid] = row["code"]
 
@@ -96,6 +99,7 @@ def build_account_registry(raw: dict[str, Any]) -> tuple[
             "label": row.get("label") or aid,
             "enabled": bool(row.get("enabled", True)),
             "disabled_reason": row.get("disabled_reason"),
+            "account_profile": normalize_account_profile(row, broker="sarwa"),
         }
         codes[aid] = row["code"]
 
@@ -107,6 +111,7 @@ def build_account_registry(raw: dict[str, Any]) -> tuple[
             "enabled": bool(row.get("enabled", True)),
             "disabled_reason": row.get("disabled_reason"),
             "import_kind": row.get("import_kind"),
+            "account_profile": normalize_account_profile(row, broker="custom"),
         }
         codes[aid] = row["code"]
 

@@ -71,6 +71,7 @@ flowchart TB
 |------|---------|
 | `router.py` | All HTTP routes: UI pages, JSON APIs, OAuth, export, agent, setup, growth |
 | `config.py` | Account registry (`accounts.json`), env credential resolution, account codes |
+| `account_profile.py` | Validated local account/tax profile schema and legacy-safe defaults |
 | `paths.py` | `DATA_DIR` → `modules/portfolio/data/` |
 | `portfolio_profile.py` | **Code defaults** for agent themes, D/E cap, env-overridable limits (fallback when Setup goals empty) |
 | `accounts.example.json` | Template for gitignored `accounts.json` |
@@ -106,7 +107,7 @@ flowchart TB
 | **`portfolio.py`** | Fetch & merge family holdings; normalize; enrich; cache (memory + SQLite) |
 | **`holdings_view.py`** | Sort, group, aggregate, Excel export, account filters |
 | **`market_data.py`** | Yahoo metrics, sector, signals, daily LTP refresh scheduler |
-| **`advisory/`** | Deterministic consolidation, scenarios, momentum, rules, tax safety notes, and recommendation schema |
+| **`advisory/`** | Deterministic consolidation, scenarios, momentum, rules, sourced tax safety records, and recommendation schema |
 | **`mf_metrics.py`** | Mutual fund NAV metrics |
 | **`analyst_rating.py`** | Consensus → B+/B/H/S labels |
 | **`zerodha_mf.py`** | Zerodha MF holdings via Kite |

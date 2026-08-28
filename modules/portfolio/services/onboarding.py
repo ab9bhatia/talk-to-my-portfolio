@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from modules.portfolio.account_profile import apply_profile_updates, normalize_account_profile
 from modules.portfolio.accounts_loader import (
     collect_used_codes,
     load_accounts_raw,
@@ -172,6 +173,7 @@ def account_setup_status() -> list[dict[str, Any]]:
             "label": row.get("label"),
             "enabled": row.get("enabled", True),
             "user_id": row.get("user_id"),
+            "account_profile": normalize_account_profile(row, broker=broker),
         }
         if broker == "zerodha":
             entry["credentials_ok"] = env_var_present(f"ZERODHA_API_KEY_{suffix}") and env_var_present(
@@ -220,6 +222,7 @@ def add_zerodha_account(payload: dict[str, Any]) -> dict[str, Any]:
         "redirect_url": redirect,
         "auth_port": APP_PORT,
     }
+    apply_profile_updates(row, payload, broker="zerodha")
     raw.setdefault("zerodha", []).append(row)
     if not raw.get("legacy_zerodha_account_id"):
         raw["legacy_zerodha_account_id"] = aid
@@ -254,6 +257,7 @@ def add_groww_account(payload: dict[str, Any]) -> dict[str, Any]:
         "user_id": "groww",
         "enabled": True,
     }
+    apply_profile_updates(row, payload, broker="groww")
     raw.setdefault("groww", []).append(row)
 
     suffix = aid.upper()
@@ -289,6 +293,7 @@ def add_custom_account(payload: dict[str, Any]) -> dict[str, Any]:
         "enabled": True,
         "import_kind": "file",
     }
+    apply_profile_updates(row, payload, broker="custom")
     raw.setdefault("custom", []).append(row)
     save_accounts_raw(raw)
     reload_account_registry()
@@ -349,6 +354,7 @@ def get_account_for_edit(broker: str, account_id: str) -> dict[str, Any]:
         "enabled": row.get("enabled", True),
         "user_id": row.get("user_id"),
         "redirect_url": row.get("redirect_url") or read_env_value(f"ZERODHA_REDIRECT_URL_{suffix}") or default_callback_url(),
+        "account_profile": normalize_account_profile(row, broker=_broker_list_key(broker)),
     }
     if out["broker"] == "zerodha":
         out["secrets"] = {
@@ -407,6 +413,7 @@ def update_zerodha_account(account_id: str, payload: dict[str, Any]) -> dict[str
         "enabled": bool(payload.get("enabled", row.get("enabled", True))),
         "redirect_url": redirect,
     })
+    apply_profile_updates(row, payload, broker="zerodha")
     raw[key][idx] = row
 
     env_updates: dict[str, str] = {f"ZERODHA_REDIRECT_URL_{suffix}": redirect}
@@ -440,6 +447,7 @@ def update_groww_account(account_id: str, payload: dict[str, Any]) -> dict[str, 
         "enabled": bool(payload.get("enabled", row.get("enabled", True))),
         "relation": str(payload.get("relation") if payload.get("relation") is not None else row.get("relation") or ""),
     })
+    apply_profile_updates(row, payload, broker="groww")
     raw[key][idx] = row
 
     method = str(payload.get("auth_method") or "totp").lower()
@@ -481,6 +489,7 @@ def update_custom_account(account_id: str, payload: dict[str, Any]) -> dict[str,
         "code": new_code,
         "enabled": bool(payload.get("enabled", row.get("enabled", True))),
     })
+    apply_profile_updates(row, payload, broker="custom")
     raw[key][idx] = row
     save_accounts_raw(raw)
     reload_account_registry()
@@ -502,6 +511,7 @@ def update_sarwa_account(account_id: str, payload: dict[str, Any]) -> dict[str, 
         "code": new_code,
         "enabled": bool(payload.get("enabled", row.get("enabled", True))),
     })
+    apply_profile_updates(row, payload, broker="sarwa")
     raw[key][idx] = row
     save_accounts_raw(raw)
     reload_account_registry()

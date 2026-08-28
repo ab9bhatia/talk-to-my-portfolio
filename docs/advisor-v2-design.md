@@ -237,7 +237,25 @@ Extend local account rows backward-compatibly with optional fields:
 
 These values belong in gitignored `accounts.json` or local SQLite, never the example with real data. Defaults must reproduce current behavior when fields are absent.
 
+Milestone 2 implements these as optional top-level account-row fields. Legacy rows are
+normalized at load time with `UNKNOWN` residency/account/tax values and broker-currency
+defaults; the file is not rewritten until profile data are explicitly edited. Invalid
+percentages, enums, currencies, country codes, booleans, and incomplete GIFT verification
+claims fail closed. The setup API accepts both top-level fields and a nested
+`account_profile` object.
+
+Raw owner, residency, and tax-profile fields are deliberately not copied into the general
+portfolio payload or LLM context. The deterministic engine can consume an explicit
+`account_profile` on an account block, but external-model disclosure requires a separate,
+explicit opt-in design. Account codes remain the only account identifiers in recommendation
+positions.
+
 Tax knowledge is versioned data, not prompt prose. A rule record contains jurisdiction, account/instrument applicability, rule/reference, effective-from/to, authoritative source URL, last-reviewed date, and required inputs. Outputs are planning notes. Set `requires_ca_review=true` when lots, treaty status, exact product/share class, or another decisive fact is missing.
+
+The Milestone 2 rule dataset covers Indian share/loss lot requirements, NRI withholding,
+RBI NRI settlement/repatriation classification, IFSCA product-level evidence, and possible
+U.S.-situs estate exposure. Recommendation tax output includes `requires_ca_review` and
+`tax_rule_refs`; it never computes tax from broker average-price P&L.
 
 The engine must distinguish NRO Non-PIS, NRE-PIS, resident demat, GIFT IBU, and global brokerage settlement and movement constraints. It must not equate NRI status with zero Indian tax, TDS with final liability, or `GIFT City` in a product name with verified tax treatment. Track U.S.-situs estate exposure and dividend withholding separately from capital gains for global accounts.
 

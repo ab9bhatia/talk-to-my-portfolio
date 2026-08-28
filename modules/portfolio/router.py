@@ -12,6 +12,12 @@ import json
 import os
 
 from modules.portfolio.auth.groww import GrowwError, get_groww_connection_status
+from modules.portfolio.account_profile import (
+    AccountType,
+    IndiaResidencyStatus,
+    RiskProfile,
+    TaxLossHarvestingMode,
+)
 from modules.portfolio.auth.zerodha import OAuthError, build_login_url, complete_oauth
 from modules.portfolio.config import (
     ACCOUNTS,
@@ -1361,7 +1367,27 @@ def api_setup_llm_save(payload: LlmSetupPayload):
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-class SetupAccountPayload(BaseModel):
+class AccountProfilePayload(BaseModel):
+    owner_ref: str | None = Field(default=None, max_length=64)
+    country_of_residence: str | None = Field(default=None, min_length=2, max_length=7)
+    india_residency_status: IndiaResidencyStatus | None = None
+    tax_profile: str | None = Field(default=None, max_length=64)
+    base_currency: str | None = Field(default=None, min_length=3, max_length=3)
+    account_type: AccountType | None = None
+    risk_profile: RiskProfile | None = None
+    target_return_pct: float | None = Field(default=None, gt=0, le=100)
+    max_position_pct: float | None = Field(default=None, gt=0, le=100)
+    max_sector_pct: float | None = Field(default=None, gt=0, le=100)
+    max_group_exposure_pct: float | None = Field(default=None, gt=0, le=100)
+    cash_buffer_pct: float | None = Field(default=None, ge=0, le=100)
+    tax_loss_harvesting_mode: TaxLossHarvestingMode | None = None
+    tax_lots_available: bool | None = None
+    gift_product_tax_verified: bool | None = None
+    gift_product_tax_source: str | None = Field(default=None, max_length=500)
+    gift_product_tax_as_of: str | None = Field(default=None, max_length=10)
+
+
+class SetupAccountPayload(AccountProfilePayload):
     label: str = Field(..., min_length=1, max_length=64)
     id: str = Field(..., min_length=2, max_length=32)
     code: str | None = Field(default=None, max_length=8)
@@ -1373,9 +1399,10 @@ class SetupAccountPayload(BaseModel):
     totp_token: str | None = None
     totp_secret: str | None = None
     enabled: bool | None = None
+    account_profile: AccountProfilePayload | None = None
 
 
-class SetupAccountUpdatePayload(BaseModel):
+class SetupAccountUpdatePayload(AccountProfilePayload):
     label: str | None = Field(default=None, max_length=64)
     code: str | None = Field(default=None, max_length=8)
     user_id: str | None = None
@@ -1387,6 +1414,7 @@ class SetupAccountUpdatePayload(BaseModel):
     totp_secret: str | None = None
     enabled: bool | None = None
     relation: str | None = None
+    account_profile: AccountProfilePayload | None = None
 
 
 @router.get("/api/portfolio/setup/accounts/{broker}/{account_id}")
