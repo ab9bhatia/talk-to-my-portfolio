@@ -33,6 +33,11 @@
             </a>
           </li>
           <li>
+            <a href="{{ app_path('/portfolio/advisor') }}" class="nav-link {% if active_module == 'advisor' %}active{% endif %}" data-loader-message="Loading Action Center…">
+              <span class="nav-icon" aria-hidden="true">◎</span> Action Center
+            </a>
+          </li>
+          <li>
             <a href="{{ app_path('/portfolio/agent') }}" class="nav-link {% if active_module == 'agent' %}active{% endif %}" data-loader-message="Loading portfolio agent…">
               <span class="nav-icon" aria-hidden="true">✦</span> Portfolio Agent
             </a>

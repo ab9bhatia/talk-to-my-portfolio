@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Any
 
@@ -19,12 +20,13 @@ from modules.portfolio.services.advisory.models import (
 )
 from modules.portfolio.services.advisory.momentum import analyze_momentum
 from modules.portfolio.services.advisory.overlap import consolidate_family, detect_overlap
+from modules.portfolio.services.advisory.patterns import pattern_evidence_for_holding
 from modules.portfolio.services.advisory.provenance import as_of_text, evidence_for_holding
 from modules.portfolio.services.advisory.rules import select_action
 from modules.portfolio.services.advisory.tax import assess_tax_and_settlement
 
 
-SCHEMA_VERSION = "advisor-v2-milestone-2"
+SCHEMA_VERSION = "advisor-v2-v1"
 
 
 def _flag(code: str, severity: str, message: str, *, blocking: bool = False) -> DataQualityFlag:
@@ -61,6 +63,11 @@ def _operational_flags(
         "SCREENSHOT_QUANTITY_ROUNDED_VALUE_DOES_NOT_RECONCILE": (
             "warning",
             "Displayed screenshot quantity is rounded and does not reproduce displayed value.",
+            False,
+        ),
+        "STALE_EXTERNAL_EVIDENCE": (
+            "warning",
+            "Cached external evidence is stale and excluded from decisions.",
             False,
         ),
     }
@@ -174,10 +181,14 @@ def _recommendation(
     momentum, momentum_flags = analyze_momentum(holding)
     holding["momentum_regime"] = momentum.regime
     evidence, provenance_flags = evidence_for_holding(holding, portfolio_as_of=portfolio_as_of)
+    chart_pattern, pattern_evidence, pattern_flags = pattern_evidence_for_holding(holding)
+    holding["_chart_pattern"] = chart_pattern
+    evidence.extend(pattern_evidence)
     flags = _operational_flags(holding, family_stale=family_stale)
     flags.extend(return_flags)
     flags.extend(momentum_flags)
     flags.extend(provenance_flags)
+    flags.extend(pattern_flags)
     has_overlap = bool(overlap_symbols)
     if has_overlap:
         flags.append(
@@ -222,6 +233,30 @@ def _recommendation(
         cooldown_active=cooldown_active,
         has_overlap=has_overlap,
     )
+    decision_conflicts: list[str] = []
+    if chart_pattern and chart_pattern.active:
+        if chart_pattern.bias == "bullish" and decision.sell_type is SellType.FUNDAMENTAL_SELL:
+            decision_conflicts.append("BULLISH_PATTERN_FUNDAMENTAL_SELL_PRESERVED")
+        elif chart_pattern.bias == "bullish" and decision.sell_type in {
+            SellType.TACTICAL_REDUCE,
+            SellType.PORTFOLIO_CONSOLIDATION,
+        }:
+            decision_conflicts.append("BULLISH_PATTERN_STAGED_EXIT")
+        elif chart_pattern.bias == "bullish" and not expected.available:
+            decision_conflicts.append("BULLISH_PATTERN_WITHOUT_RETURN_EVIDENCE")
+        elif chart_pattern.bias == "bearish" and decision.action in {
+            Action.ADD,
+            Action.STRONG_ADD,
+        }:
+            decision_conflicts.append("BEARISH_PATTERN_VS_FUNDAMENTAL_ADD")
+    if decision_conflicts:
+        flags.append(
+            _flag(
+                "SIGNAL_CONFLICT",
+                "warning",
+                "Chart timing and deterministic business/return evidence disagree; the rule trace records which signal dominates.",
+            )
+        )
     tax = assess_tax_and_settlement(holding, action=decision.action)
     flags = _dedupe_flags(flags + tax.flags)
     confidence = decision.confidence
@@ -250,6 +285,8 @@ def _recommendation(
         scores=assessment.scores,
         momentum_regime=momentum.regime,
         momentum=momentum,
+        chart_pattern=chart_pattern,
+        decision_conflicts=decision_conflicts,
         business_thesis=_business_thesis(holding),
         why_now=decision.why_now,
         hold_until=decision.hold_until,
@@ -264,6 +301,7 @@ def _recommendation(
         data_quality_flags=flags,
         rule_trace=decision.rule_trace,
         feature_coverage_pct=assessment.scores.feature_coverage_pct,
+        recommendation_as_of=datetime.now(UTC).isoformat().replace("+00:00", "Z"),
     )
 
 
@@ -305,10 +343,128 @@ def build_advisory_payload(
                 2,
             )
 
+    portfolio_value = float(
+        (family.get("summary") or {}).get("total_current_value")
+        or sum(item.consolidated_value for item in recommendations)
+    )
+    add_candidates = sorted(
+        (
+            item
+            for item in recommendations
+            if item.action in {Action.ADD, Action.STRONG_ADD}
+        ),
+        key=lambda item: (
+            -(item.expected_3y_irr.base_pct or -999),
+            -item.action_confidence,
+            item.symbol,
+        ),
+    )
+    remaining_capacity = {
+        item.symbol: max(
+            0.0,
+            portfolio_value * (item.target_weight_pct - item.family_weight_pct) / 100,
+        )
+        for item in add_candidates
+    }
+    reinvestment_plan: list[dict[str, Any]] = []
+    plan_by_account: dict[str, list[dict[str, Any]]] = {}
+    for account_code, account_proceeds in sorted(proceeds.items()):
+        remaining = float(account_proceeds)
+        rows: list[dict[str, Any]] = []
+        for candidate in add_candidates:
+            if remaining <= 0:
+                break
+            if account_code not in {position.account_code for position in candidate.accounts}:
+                continue
+            capacity = remaining_capacity[candidate.symbol]
+            if capacity <= 0:
+                continue
+            amount = round(min(remaining, capacity), 2)
+            if amount <= 0:
+                continue
+            rows.append(
+                {
+                    "account_code": account_code,
+                    "destination": candidate.symbol,
+                    "amount": amount,
+                    "basis": "existing_underweight_deterministic_add",
+                }
+            )
+            remaining = round(remaining - amount, 2)
+            remaining_capacity[candidate.symbol] = max(0.0, capacity - amount)
+        if remaining > 0:
+            rows.append(
+                {
+                    "account_code": account_code,
+                    "destination": "CASH_BUFFER",
+                    "amount": remaining,
+                    "basis": "no_eligible_existing_position_within_target_weight",
+                }
+            )
+        plan_by_account[account_code] = rows
+        reinvestment_plan.extend(rows)
+
+    sleeve_totals: dict[str, float] = {}
+    for row in reinvestment_plan:
+        destination = str(row["destination"])
+        sleeve_totals[destination] = sleeve_totals.get(destination, 0.0) + float(row["amount"])
+    total_proceeds = sum(proceeds.values())
+    target_sleeve_allocation = [
+        {
+            "destination": destination,
+            "amount": round(amount, 2),
+            "share_of_proceeds_pct": round(amount / total_proceeds * 100, 2)
+            if total_proceeds
+            else 0.0,
+        }
+        for destination, amount in sorted(
+            sleeve_totals.items(), key=lambda item: (-item[1], item[0])
+        )
+    ]
+
+    with_replacements: list[HoldingRecommendation] = []
+    for item in recommendations:
+        replacement_plan: list[dict[str, Any]] = []
+        if item.sell_pct > 0:
+            for position in item.accounts:
+                source_sale = position.current_value * item.sell_pct / 100
+                account_total = proceeds.get(position.account_code, 0.0)
+                if account_total <= 0:
+                    continue
+                for destination in plan_by_account.get(position.account_code, []):
+                    replacement_plan.append(
+                        {
+                            "account_code": position.account_code,
+                            "destination": destination["destination"],
+                            "amount": round(
+                                source_sale * float(destination["amount"]) / account_total,
+                                2,
+                            ),
+                            "basis": destination["basis"],
+                        }
+                    )
+        with_replacements.append(replace(item, replacement_plan=replacement_plan))
+    recommendations = with_replacements
+
+    deadlines = [
+        {
+            "symbol": item.symbol,
+            "action": item.action.value,
+            "sell_type": item.sell_type.value,
+            "hold_until": item.hold_until,
+            "priority": "high"
+            if item.action in {Action.SELL, Action.RECONCILE}
+            else "medium",
+        }
+        for item in recommendations
+        if item.hold_until.get("value")
+    ]
+    all_flags = [flag for item in recommendations for flag in item.data_quality_flags]
     payload = AdvisoryPortfolio(
         schema_version=SCHEMA_VERSION,
         generated_at=generated_at or datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         source_portfolio_cached_at=as_of_text(portfolio_as_of),
+        portfolio_value=round(portfolio_value, 2),
         xirr_status=(
             "calculation_deferred_requires_validated_cashflows"
             if family.get("cashflows")
@@ -333,9 +489,9 @@ def build_advisory_payload(
             for item in recommendations
             if item.action in {Action.ADD, Action.STRONG_ADD}
         ],
-        target_sleeve_allocation=[],
+        target_sleeve_allocation=target_sleeve_allocation,
         proceeds_by_account=proceeds,
-        reinvestment_plan=[],
+        reinvestment_plan=reinvestment_plan,
         overlap_report=overlap_report,
         cooldown_warning=(
             f"Recent turnover is {turnover:.1f}%; optional rotations are suppressed "
@@ -343,5 +499,14 @@ def build_advisory_payload(
             if cooldown_active
             else None
         ),
+        deadlines=deadlines,
+        evidence_status={
+            "recommendations": len(recommendations),
+            "with_dated_evidence": sum(bool(item.evidence) for item in recommendations),
+            "stale_items": sum(
+                flag.code.startswith("STALE_") for flag in all_flags
+            ),
+            "blocking_items": sum(flag.blocking for flag in all_flags),
+        },
     )
     return to_primitive(payload)

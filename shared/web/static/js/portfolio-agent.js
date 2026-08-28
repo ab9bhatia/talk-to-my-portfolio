@@ -236,7 +236,8 @@
     rebalance.innerHTML = renderList("Rebalance", rec.rebalance, (row) =>
       `<li>${escapeHtml(row.action || "")}: ${escapeHtml(row.detail || row.rationale || "")}</li>`
     );
-    redFlags.innerHTML = renderList("Red flags", rec.red_flags, (flag) =>
+    const agentWarnings = [...(rec.red_flags || []), ...(rec.warnings || [])];
+    redFlags.innerHTML = renderList("Red flags", agentWarnings, (flag) =>
       `<li>${escapeHtml(String(flag))}</li>`
     );
     themes.innerHTML = renderList("Theme opportunities", rec.theme_opportunities, (row) =>

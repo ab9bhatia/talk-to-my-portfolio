@@ -27,9 +27,18 @@ from modules.portfolio.services.llm_config import (
 )
 from modules.portfolio.services.portfolio_context import build_portfolio_context
 
-_SYSTEM_PROMPT = """You are a personal portfolio advisor for an Indian equity investor.
-Use ONLY the JSON context provided (holdings with sector/industry/business summaries, signals, macro).
-Be direct and actionable — personal use only.
+_SYSTEM_PROMPT = """You explain a deterministic portfolio advisory payload.
+Use ONLY the JSON context provided. Be direct, concise, and answer the exact latest question.
+
+Authority boundary:
+- context.advisory is the sole source of truth for every structured action, sell type,
+  percentage, target weight, expected return, deadline, and data-quality state.
+- Never upgrade WATCH/HOLD into BUY, or downgrade it into SELL.
+- Never emit a symbol absent from context.advisory.recommendations.
+- Chart patterns and momentum are execution-timing evidence only. They cannot manufacture
+  a buy/sell or override a sourced fundamental, governance, reconciliation, or tradability rule.
+- If evidence is missing, say UNKNOWN. Never invent filings, prices, tax outcomes, or scores.
+- Returns are scenarios, not guarantees. Never claim zero tax without verified product evidence.
 
 Critical — theme & sector classification:
 - NEVER infer a company's business from its ticker or partial word in the name.
@@ -38,7 +47,7 @@ Critical — theme & sector classification:
 - Ignore any misleading substring in symbols; rely on Yahoo sector/industry/summary.
 - growth_themes in context (if present) are heuristic hints only — override them when industry data disagrees.
 
-Rules:
+Explanation rules:
 - Use investor_profile and constraints from context (saved under Setup → Goals & guardrails).
 - Respect max_pct_per_stock and max_pct_per_sector from constraints for concentration advice.
 - Flag breaches using deterministic_flags on holdings and flag fields on sector_allocation.
@@ -48,9 +57,22 @@ Rules:
 - Prefer growth themes from constraints when industry evidence supports them.
 - Do NOT invent holdings or prices not in context.
 - Governance/sector risks: say "unknown" if not in context — do not fabricate.
+- You may choose which deterministic recommendations are relevant to the question, but you may
+  only copy their action and sell_type. Do not independently select or alter an action.
 
 Reply with JSON only matching this schema:
 {
+  "schema_version": "advisor-conversation-v2",
+  "symbols": [{
+    "symbol": "...",
+    "deterministic_action": "copy exactly from context.advisory",
+    "sell_type": "copy exactly from context.advisory",
+    "explanation": "concise explanation grounded in the recommendation",
+    "uncertainty": "UNKNOWN or the relevant data-quality limitation"
+  }],
+  "portfolio_actions": [{"action": "copy a deterministic queue/action", "explanation": "..."}],
+  "evidence_used": [{"symbol": "...", "source": "copy source", "as_of": "copy as_of"}],
+  "warnings": ["..."],
   "stance": "1–3 sentence overall portfolio view",
   "xirr_outlook": "honest view vs investor_profile.target_xirr_pct given current mix and guardrails",
   "buy": [{"symbol": "...", "action": "add|initiate|watch", "rationale": "...", "horizon": "3y+"}],
@@ -62,9 +84,10 @@ Reply with JSON only matching this schema:
   "answer": "direct, specific answer to the user's latest message (required when they asked a question)"
 }
 
-Important: Each user message is different. The "answer" field MUST address their exact question.
+Important: The "answer" field MUST address the exact latest question.
 Do not repeat a generic portfolio overview unless they asked for one.
-Update buy/sell/rebalance only when relevant to their question; otherwise use empty arrays."""
+The legacy buy/sell/rebalance arrays are compatibility views only. Include only actions copied
+from context.advisory; otherwise use empty arrays."""
 
 _FOLLOWUP_PROMPT = """You are continuing a portfolio advisory conversation.
 The portfolio context JSON was provided at the start of this thread (includes user_goals and constraints).
@@ -102,6 +125,125 @@ def _parse_agent_json(content: str) -> dict[str, Any]:
     return parsed
 
 
+def _validate_agent_response(
+    parsed: dict[str, Any],
+    *,
+    context: dict[str, Any],
+) -> dict[str, Any]:
+    """Replace model-selected actions with deterministic values and drop contradictions."""
+    advisory = context.get("advisory") or {}
+    deterministic = {
+        str(item.get("symbol") or "").upper(): item
+        for item in advisory.get("recommendations") or []
+        if item.get("symbol")
+    }
+    warnings = [str(item) for item in parsed.get("warnings") or []]
+    requested_rows = list(parsed.get("symbols") or [])
+    for row in parsed.get("buy") or []:
+        requested_rows.append(
+            {
+                "symbol": row.get("symbol"),
+                "explanation": row.get("rationale"),
+                "uncertainty": "",
+            }
+        )
+    for row in parsed.get("sell_or_trim") or []:
+        requested_rows.append(
+            {
+                "symbol": row.get("symbol"),
+                "explanation": row.get("rationale"),
+                "uncertainty": "",
+            }
+        )
+
+    symbols: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for row in requested_rows:
+        if not isinstance(row, dict):
+            continue
+        symbol = str(row.get("symbol") or "").upper()
+        recommendation = deterministic.get(symbol)
+        if not recommendation:
+            if symbol:
+                warnings.append(f"Removed unknown symbol from model output: {symbol}.")
+            continue
+        if symbol in seen:
+            continue
+        seen.add(symbol)
+        supplied_action = str(row.get("deterministic_action") or "").upper()
+        actual_action = str(recommendation.get("action") or "WATCH")
+        if supplied_action and supplied_action != actual_action:
+            warnings.append(
+                f"Corrected {symbol} action from {supplied_action} to deterministic {actual_action}."
+            )
+        flags = recommendation.get("data_quality_flags") or []
+        uncertainty = str(row.get("uncertainty") or "").strip()
+        if not uncertainty and flags:
+            uncertainty = str(flags[0].get("message") or flags[0].get("code") or "UNKNOWN")
+        symbols.append(
+            {
+                "symbol": symbol,
+                "deterministic_action": actual_action,
+                "sell_type": str(recommendation.get("sell_type") or "NONE"),
+                "explanation": str(row.get("explanation") or recommendation.get("why_now") or ""),
+                "uncertainty": uncertainty or "No additional uncertainty supplied.",
+            }
+        )
+
+    buy = [
+        {
+            "symbol": row["symbol"],
+            "action": "add",
+            "rationale": row["explanation"],
+            "horizon": "3y+",
+        }
+        for row in symbols
+        if row["deterministic_action"] in {"ADD", "STRONG_ADD"}
+    ]
+    sell = [
+        {
+            "symbol": row["symbol"],
+            "action": "exit" if row["deterministic_action"] == "SELL" else "trim",
+            "rationale": row["explanation"],
+        }
+        for row in symbols
+        if row["deterministic_action"] in {"REDUCE", "SELL"}
+    ]
+    if parsed.get("rebalance"):
+        warnings.append(
+            "Model-authored rebalance instructions were removed; use the deterministic rebalance evaluator."
+        )
+
+    evidence_used: list[dict[str, Any]] = []
+    for row in symbols:
+        recommendation = deterministic[row["symbol"]]
+        for item in recommendation.get("evidence") or []:
+            evidence_used.append(
+                {
+                    "symbol": row["symbol"],
+                    "source": item.get("source"),
+                    "as_of": item.get("as_of"),
+                }
+            )
+
+    return {
+        "schema_version": "advisor-conversation-v2",
+        "symbols": symbols,
+        "portfolio_actions": [],
+        "evidence_used": evidence_used,
+        "warnings": list(dict.fromkeys(warnings)),
+        "stance": str(parsed.get("stance") or ""),
+        "xirr_outlook": str(parsed.get("xirr_outlook") or ""),
+        "buy": buy,
+        "sell_or_trim": sell,
+        "rebalance": [],
+        "red_flags": [str(item) for item in parsed.get("red_flags") or []],
+        "theme_opportunities": list(parsed.get("theme_opportunities") or []),
+        "macro_view": str(parsed.get("macro_view") or ""),
+        "answer": str(parsed.get("answer") or parsed.get("stance") or ""),
+    }
+
+
 def _malformed_json_fallback(
     content: str,
     *,
@@ -109,6 +251,11 @@ def _malformed_json_fallback(
 ) -> dict[str, Any]:
     """Keep deterministic advice available when an LLM violates its JSON contract."""
     return {
+        "schema_version": "advisor-conversation-v2",
+        "symbols": [],
+        "portfolio_actions": [],
+        "evidence_used": [],
+        "warnings": ["LLM response was malformed; deterministic advisory remains authoritative."],
         "stance": "",
         "xirr_outlook": "",
         "buy": [],
@@ -468,7 +615,10 @@ def stream_portfolio_agent(
 
         full_text = "".join(parts)
         try:
-            recommendations = _parse_agent_json(full_text)
+            recommendations = _validate_agent_response(
+                _parse_agent_json(full_text),
+                context=context,
+            )
         except (json.JSONDecodeError, ValueError):
             recommendations = _malformed_json_fallback(full_text, context=context)
 

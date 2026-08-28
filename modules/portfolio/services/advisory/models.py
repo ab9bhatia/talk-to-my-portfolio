@@ -111,6 +111,24 @@ class MomentumSnapshot:
 
 
 @dataclass(frozen=True)
+class ChartPatternEvidence:
+    """Primary chart setup normalized as execution-timing evidence only."""
+
+    pattern: str
+    label: str
+    bias: str
+    status: str
+    confidence: float
+    as_of: str | None
+    target_price: float | None
+    target_date: str | None
+    upside_to_target_pct: float | None
+    note: str
+    active: bool
+    stale: bool
+
+
+@dataclass(frozen=True)
 class AccountPosition:
     account_id: str
     account_code: str
@@ -138,6 +156,8 @@ class HoldingRecommendation:
     scores: Scores
     momentum_regime: MomentumRegime | None
     momentum: MomentumSnapshot
+    chart_pattern: ChartPatternEvidence | None
+    decision_conflicts: list[str]
     business_thesis: str
     why_now: str
     hold_until: dict[str, str]
@@ -152,6 +172,7 @@ class HoldingRecommendation:
     data_quality_flags: list[DataQualityFlag]
     rule_trace: list[dict[str, Any]]
     feature_coverage_pct: float
+    recommendation_as_of: str
 
 
 @dataclass(frozen=True)
@@ -159,6 +180,7 @@ class AdvisoryPortfolio:
     schema_version: str
     generated_at: str
     source_portfolio_cached_at: str | None
+    portfolio_value: float
     xirr_status: str
     recommendations: list[HoldingRecommendation]
     full_exit_queue: list[str]
@@ -170,6 +192,8 @@ class AdvisoryPortfolio:
     reinvestment_plan: list[dict[str, Any]]
     overlap_report: list[dict[str, Any]]
     cooldown_warning: str | None
+    deadlines: list[dict[str, Any]]
+    evidence_status: dict[str, Any]
 
 
 def to_primitive(value: Any) -> Any:

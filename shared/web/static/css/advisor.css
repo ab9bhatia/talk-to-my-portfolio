@@ -1,0 +1,37 @@
+.advisor-shell { max-width: 1600px; }
+.advisor-notice { margin: 0 0 1rem; padding: .75rem 1rem; border-radius: .75rem; background: rgba(59, 130, 246, .1); color: #bfdbfe; }
+.advisor-notice--ok { background: rgba(34, 197, 94, .1); color: #bbf7d0; }
+.advisor-notice--warning { background: rgba(245, 158, 11, .12); color: #fde68a; }
+.advisor-notice--error { background: rgba(239, 68, 68, .12); color: #fecaca; }
+.advisor-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .8rem; margin-bottom: 1rem; }
+.advisor-stats article { padding: 1rem; border: 1px solid rgba(148, 163, 184, .18); border-radius: .9rem; background: rgba(15, 23, 42, .66); }
+.advisor-stats strong { display: block; font-size: 1.65rem; color: #f8fafc; }
+.advisor-stats span, .advisor-table small { display: block; color: #94a3b8; margin-top: .2rem; }
+.advisor-controls { display: flex; gap: 1rem; align-items: end; flex-wrap: wrap; margin-bottom: 1rem; }
+.advisor-controls label { display: grid; gap: .35rem; color: #cbd5e1; font-size: .8rem; }
+.advisor-controls select { min-width: 10rem; padding: .55rem .7rem; border-radius: .6rem; border: 1px solid rgba(148, 163, 184, .25); background: #0f172a; color: #e2e8f0; }
+.advisor-controls .advisor-checkbox { display: flex; align-items: center; gap: .45rem; padding-bottom: .55rem; }
+.advisor-table-wrap { overflow-x: auto; }
+.advisor-table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+.advisor-table th, .advisor-table td { padding: .8rem .7rem; border-bottom: 1px solid rgba(148, 163, 184, .14); text-align: left; vertical-align: top; }
+.advisor-table th { color: #94a3b8; font-size: .72rem; text-transform: uppercase; letter-spacing: .04em; }
+.advisor-main-row > td:first-child { min-width: 11rem; }
+.advisor-detail-row td { padding-top: 0; }
+.advisor-badge { display: inline-block; margin: 0 .25rem .25rem 0; padding: .18rem .45rem; border-radius: 999px; background: rgba(148, 163, 184, .13); color: #cbd5e1; font-size: .68rem; font-weight: 700; }
+.advisor-badge--sell, .advisor-badge--reduce, .advisor-badge--error { background: rgba(239, 68, 68, .14); color: #fca5a5; }
+.advisor-badge--add, .advisor-badge--strong_add, .advisor-badge--bullish { background: rgba(34, 197, 94, .14); color: #86efac; }
+.advisor-badge--watch, .advisor-badge--hold_no_add, .advisor-badge--warning { background: rgba(245, 158, 11, .14); color: #fde047; }
+.advisor-badge--sell-type { background: rgba(168, 85, 247, .14); color: #d8b4fe; }
+.advisor-conflict { margin-top: .35rem; color: #fbbf24; font-size: .72rem; }
+.advisor-scenarios { white-space: nowrap; }
+.advisor-evidence summary { cursor: pointer; color: #7dd3fc; }
+.advisor-evidence-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .8rem 1.2rem; padding: .8rem 0; }
+.advisor-evidence-grid h4 { margin: .3rem 0; color: #e2e8f0; }
+.advisor-evidence-grid p, .advisor-evidence-grid li { color: #aebed2; font-size: .78rem; }
+.advisor-evidence-grid ul { margin: .35rem 0; padding-left: 1.1rem; }
+.advisor-lower-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+.advisor-lower-grid p { color: #cbd5e1; }
+@media (max-width: 900px) {
+  .advisor-stats, .advisor-lower-grid, .advisor-evidence-grid { grid-template-columns: 1fr; }
+  .advisor-table { min-width: 900px; }
+}

@@ -16,6 +16,7 @@ os.environ["PORTFOLIO_DATA_DIR"] = _TEMP_DATA.name
 def initialize_isolated_databases():
     """Initialize only local temporary SQLite stores; never mutate real portfolio data."""
     from modules.portfolio.db import (
+        advisory_evidence,
         buy_thesis_cache,
         custom_holdings,
         daily_history,
@@ -29,6 +30,7 @@ def initialize_isolated_databases():
     )
 
     for store in (
+        advisory_evidence,
         tokens,
         groww_tokens,
         portfolio_cache,

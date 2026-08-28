@@ -95,6 +95,18 @@ def select_action(
     trace: list[dict[str, Any]] = []
     weight = float(holding.get("family_weight_pct") or 0)
     confidence = _confidence(assessment, expected_return, flags)
+    pattern = holding.get("_chart_pattern")
+    if pattern and pattern.active:
+        trace.append(
+            {
+                "rule": "CHART_PATTERN_TIMING_ONLY",
+                "matched": True,
+                "bias": pattern.bias,
+                "status": pattern.status,
+                "confidence": pattern.confidence,
+                "policy": "may_stage_execution_but_cannot_create_or_override_fundamental_action",
+            }
+        )
 
     needs_reconcile = _has_flag(
         flags,
@@ -145,6 +157,14 @@ def select_action(
         }
     )
     if hard_governance:
+        if pattern and pattern.active and pattern.bias == "bullish":
+            trace.append(
+                {
+                    "rule": "BULLISH_PATTERN_VS_FUNDAMENTAL_SELL",
+                    "matched": True,
+                    "effect": "fundamental_sell_preserved",
+                }
+            )
         return _decision(
             action=Action.SELL,
             sell_type=SellType.FUNDAMENTAL_SELL,
@@ -334,6 +354,43 @@ def select_action(
                 "reduction rather than a fundamental exit."
             )
 
+    if pattern and pattern.active and pattern.bias == "bullish":
+        original_action = action
+        original_sell_pct = sell_pct
+        if sell_type is SellType.PORTFOLIO_CONSOLIDATION:
+            action = Action.REDUCE
+            sell_pct = min(25.0, sell_pct)
+        else:
+            sell_pct = max(10.0, sell_pct * 0.5)
+        target = weight * (1 - sell_pct / 100)
+        why = (
+            f"{why} A dated bullish {pattern.label} setup conflicts with immediate execution, "
+            "so the exit is staged; the underlying return or portfolio-fit decision is unchanged."
+        )
+        trace.append(
+            {
+                "rule": "BULLISH_PATTERN_STAGES_OPTIONAL_EXIT",
+                "matched": True,
+                "original_action": original_action.value,
+                "original_sell_pct": round(original_sell_pct, 2),
+                "selected_action": action.value,
+                "selected_sell_pct": round(sell_pct, 2),
+            }
+        )
+    elif pattern and pattern.active and pattern.bias == "bearish":
+        original_sell_pct = sell_pct
+        sell_pct = min(100.0, max(sell_pct, sell_pct * 1.25))
+        target = weight * (1 - sell_pct / 100)
+        why = f"{why} A dated bearish {pattern.label} setup supports earlier staged execution."
+        trace.append(
+            {
+                "rule": "BEARISH_PATTERN_ACCELERATES_SUPPORTED_EXIT",
+                "matched": True,
+                "original_sell_pct": round(original_sell_pct, 2),
+                "selected_sell_pct": round(sell_pct, 2),
+            }
+        )
+
     if cooldown_active:
         trace.append({"rule": "TURNOVER_COOLDOWN", "matched": True, "suppressed": action.value})
         return _decision(
@@ -358,7 +415,11 @@ def select_action(
         target_weight=target,
         confidence=confidence,
         why=why,
-        hold_type="result",
-        hold_value="Next result, catalyst, or material valuation change",
+        hold_type="date" if pattern and pattern.active and pattern.target_date else "result",
+        hold_value=(
+            pattern.target_date
+            if pattern and pattern.active and pattern.target_date
+            else "Next result, catalyst, or material valuation change"
+        ),
         trace=trace,
     )

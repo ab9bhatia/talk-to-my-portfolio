@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+
+{% block title %}Action Center · {{ app_name }}{% endblock %}
+{% block main_class %}main-wide dash-main{% endblock %}
+{% block body_class %}page-dashboard page-advisor{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{{ app_path('/static/css/advisor.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="dash advisor-shell" id="advisor-app">
+  <header class="dash-hero dash-hero--compact">
+    <div class="dash-hero-top">
+      <div class="dash-hero-copy">
+        <p class="dash-eyebrow">Deterministic decision support</p>
+        <h1 class="dash-title">Advisor Action Center</h1>
+        <p class="dash-lead">Actions, return scenarios, timing conflicts, evidence, deadlines, and account-aware sale proceeds. No orders are placed.</p>
+      </div>
+      <button class="dash-btn dash-btn-ghost" id="advisor-refresh" type="button">Refresh evidence</button>
+    </div>
+  </header>
+
+  <div class="advisor-notice" id="advisor-notice">Loading the normalized family portfolio once…</div>
+
+  <section class="advisor-stats" id="advisor-stats" aria-label="Advisory summary"></section>
+
+  <section class="dash-panel advisor-controls" aria-label="Filters and sorting">
+    <label>Action
+      <select id="advisor-action-filter"><option value="">All</option></select>
+    </label>
+    <label>Sell type
+      <select id="advisor-sell-filter"><option value="">All</option></select>
+    </label>
+    <label>Sort
+      <select id="advisor-sort">
+        <option value="action_confidence">Confidence</option>
+        <option value="base_irr">Base 3Y IRR</option>
+        <option value="family_weight_pct">Family weight</option>
+        <option value="momentum">Momentum</option>
+        <option value="action">Action</option>
+      </select>
+    </label>
+    <label class="advisor-checkbox"><input id="advisor-conflicts-only" type="checkbox"> Signal conflicts only</label>
+  </section>
+
+  <section class="dash-panel">
+    <div class="advisor-table-wrap">
+      <table class="advisor-table">
+        <thead><tr><th>Security</th><th>Action</th><th>Bear / Base / Bull</th><th>Momentum / setup</th><th>Weight → target</th><th>Review</th></tr></thead>
+        <tbody id="advisor-rows"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <div class="advisor-lower-grid">
+    <section class="dash-panel"><h2 class="dash-panel-title">Action queues</h2><div id="advisor-queues"></div></section>
+    <section class="dash-panel"><h2 class="dash-panel-title">Estimated sale proceeds</h2><div id="advisor-proceeds"></div></section>
+    <section class="dash-panel"><h2 class="dash-panel-title">Review deadlines</h2><div id="advisor-deadlines"></div></section>
+    <section class="dash-panel"><h2 class="dash-panel-title">Evidence health</h2><div id="advisor-evidence-status"></div></section>
+  </div>
+</div>
+<script src="{{ app_path('/static/js/portfolio-advisor.js') }}"></script>
+{% endblock %}

@@ -136,6 +136,15 @@ class PortfolioGoalsPayload(BaseModel):
     risk_profile: str = Field("moderate", max_length=20)
 
 
+class AdvisoryRebalanceTarget(BaseModel):
+    symbol: str = Field(..., min_length=1, max_length=32)
+    target_weight_pct: float = Field(..., ge=0, le=100)
+
+
+class AdvisoryRebalancePayload(BaseModel):
+    targets: list[AdvisoryRebalanceTarget] = Field(..., min_length=1, max_length=250)
+
+
 VALID_SORT = {
     "value",
     "pnl",
@@ -370,6 +379,19 @@ def portfolio_agent_page(request: Request):
     )
 
 
+@router.get("/portfolio/advisor")
+def portfolio_advisor_page(request: Request):
+    """Local deterministic Advisor / Action Center."""
+    return templates.TemplateResponse(
+        request,
+        "portfolio/advisor.html",
+        {
+            "active_module": "advisor",
+            "trading_enabled": False,
+        },
+    )
+
+
 @router.get("/portfolio/growth")
 def portfolio_growth_page(
     request: Request,
@@ -552,6 +574,74 @@ def api_symbol_patterns(
     from modules.portfolio.services.chart_patterns import detect_patterns_for_symbol
 
     return detect_patterns_for_symbol(symbol.upper(), exchange, use_cache=False)
+
+
+@router.get("/api/portfolio/advisory")
+def api_portfolio_advisory(
+    response: Response,
+    refresh: bool = Query(False),
+    patterns: bool = Query(True),
+):
+    """Versioned deterministic recommendations for the local Action Center."""
+    from modules.portfolio.services.advisory.runtime import build_live_advisory
+
+    payload = build_live_advisory(refresh=refresh, include_patterns=patterns)
+    response.headers["ETag"] = f'"{payload["fingerprint"]}"'
+    response.headers["Cache-Control"] = "private, no-store"
+    return payload
+
+
+@router.get("/api/portfolio/advisory/deadlines")
+def api_portfolio_advisory_deadlines(refresh: bool = Query(False)):
+    from modules.portfolio.services.advisory.runtime import build_live_advisory
+
+    payload = build_live_advisory(refresh=refresh, include_patterns=True)
+    return {
+        "schema_version": payload["schema_version"],
+        "generated_at": payload["generated_at"],
+        "deadlines": payload.get("deadlines") or [],
+    }
+
+
+@router.get("/api/portfolio/advisory/evidence/status")
+def api_portfolio_advisory_evidence_status():
+    from modules.portfolio.services.advisory.providers import evidence_status
+
+    return evidence_status()
+
+
+@router.post("/api/portfolio/advisory/rebalance")
+def api_portfolio_advisory_rebalance(payload: AdvisoryRebalancePayload):
+    from modules.portfolio.services.advisory.rebalance import evaluate_rebalance
+    from modules.portfolio.services.advisory.runtime import build_live_advisory
+
+    advisory = build_live_advisory(refresh=False, include_patterns=True)
+    goals = profile_goals_store.get_goals()
+    return evaluate_rebalance(
+        advisory,
+        [item.model_dump() for item in payload.targets],
+        max_position_pct=float(goals.get("max_position_pct") or 12),
+        cash_buffer_pct=float(goals.get("cash_buffer_pct") or 5),
+    )
+
+
+@router.get("/api/portfolio/advisory/{symbol}")
+def api_portfolio_advisory_symbol(
+    symbol: str,
+    refresh: bool = Query(False),
+):
+    from modules.portfolio.services.advisory.runtime import build_live_advisory
+
+    payload = build_live_advisory(refresh=refresh, include_patterns=True)
+    wanted = symbol.upper()
+    for item in payload.get("recommendations") or []:
+        if str(item.get("symbol") or "").upper() == wanted:
+            return {
+                "schema_version": payload["schema_version"],
+                "generated_at": payload["generated_at"],
+                "recommendation": item,
+            }
+    raise HTTPException(status_code=404, detail=f"No advisory recommendation for {wanted}")
 
 
 @router.get("/api/portfolio/{account_ref}")

@@ -80,4 +80,22 @@ def evidence_for_holding(
                     blocking=True,
                 )
             )
+
+    for record in holding.get("evidence_records") or []:
+        if record.get("stale"):
+            continue
+        source = record.get("source")
+        observed_as_of = record.get("as_of")
+        if source and observed_as_of:
+            evidence.append(
+                Evidence(
+                    claim=(
+                        "Cached provider evidence supplied "
+                        f"{record.get('field') or 'an advisory input'}."
+                    ),
+                    source=str(source),
+                    as_of=str(observed_as_of),
+                    source_type=str(record.get("source_type") or "unknown"),
+                )
+            )
     return evidence, flags

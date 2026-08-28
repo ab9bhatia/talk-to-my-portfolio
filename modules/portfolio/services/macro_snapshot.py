@@ -41,6 +41,9 @@ def _one_year_change(ticker: str) -> dict[str, Any] | None:
         "last": round(last, 4),
         "change_1y_pct": round(((last - first) / first) * 100, 2),
         "pct_from_52w_high": _pct_from_52w_high(last, high_52w),
+        "source": "Yahoo Finance market data",
+        "source_type": "market_data",
+        "as_of": str(closes.index[-1]),
     }
 
 
@@ -61,6 +64,8 @@ def get_macro_snapshot() -> dict[str, Any]:
         "as_of": time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime(now)),
         "benchmarks": benchmarks,
         "note": "Macro data from Yahoo Finance; use as context only.",
+        "ttl_seconds": _CACHE_TTL,
+        "stale": False,
     }
     _CACHE = (now, snapshot)
     return snapshot

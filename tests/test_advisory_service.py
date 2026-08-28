@@ -346,5 +346,5 @@ def test_malformed_llm_json_keeps_deterministic_output_usable():
     advisory = _payload([_holding()])
     fallback = _malformed_json_fallback("not-json", context={"advisory": advisory})
     assert fallback["answer"] == "not-json"
-    assert fallback["deterministic_advisory"]["schema_version"] == "advisor-v2-milestone-2"
+    assert fallback["deterministic_advisory"]["schema_version"] == "advisor-v2-v1"
     assert fallback["deterministic_advisory"]["recommendations"][0]["action"] == "WATCH"

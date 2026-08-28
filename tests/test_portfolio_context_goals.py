@@ -68,7 +68,7 @@ def test_context_includes_deterministic_advisory_payload(monkeypatch):
 
     context = ctx.build_portfolio_context()
 
-    assert context["advisory"]["schema_version"] == "advisor-v2-milestone-2"
+    assert context["advisory"]["schema_version"] == "advisor-v2-v1"
     recommendation = context["advisory"]["recommendations"][0]
     assert recommendation["symbol"] == "FIXTURE"
     assert recommendation["action"] == "WATCH"

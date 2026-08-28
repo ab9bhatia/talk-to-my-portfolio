@@ -66,6 +66,8 @@ _MERGED_FIELDS = (
     "exit_triggers",
     "replacement_available",
     "is_cyclical",
+    "chart_patterns",
+    "evidence_records",
 )
 
 _ANY_TRUE_FIELDS = (
