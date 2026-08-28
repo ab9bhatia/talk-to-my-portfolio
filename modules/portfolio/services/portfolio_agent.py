@@ -102,6 +102,26 @@ def _parse_agent_json(content: str) -> dict[str, Any]:
     return parsed
 
 
+def _malformed_json_fallback(
+    content: str,
+    *,
+    context: dict[str, Any],
+) -> dict[str, Any]:
+    """Keep deterministic advice available when an LLM violates its JSON contract."""
+    return {
+        "stance": "",
+        "xirr_outlook": "",
+        "buy": [],
+        "sell_or_trim": [],
+        "rebalance": [],
+        "red_flags": ["LLM response was malformed; deterministic advisory remains authoritative."],
+        "theme_opportunities": [],
+        "macro_view": "",
+        "answer": content,
+        "deterministic_advisory": context.get("advisory"),
+    }
+
+
 def _assistant_history_text(recommendations: dict[str, Any], full_text: str) -> str:
     """Store a short assistant turn for follow-ups (avoids repeating full JSON)."""
     answer = (recommendations.get("answer") or "").strip()
@@ -450,17 +470,7 @@ def stream_portfolio_agent(
         try:
             recommendations = _parse_agent_json(full_text)
         except (json.JSONDecodeError, ValueError):
-            recommendations = {
-                "stance": "",
-                "xirr_outlook": "",
-                "buy": [],
-                "sell_or_trim": [],
-                "rebalance": [],
-                "red_flags": [],
-                "theme_opportunities": [],
-                "macro_view": "",
-                "answer": full_text,
-            }
+            recommendations = _malformed_json_fallback(full_text, context=context)
 
         append_message(
             active_thread_id,

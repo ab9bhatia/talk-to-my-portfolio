@@ -20,6 +20,7 @@ flowchart TB
     PF[portfolio.py]
     HV[holdings_view.py]
     MD[market_data.py]
+    ADV[advisory/ deterministic engine]
     CTX[portfolio_context.py]
     AG[portfolio_agent.py]
   end
@@ -43,6 +44,7 @@ flowchart TB
   PF --> CACHE
   R --> HV
   R --> AG --> CTX --> PF
+  CTX --> ADV
   AG --> LLM[External LLM API]
 ```
 
@@ -104,6 +106,7 @@ flowchart TB
 | **`portfolio.py`** | Fetch & merge family holdings; normalize; enrich; cache (memory + SQLite) |
 | **`holdings_view.py`** | Sort, group, aggregate, Excel export, account filters |
 | **`market_data.py`** | Yahoo metrics, sector, signals, daily LTP refresh scheduler |
+| **`advisory/`** | Deterministic consolidation, scenarios, momentum, rules, tax safety notes, and recommendation schema |
 | **`mf_metrics.py`** | Mutual fund NAV metrics |
 | **`analyst_rating.py`** | Consensus → B+/B/H/S labels |
 | **`zerodha_mf.py`** | Zerodha MF holdings via Kite |
@@ -205,10 +208,12 @@ flowchart TB
 
 ### 4. Portfolio agent — `POST /api/portfolio/agent/ask/stream`
 
-1. `build_portfolio_context(refresh?)` — holdings + **user goals from Setup** + sector flags + macro
-2. `portfolio_agent` builds messages (system prompt references `constraints` / `investor_profile`)
-3. Stream JSON from OpenAI / Claude / Gemini / Ollama
-4. Persist thread in `portfolio_cache.db`
+1. `build_portfolio_context(refresh?)` — canonical holdings + **user goals from Setup**
+2. `advisory.service` builds the versioned deterministic recommendation payload from that same family snapshot
+3. Context adds sector flags, macro, and the deterministic `advisory` block
+4. `portfolio_agent` builds messages (system prompt references `constraints` / `investor_profile`)
+5. Stream JSON from OpenAI / Claude / Gemini / Ollama; malformed JSON retains deterministic advice
+6. Persist thread in `portfolio_cache.db`
 
 **Important:** Changing goals applies to **new** agent threads; existing threads keep the context snapshot from thread start.
 
@@ -250,6 +255,7 @@ All portfolio and token data stays **on your machine** unless you call an LLM wi
 |------|------|
 | `.env` | Secrets: `ZERODHA_*`, `GROWW_*`, `PORTFOLIO_LLM_*`, `PORTFOLIO_HTTP_USER`, feature flags |
 | `modules/portfolio/accounts.json` | Account ids, labels, codes (AB, RB, …), enabled flags |
+| `PORTFOLIO_DATA_DIR` | Optional local SQLite directory override; tests use a temporary directory automatically |
 
 Account `id` in JSON maps to env suffix: `"id": "primary"` → `ZERODHA_API_KEY_PRIMARY`.
 

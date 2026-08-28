@@ -18,6 +18,7 @@ from modules.portfolio.portfolio_profile import (
     PREFERRED_GROWTH_THEMES,
     TRADITIONAL_THEMES_TO_DEWEIGHT,
 )
+from modules.portfolio.services.advisory import build_advisory_payload
 from modules.portfolio.services.macro_snapshot import get_macro_snapshot
 from modules.portfolio.services.market_data import _quiet_yfinance, normalize_symbol, resolve_yahoo_ticker
 from modules.portfolio.services.portfolio import fetch_family_portfolio
@@ -241,6 +242,16 @@ def build_portfolio_context(*, refresh: bool = False) -> dict[str, Any]:
         for h in holdings
     ]
     enriched.sort(key=lambda x: -(x.get("current_value") or 0))
+    advisory = build_advisory_payload(
+        family,
+        goals={
+            "target_return_pct": limits["target_return_pct"],
+            "max_position_pct": limits["max_pct_per_stock"],
+            "max_sector_pct": limits["max_pct_per_sector"],
+            "cash_buffer_pct": limits["cash_buffer_pct"],
+            "risk_profile": limits["risk_profile"],
+        },
+    )
 
     return {
         "investor_profile": investor_profile,
@@ -270,6 +281,7 @@ def build_portfolio_context(*, refresh: bool = False) -> dict[str, Any]:
             holdings, total_value, max_pct_per_sector=limits["max_pct_per_sector"]
         ),
         "holdings": enriched,
+        "advisory": advisory,
         "macro": get_macro_snapshot(),
         "accounts_loaded": family.get("accounts_loaded"),
         "errors": family.get("errors", []),

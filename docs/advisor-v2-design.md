@@ -1,6 +1,6 @@
 # Advisor V2 design
 
-Status: Milestone 0 design baseline
+Status: Milestone 1 deterministic vertical slice implemented
 
 Date: 2026-08-28
 
@@ -295,16 +295,20 @@ Milestone 1 should use fixtures with synthetic prices, fundamentals, evidence, a
 - Additive API v1 snapshot/field compatibility.
 - Rebalance constraints and no-microscopic-replacement invariant.
 
-Use a temporary database/data directory per test. Current tests mutate the configured local SQLite files and restore only selected values; isolating `DATA_DIR` will prevent developer-state coupling and sandbox-specific failures.
+Tests set `PORTFOLIO_DATA_DIR` to a session-scoped temporary directory before application modules load. SQLite-writing tests therefore cannot mutate the developer's real portfolio databases. The runtime default remains `modules/portfolio/data/` when the override is absent.
 
-## 12. Next milestone recommendation
+## 12. Milestone 1 outcome and next recommendation
 
-Implement Milestone 1 as one vertical slice using only current data:
+Milestone 1 implements the offline deterministic vertical slice under
+`modules/portfolio/services/advisory/`:
 
-1. Typed models, evidence/quality flags, consolidation, and a service envelope.
-2. Price-history momentum and scenario-return interfaces; return explicit unavailable values where assumptions cannot be supported.
-3. Rules for sell taxonomy, subscale positions, concentration, corporate-action reconciliation, tradability, and confidence caps.
-4. Integration into portfolio context while leaving the existing API and agent response unchanged.
-5. Deterministic unit tests for the mandatory behavioral invariants.
+1. Typed models, evidence/quality flags, ISIN-first consolidation, explicit overlap, and a versioned service envelope.
+2. EPS and fund build-up scenario interfaces plus price-history momentum; unavailable inputs remain explicit rather than inferred.
+3. Sell taxonomy, subscale and concentration rules, reconciliation/tradability states, confidence caps, and turnover cooldown.
+4. An additive `advisory` block in portfolio-agent context without changing API v1.
+5. Malformed LLM JSON fallback that preserves deterministic recommendations.
+6. Synthetic, no-network behavioral tests for the mandatory failure modes.
 
-Do not add external fundamental or tax providers in Milestone 1. The first implementation should prove trustworthy decisions under incomplete data before expanding source coverage.
+Milestone 1 intentionally does not add live fundamental, tax, macro, or fund-constituent providers. Most current holdings will return `WATCH` or `HOLD_NO_ADD` until documented return assumptions and evidence are available.
+
+Next implement Milestone 2: backward-compatible local account/tax profiles, validation, and versioned tax-rule records. Keep all real residency, account, lot, and tax values in gitignored local storage.
