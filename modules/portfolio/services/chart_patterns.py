@@ -10,8 +10,9 @@ Lookback policy (trading days, classic TA durations):
   and must be recent (right edge within ~3 months) to count as an actionable setup.
 - Cup base may look back up to ~15 months; ascending triangle uses the last ~100 bars.
 
-Each hit includes status (confirmed | forming | early), confidence, target price,
-estimated duration (trading days), and the anchor points used.
+Each hit preserves the legacy status/confidence fields, while adding an explicit
+lifecycle, heuristic-score semantics, target state, currency, and a trading-session
+horizon. Exact target dates and probability claims are intentionally not emitted.
 """
 
 from __future__ import annotations
@@ -45,6 +46,18 @@ _MAX_REVERSAL_SPAN = int(os.getenv("CHART_PATTERNS_MAX_SPAN", "252"))
 _RECENCY_BARS = int(os.getenv("CHART_PATTERNS_RECENCY_BARS", "60"))
 # Cup base may look back further than a year (up to ~15 months).
 _CUP_WINDOW = int(os.getenv("CHART_PATTERNS_CUP_WINDOW", "315"))
+# Only surface setups where measured move to target is at least this % (bullish or bearish).
+_MIN_UPSIDE_PCT = float(os.getenv("CHART_PATTERNS_MIN_UPSIDE_PCT", "15"))
+_DETECTOR_VERSION = "pattern-detector-6a"
+_TARGET_OVERSHOOT_PCT = float(os.getenv("CHART_PATTERNS_TARGET_OVERSHOOT_PCT", "3"))
+
+_US_EXCHANGES = {"US", "NASDAQ", "NYSE", "ARCA", "AMEX", "BATS"}
+_INDIA_EXCHANGES = {"NSE", "BSE"}
+_LIFECYCLE_BY_LEGACY_STATUS = {
+    "early": "BUILDING",
+    "forming": "NEAR_BREAKOUT",
+    "confirmed": "CONFIRMED",
+}
 
 
 @dataclass(frozen=True)
@@ -146,6 +159,125 @@ def _max_between(highs: list[float], start: int, end: int) -> tuple[float, int]:
 def _point(series: _Series, idx: int, price: float, label: str) -> dict[str, Any]:
     idx = max(0, min(idx, len(series.labels) - 1))
     return {"label": label, "date": series.labels[idx], "price": round(float(price), 2)}
+
+
+def _instrument_currency(exchange: str | None, explicit: str | None = None) -> str:
+    """Return an ISO currency code without guessing from the displayed price."""
+    if explicit:
+        value = str(explicit).strip().upper()
+        if len(value) == 3 and value.isalpha():
+            return value
+    normalized = str(exchange or "NSE").strip().upper()
+    if normalized in _US_EXCHANGES:
+        return "USD"
+    if normalized in _INDIA_EXCHANGES:
+        return "INR"
+    return "INR"
+
+
+def _estimated_horizon(duration_days: Any) -> dict[str, Any]:
+    """Return a deliberately broad session range until empirical calibration exists."""
+    median = max(1, int(duration_days or 1))
+    return {
+        "min_trading_days": max(5, round(median * 0.5)),
+        "median_trading_days": median,
+        "max_trading_days": max(median, round(median * 1.75)),
+        "method": "heuristic_until_calibrated",
+    }
+
+
+def _enrich_pattern_semantics(
+    hit: dict[str, Any],
+    *,
+    last_price: float,
+    as_of: str,
+    currency: str,
+    signal_age_trading_days: int = 0,
+) -> dict[str, Any]:
+    """Add Stage 6A semantics while retaining every legacy response field."""
+    enriched = dict(hit)
+    target = float(enriched["target_price"])
+    bias = str(enriched.get("bias") or "").lower()
+    legacy_status = str(enriched.get("status") or "").lower()
+    lifecycle = _LIFECYCLE_BY_LEGACY_STATUS.get(legacy_status, "BUILDING")
+    horizon = _estimated_horizon(enriched.get("duration_days"))
+    target_status = "ACTIVE"
+    overshoot = _TARGET_OVERSHOOT_PCT / 100
+
+    target_reached = (
+        bias == "bullish" and last_price >= target
+    ) or (
+        bias == "bearish" and last_price <= target
+    )
+    target_overshot = (
+        bias == "bullish" and last_price >= target * (1 + overshoot)
+    ) or (
+        bias == "bearish" and last_price <= target * (1 - overshoot)
+    )
+    if target_overshot:
+        lifecycle = "TARGET_OVERSHOT"
+        target_status = "OVERSHOT"
+    elif target_reached:
+        lifecycle = "TARGET_ACHIEVED"
+        target_status = "ACHIEVED"
+    elif legacy_status == "confirmed" and signal_age_trading_days > horizon["max_trading_days"]:
+        lifecycle = "EXPIRED"
+        target_status = "EXPIRED"
+
+    active_target = target_status == "ACTIVE"
+    remaining_upside = (
+        max(0.0, (target - last_price) / last_price * 100)
+        if active_target and bias == "bullish" and last_price > 0
+        else 0.0
+    )
+    remaining_downside = (
+        max(0.0, (last_price - target) / last_price * 100)
+        if active_target and bias == "bearish" and last_price > 0
+        else 0.0
+    )
+    legacy_move = (
+        (target - last_price) / last_price * 100
+        if last_price > 0 and active_target
+        else 0.0
+    )
+    score = float(enriched.get("heuristic_score", enriched.get("confidence") or 0))
+
+    enriched.update(
+        {
+            "last_price": round(last_price, 2),
+            "current_price": round(last_price, 2),
+            "as_of": as_of,
+            "currency": currency,
+            "lifecycle_state": lifecycle,
+            "target_status": target_status,
+            "measured_target": round(target, 2),
+            "remaining_upside_pct": round(remaining_upside, 1),
+            "remaining_downside_pct": round(remaining_downside, 1),
+            # Backward compatibility: retain the signed legacy field, but never
+            # expose a completed target as negative active upside.
+            "upside_to_target_pct": round(legacy_move, 1),
+            "heuristic_score": round(score, 2),
+            "pattern_quality_score": round(score, 2),
+            "confidence_semantics": "heuristic_shape_score",
+            "calibrated_target_hit_probability": None,
+            "calibration_status": "NOT_CALIBRATED",
+            "sample_size": None,
+            "estimated_horizon": horizon,
+            # Retain the old key without preserving false precision.
+            "target_date": None,
+            "target_date_note": "Deprecated: use estimated_horizon; no exact target date is asserted.",
+            "signal_age_trading_days": max(0, int(signal_age_trading_days)),
+            "detector_version": _DETECTOR_VERSION,
+        }
+    )
+    return enriched
+
+
+def _meets_upside_threshold(last_price: float, target_price: float) -> bool:
+    if last_price <= 0 or not math.isfinite(target_price):
+        return False
+    move_pct = abs(target_price - last_price) / last_price * 100
+    return move_pct >= _MIN_UPSIDE_PCT
 
 
 def _detect_inverse_head_shoulders(series: _Series) -> dict[str, Any] | None:
@@ -451,7 +583,7 @@ def _detect_ascending_triangle(series: _Series) -> dict[str, Any] | None:
     }
 
 
-def analyze_series(series: _Series) -> list[dict[str, Any]]:
+def analyze_series(series: _Series, *, currency: str = "INR") -> list[dict[str, Any]]:
     """Run all detectors; return matches sorted by confidence (best first)."""
     detectors = (
         _detect_inverse_head_shoulders,
@@ -471,13 +603,38 @@ def analyze_series(series: _Series) -> list[dict[str, Any]]:
             numeric = [hit.get("target_price"), hit.get("neckline")]
             if any(v is None or not math.isfinite(v) for v in numeric):
                 continue  # never emit NaN/inf — not JSON serializable
-            hit["last_price"] = round(series.closes[-1], 2)
-            hit["as_of"] = series.labels[-1]
-            last = hit["last_price"]
-            upside = ((hit["target_price"] - last) / last * 100) if last else 0.0
-            hit["upside_to_target_pct"] = round(upside, 1) if math.isfinite(upside) else 0.0
-            found.append(hit)
-    found.sort(key=lambda p: (-p["confidence"], p["status"] != "confirmed"))
+            if float(hit["target_price"]) <= 0:
+                continue  # a measured price objective cannot be zero or negative
+            last = round(series.closes[-1], 2)
+            end_date = str(hit.get("end_date") or "")
+            try:
+                signal_age = len(series.labels) - 1 - series.labels.index(end_date)
+            except ValueError:
+                signal_age = 0
+            enriched = _enrich_pattern_semantics(
+                hit,
+                last_price=last,
+                as_of=series.labels[-1],
+                currency=currency,
+                signal_age_trading_days=signal_age,
+            )
+            if (
+                enriched["target_status"] == "ACTIVE"
+                and not _meets_upside_threshold(last, enriched["target_price"])
+            ):
+                continue
+            found.append(enriched)
+    lifecycle_order = {
+        "CONFIRMED": 0,
+        "RETESTING": 1,
+        "NEAR_BREAKOUT": 2,
+        "BUILDING": 3,
+        "TARGET_ACHIEVED": 4,
+        "TARGET_OVERSHOT": 5,
+        "EXPIRED": 6,
+        "INVALIDATED": 7,
+    }
+    found.sort(key=lambda p: (lifecycle_order.get(p["lifecycle_state"], 9), -p["heuristic_score"]))
     return found
 
 
@@ -485,32 +642,45 @@ def detect_patterns_for_symbol(
     symbol: str,
     exchange: str | None,
     *,
+    currency: str | None = None,
     use_cache: bool = True,
 ) -> dict[str, Any]:
     """Pattern scan for one symbol."""
-    key = f"{symbol}:{exchange or 'NSE'}"
+    currency_code = _instrument_currency(exchange, currency)
+    key = f"{_DETECTOR_VERSION}:{symbol}:{exchange or 'NSE'}:{currency_code}"
     now = time.time()
     if use_cache:
         cached = _CACHE.get(key)
         if cached and now - cached[0] < _CACHE_TTL:
-            return {"symbol": symbol, "exchange": exchange, "patterns": cached[1], "cached": True}
+            patterns = cached[1]
+            return {
+                "symbol": symbol,
+                "exchange": exchange,
+                "currency": currency_code,
+                "patterns": patterns,
+                "primary": patterns[0] if patterns else None,
+                "available": True,
+                "cached": True,
+            }
 
     series = _load_series(symbol, exchange)
     if not series:
         payload = {
             "symbol": symbol,
             "exchange": exchange,
+            "currency": currency_code,
             "patterns": [],
             "available": False,
             "message": "Not enough price history.",
         }
         return payload
 
-    patterns = analyze_series(series)
+    patterns = analyze_series(series, currency=currency_code)
     _CACHE[key] = (now, patterns)
     return {
         "symbol": symbol,
         "exchange": exchange,
+        "currency": currency_code,
         "patterns": patterns,
         "available": True,
         "primary": patterns[0] if patterns else None,
@@ -525,22 +695,24 @@ def scan_holdings(
     """Scan unique equity symbols from holdings list."""
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
-    seen: set[str] = set()
-    work: list[tuple[str, str | None]] = []
+    seen: set[tuple[str, str]] = set()
+    work: list[tuple[str, str | None, str | None]] = []
     for h in holdings:
         if h.get("asset_class") == "mf":
             continue
         sym = (h.get("symbol") or "").strip().upper()
-        if not sym or sym in seen:
+        exchange = str(h.get("exchange") or "NSE").upper()
+        identity = (sym, exchange)
+        if not sym or identity in seen:
             continue
-        seen.add(sym)
-        work.append((sym, h.get("exchange")))
+        seen.add(identity)
+        work.append((sym, h.get("exchange"), h.get("currency") or h.get("base_currency")))
 
     results: list[dict[str, Any]] = []
 
-    def _one(item: tuple[str, str | None]) -> dict[str, Any]:
-        sym, exch = item
-        row = detect_patterns_for_symbol(sym, exch)
+    def _one(item: tuple[str, str | None, str | None]) -> dict[str, Any]:
+        sym, exch, currency = item
+        row = detect_patterns_for_symbol(sym, exch, currency=currency)
         row["holding_count"] = sum(
             1
             for h in holdings
@@ -554,7 +726,7 @@ def scan_holdings(
             try:
                 results.append(fut.result())
             except Exception as exc:
-                sym, _ = futures[fut]
+                sym, _, _ = futures[fut]
                 results.append(
                     {
                         "symbol": sym,
@@ -567,9 +739,14 @@ def scan_holdings(
     def sort_key(row: dict[str, Any]) -> tuple:
         primary = row.get("primary")
         if not primary:
-            return (1, 0, row.get("symbol", ""))
-        status_order = {"confirmed": 0, "forming": 1, "early": 2}
-        return (0, status_order.get(primary["status"], 9), -primary["confidence"])
+            return (1, 0, 0, row.get("symbol", ""))
+        remaining = max(
+            primary.get("remaining_upside_pct") or 0,
+            primary.get("remaining_downside_pct") or 0,
+        )
+        score = primary.get("heuristic_score") or primary.get("confidence") or 0
+        active = primary.get("target_status") == "ACTIVE"
+        return (0, not active, -remaining, -score, row.get("symbol", ""))
 
     results.sort(key=sort_key)
     return results

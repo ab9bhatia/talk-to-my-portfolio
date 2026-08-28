@@ -1,6 +1,6 @@
 # Advisor V2 design
 
-Status: Milestone 1 deterministic vertical slice implemented
+Status: Milestones 1–5 implemented; Milestone 6A pattern semantics implemented
 
 Date: 2026-08-28
 
@@ -329,4 +329,35 @@ Milestone 1 implements the offline deterministic vertical slice under
 
 Milestone 1 intentionally does not add live fundamental, tax, macro, or fund-constituent providers. Most current holdings will return `WATCH` or `HOLD_NO_ADD` until documented return assumptions and evidence are available.
 
-Next implement Milestone 2: backward-compatible local account/tax profiles, validation, and versioned tax-rule records. Keep all real residency, account, lot, and tax values in gitignored local storage.
+Milestones 2–5 subsequently added backward-compatible account/tax profiles,
+versioned rules, provider evidence, pattern conflict handling, the constrained
+agent boundary, and the local Action Center. Real residency, account, lot, and tax
+values remain in gitignored local storage.
+
+## 13. Milestone 6A: lifecycle-safe technical evidence
+
+The chart detector remains execution-timing evidence. Its legacy `status` and
+`confidence` fields remain available, but the deterministic engine now consumes
+`lifecycle_state`, `target_status`, and `heuristic_score`.
+
+- `early` maps to `BUILDING`; `forming` maps to `NEAR_BREAKOUT`; `confirmed`
+  maps to `CONFIRMED` unless target-completion or expiry logic changes it.
+- Only a fresh `CONFIRMED` or `RETESTING` setup with an `ACTIVE` target and a
+  sufficient heuristic score is eligible to stage execution. Building, completed,
+  expired, failed, or invalidated setups are evidence only.
+- A bullish current price at/above target becomes `TARGET_ACHIEVED`; at least 3%
+  beyond target becomes `TARGET_OVERSHOT`. Bearish targets use symmetric rules.
+  Completed targets expose zero remaining upside/downside.
+- `confidence` is a deprecated shape score. UI text uses `heuristic_score/100`;
+  `calibrated_target_hit_probability` remains null until the Stage 6E out-of-sample
+  calibration has adequate samples.
+- Exact target dates are no longer asserted. `estimated_horizon` returns a broad
+  minimum/median/maximum trading-session range using
+  `heuristic_until_calibrated`.
+- Pattern prices use an explicit ISO currency from the holding where available,
+  otherwise an exchange mapping (U.S. exchanges to USD; NSE/BSE to INR).
+
+Stage 6A deliberately does not add OHLCV confirmation, ATR, invalidation math,
+retests, relative strength, a separate technical-overlay matrix, persistence, or
+calibrated probabilities. Those remain Stages 6B, 6C, and 6E respectively. See
+`docs/pattern-execution-overlay.md` for the contract and transition policy.

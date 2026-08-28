@@ -161,6 +161,40 @@ def test_pattern_alone_cannot_create_buy_or_sell():
     assert bullish["sell_pct"] == bearish["sell_pct"] == 0
 
 
+def test_building_or_completed_pattern_does_not_postpone_planned_reduction():
+    building = _pattern()
+    building["patterns"][0].update(
+        {"status": "early", "lifecycle_state": "BUILDING", "target_status": "ACTIVE"}
+    )
+    completed = _pattern()
+    completed["patterns"][0].update(
+        {
+            "lifecycle_state": "TARGET_ACHIEVED",
+            "target_status": "ACHIEVED",
+            "current_price": 126,
+            "target_price": 125,
+            "remaining_upside_pct": 0,
+        }
+    )
+
+    for symbol, pattern in (("BUILDING", building), ("COMPLETE", completed)):
+        recommendation = _rec(
+            _advisory(
+                [
+                    _holding(
+                        symbol,
+                        chart_patterns=pattern,
+                        expected_return_inputs=_expected_inputs(9),
+                    )
+                ]
+            ),
+            symbol,
+        )
+        assert recommendation["action"] == "REDUCE"
+        assert recommendation["sell_pct"] == 25
+        assert recommendation["decision_conflicts"] == []
+
+
 class _FixtureProvider:
     name = "fixture"
 

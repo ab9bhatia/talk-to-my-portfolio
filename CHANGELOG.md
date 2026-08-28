@@ -6,6 +6,20 @@ The format is inspired by Keep a Changelog and semantic versioning.
 
 ## [Unreleased]
 
+### Milestone 6A — pattern semantics and experience
+- Added lifecycle-aware pattern results (`BUILDING`, `NEAR_BREAKOUT`, `CONFIRMED`,
+  `TARGET_ACHIEVED`, `TARGET_OVERSHOT`, and `EXPIRED`) plus explicit target state.
+- Reframed detector confidence as a heuristic shape score (`x/100`) and added an
+  always-null calibrated probability until out-of-sample calibration exists.
+- Replaced false-precision target dates with broad trading-session ranges and
+  added instrument currency so U.S. targets render in USD and Indian targets in INR.
+- Retained legacy pattern response fields additively; completed targets remain
+  visible for audit but cannot postpone a deterministic sale or reduction.
+- Redesigned the dashboard pattern radar and Advisor Action Center with lifecycle
+  filters, currency-safe targets, responsive decision cards, and clearer policy cues.
+- Added synthetic regression coverage for active/completed/expired targets,
+  symmetric bearish completion, currency selection, horizon ranges, and legacy fields.
+
 ### Changed
 - Consolidated documentation: `code_flow_and_index.md`, `docs/product.md`, slimmer README.
 - Removed duplicate / obsolete docs and dev spike scripts.

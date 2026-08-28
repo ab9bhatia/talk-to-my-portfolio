@@ -20,6 +20,8 @@
 - Type every sell-like recommendation as `FUNDAMENTAL_SELL`, `TACTICAL_REDUCE`, or `PORTFOLIO_CONSOLIDATION`.
 - Never recommend selling solely because a holding is cyclical, in a loss, or has a large gain. Never recommend averaging solely because price is below cost or waiting for break-even as a thesis.
 - Momentum is timing evidence, not business quality. Strong momentum or a live catalyst may change execution timing but cannot erase fundamental or governance risk.
+- Treat chart-pattern quality as a heuristic `x/100` shape score, never as a probability. Preserve completed/expired signals for audit, but only active `CONFIRMED`/`RETESTING` targets may affect execution timing.
+- Pattern targets are measured objectives, not promises. Use instrument currency and broad trading-session windows; never present a geometric duration as one exact target date.
 - Treat missing business, valuation, governance, tax, or provenance inputs as `UNKNOWN`; reduce confidence rather than manufacturing a score.
 - Handle subscale positions explicitly as build, freeze/no-add, or consolidate. Do not replace many tiny positions with many new tiny positions.
 - Apply concentration and overlap at family and account levels. Reinvestment plans must respect target weights, cash buffers, account constraints, and recent-turnover cooldowns.

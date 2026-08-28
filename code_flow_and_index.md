@@ -20,6 +20,7 @@ flowchart TB
     PF[portfolio.py]
     HV[holdings_view.py]
     MD[market_data.py]
+    PAT[chart_patterns.py lifecycle semantics]
     ADV[advisory/ deterministic engine]
     CTX[portfolio_context.py]
     AG[portfolio_agent.py]
@@ -41,6 +42,8 @@ flowchart TB
   R --> PF --> G
   R --> PF --> C
   PF --> MD
+  R --> PAT
+  PAT --> ADV
   PF --> CACHE
   R --> HV
   R --> AG --> CTX --> PF
@@ -222,6 +225,20 @@ flowchart TB
 
 1. `daily_analytics.build_growth_dashboard` — series, day-over-day, benchmarks (Yahoo indices), account timeline
 2. Optional sheet backfill via `POST /api/portfolio/daily/import-sheet`
+
+### 5A. Pattern radar and Action Center
+
+1. `GET /api/portfolio/patterns` reuses the canonical holdings view and scans each
+   unique symbol/exchange through `chart_patterns.py`.
+2. The detector preserves legacy fields and adds lifecycle, target status,
+   heuristic-score semantics, currency, and an estimated trading-session window.
+3. `advisory/runtime.py` attaches the local scan to the canonical family snapshot;
+   `advisory/patterns.py` admits only fresh confirmed/retesting active targets as
+   bounded timing evidence.
+4. `GET /api/portfolio/advisory` returns the same deterministic payload consumed by
+   `/portfolio/advisor`. JavaScript formats and filters it but adds no decision logic.
+5. Completed or expired targets remain visible for audit and cannot create a trade,
+   cancel a fundamental sell, or delay a planned reduction.
 
 ### 6. Excel export — `POST /api/portfolio/export`
 

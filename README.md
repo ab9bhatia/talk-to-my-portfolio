@@ -93,12 +93,12 @@ Scans your equity holdings for common technical setups and shows them **inline i
 | Ascending triangle | Bullish | resistance + ~½ triangle height |
 | Head & shoulders | Bearish | neckline − head height |
 
-Each match shows **status** (Breakout / Near breakout / Building), a heuristic **confidence**, **target price**, **upside %**, and an estimated **horizon** (trading days).
+Each match shows a lifecycle (`BUILDING`, `NEAR_BREAKOUT`, `CONFIRMED`, target completed, or expired), a heuristic **shape-quality score** such as `82/100`, a currency-safe measured target, remaining upside/downside, and a broad trading-session window. The score is not a probability and the target window is not an exact date.
 
 **Where to find it**
 
 - **Holdings table** — a pattern pill appears on each holding with a setup. The **📈 Setups** toolbar toggle filters the book to only those holdings.
-- **Dashboard** — *Chart patterns* panel → **Scan holdings** for a full table.
+- **Dashboard** — *Pattern execution radar* automatically scans holdings and supports lifecycle/bias filters and sortable fields.
 - **Holding detail** (expand a row) — an overlay chart marks the exact anchor points the detector used (shoulders, head, cup rim, neckline, target) so you can verify the setup on the real price line.
 
 **How it works (and its limits)**
@@ -106,9 +106,13 @@ Each match shows **status** (Breakout / Near breakout / Building), a heuristic *
 - Source: **Yahoo Finance daily closes** (`yfinance`), computed locally — no external pattern API or AI.
 - Lookback policy: fetch ~18 months; detect reversals within ~1 year and require the right edge to be recent (~3 months); cup base up to ~15 months; triangle uses the last ~100 bars.
 - These are **heuristics on close prices** (no volume) — treat them as a screen, not advice. Always confirm on the chart before acting.
+- A bullish target already reached is retained as `TARGET_ACHIEVED` or `TARGET_OVERSHOT`; it is never shown as negative active upside or used to justify waiting.
+- The legacy `status`, `confidence`, `target_price`, and `upside_to_target_pct` API fields remain available. New clients should use `lifecycle_state`, `heuristic_score`, `target_status`, `remaining_*_pct`, `currency`, and `estimated_horizon`.
 - Tunable via env: `CHART_PATTERNS_HISTORY`, `CHART_PATTERNS_MAX_SPAN`, `CHART_PATTERNS_RECENCY_BARS`, `CHART_PATTERNS_CUP_WINDOW`, `CHART_PATTERNS_CACHE_TTL`.
 
 APIs: `GET /api/portfolio/patterns` (whole portfolio) · `GET /api/portfolio/patterns/{symbol}?exchange=NSE` (one symbol). Results cached ~6h per symbol.
+
+Design and Stage 6A contract: [docs/pattern-execution-overlay.md](docs/pattern-execution-overlay.md).
 
 ---
 

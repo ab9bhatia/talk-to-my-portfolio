@@ -102,8 +102,9 @@ def select_action(
                 "rule": "CHART_PATTERN_TIMING_ONLY",
                 "matched": True,
                 "bias": pattern.bias,
-                "status": pattern.status,
-                "confidence": pattern.confidence,
+                "lifecycle_state": pattern.lifecycle_state,
+                "target_status": pattern.target_status,
+                "heuristic_score": pattern.heuristic_score,
                 "policy": "may_stage_execution_but_cannot_create_or_override_fundamental_action",
             }
         )
@@ -415,11 +416,7 @@ def select_action(
         target_weight=target,
         confidence=confidence,
         why=why,
-        hold_type="date" if pattern and pattern.active and pattern.target_date else "result",
-        hold_value=(
-            pattern.target_date
-            if pattern and pattern.active and pattern.target_date
-            else "Next result, catalyst, or material valuation change"
-        ),
+        hold_type="result",
+        hold_value="Next result, catalyst, or material valuation change",
         trace=trace,
     )

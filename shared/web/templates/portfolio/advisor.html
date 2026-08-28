@@ -5,59 +5,86 @@
 {% block body_class %}page-dashboard page-advisor{% endblock %}
 
 {% block head %}
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ app_path('/static/css/advisor.css') }}">
 {% endblock %}
 
 {% block content %}
 <div class="dash advisor-shell" id="advisor-app">
-  <header class="dash-hero dash-hero--compact">
-    <div class="dash-hero-top">
-      <div class="dash-hero-copy">
-        <p class="dash-eyebrow">Deterministic decision support</p>
-        <h1 class="dash-title">Advisor Action Center</h1>
-        <p class="dash-lead">Actions, return scenarios, timing conflicts, evidence, deadlines, and account-aware sale proceeds. No orders are placed.</p>
+  <header class="dash-hero dash-hero--compact advisor-hero">
+    <div class="advisor-hero-orbit" aria-hidden="true"></div>
+    <div class="dash-hero-top advisor-hero-content">
+      <div class="dash-hero-copy advisor-hero-copy">
+        <p class="dash-eyebrow advisor-eyebrow"><span></span> Advisor Action Center · deterministic decision system</p>
+        <h1 class="dash-title">Your portfolio, translated into action.</h1>
+        <p class="dash-lead">One family-level queue for what to hold, reduce, add, or reconcile—with the evidence and constraints behind every call.</p>
+        <div class="advisor-policy-strip">
+          <span>Fundamentals authoritative</span>
+          <span>Patterns time execution only</span>
+          <span>Zero order placement</span>
+        </div>
       </div>
-      <button class="dash-btn dash-btn-ghost" id="advisor-refresh" type="button">Refresh evidence</button>
+      <div class="advisor-hero-actions">
+        <span class="advisor-safety-badge"><i></i> Execution disabled</span>
+        <button class="dash-btn dash-btn-primary" id="advisor-refresh" type="button">Refresh decision set</button>
+      </div>
     </div>
   </header>
 
-  <div class="advisor-notice" id="advisor-notice">Loading the normalized family portfolio once…</div>
+  <div class="advisor-notice" id="advisor-notice" aria-live="polite">Loading the normalized family portfolio once…</div>
 
   <section class="advisor-stats" id="advisor-stats" aria-label="Advisory summary"></section>
 
   <section class="dash-panel advisor-controls" aria-label="Filters and sorting">
+    <label class="advisor-search">Find a security
+      <span><span aria-hidden="true">⌕</span><input id="advisor-search" type="search" placeholder="Symbol, action, setup…" autocomplete="off"></span>
+    </label>
     <label>Action
-      <select id="advisor-action-filter"><option value="">All</option></select>
+      <select id="advisor-action-filter"><option value="">All actions</option></select>
     </label>
     <label>Sell type
-      <select id="advisor-sell-filter"><option value="">All</option></select>
+      <select id="advisor-sell-filter"><option value="">All sell types</option></select>
     </label>
-    <label>Sort
+    <label>Pattern lifecycle
+      <select id="advisor-pattern-filter">
+        <option value="">All lifecycle states</option>
+        <option value="ACTIVE">Active confirmed</option>
+        <option value="BUILDING">Building / near breakout</option>
+        <option value="COMPLETED">Target achieved / overshot</option>
+        <option value="INACTIVE">Expired / invalidated</option>
+      </select>
+    </label>
+    <label>Prioritize by
       <select id="advisor-sort">
-        <option value="action_confidence">Confidence</option>
+        <option value="action_confidence">Decision confidence</option>
         <option value="base_irr">Base 3Y IRR</option>
         <option value="family_weight_pct">Family weight</option>
         <option value="momentum">Momentum</option>
         <option value="action">Action</option>
       </select>
     </label>
-    <label class="advisor-checkbox"><input id="advisor-conflicts-only" type="checkbox"> Signal conflicts only</label>
+    <label class="advisor-checkbox"><input id="advisor-conflicts-only" type="checkbox"><span>Signal conflicts only</span></label>
+    <button type="button" class="advisor-clear" id="advisor-clear">Clear</button>
   </section>
 
-  <section class="dash-panel">
+  <section class="dash-panel advisor-decision-panel">
+    <header class="advisor-section-head">
+      <div><p class="advisor-section-kicker">Decision queue</p><h2>Holding-level recommendations</h2></div>
+      <span id="advisor-result-count">Loading…</span>
+    </header>
     <div class="advisor-table-wrap">
       <table class="advisor-table">
-        <thead><tr><th>Security</th><th>Action</th><th>Bear / Base / Bull</th><th>Momentum / setup</th><th>Weight → target</th><th>Review</th></tr></thead>
+        <thead><tr><th>Security</th><th>Decision</th><th>3Y return scenarios</th><th>Technical timing</th><th>Portfolio fit</th><th>Review trigger</th></tr></thead>
         <tbody id="advisor-rows"></tbody>
       </table>
     </div>
   </section>
 
   <div class="advisor-lower-grid">
-    <section class="dash-panel"><h2 class="dash-panel-title">Action queues</h2><div id="advisor-queues"></div></section>
-    <section class="dash-panel"><h2 class="dash-panel-title">Estimated sale proceeds</h2><div id="advisor-proceeds"></div></section>
-    <section class="dash-panel"><h2 class="dash-panel-title">Review deadlines</h2><div id="advisor-deadlines"></div></section>
-    <section class="dash-panel"><h2 class="dash-panel-title">Evidence health</h2><div id="advisor-evidence-status"></div></section>
+    <section class="dash-panel advisor-mini-panel"><p class="advisor-section-kicker">Routing</p><h2 class="dash-panel-title">Action queues</h2><div id="advisor-queues"></div></section>
+    <section class="dash-panel advisor-mini-panel"><p class="advisor-section-kicker">Capital</p><h2 class="dash-panel-title">Estimated sale proceeds</h2><div id="advisor-proceeds"></div></section>
+    <section class="dash-panel advisor-mini-panel"><p class="advisor-section-kicker">Cadence</p><h2 class="dash-panel-title">Review triggers</h2><div id="advisor-deadlines"></div></section>
+    <section class="dash-panel advisor-mini-panel"><p class="advisor-section-kicker">Trust</p><h2 class="dash-panel-title">Evidence health</h2><div id="advisor-evidence-status"></div></section>
   </div>
 </div>
 <script src="{{ app_path('/static/js/portfolio-advisor.js') }}"></script>

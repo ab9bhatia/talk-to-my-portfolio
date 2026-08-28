@@ -9,6 +9,15 @@
     confirmed: "Breakout",
     forming: "Near breakout",
     early: "Building",
+    BUILDING: "Building",
+    NEAR_BREAKOUT: "Near breakout",
+    CONFIRMED: "Confirmed",
+    RETESTING: "Retesting",
+    FAILED_BREAKOUT: "Failed breakout",
+    TARGET_ACHIEVED: "Target achieved",
+    TARGET_OVERSHOT: "Target overshot",
+    EXPIRED: "Expired",
+    INVALIDATED: "Invalidated",
   };
 
   function loadHoldingsFinancials() {
@@ -129,6 +138,20 @@
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
     })}`;
+  }
+
+  function formatCurrency(value, currency = "INR") {
+    if (value === null || value === undefined || Number.isNaN(Number(value))) return "—";
+    const code = String(currency || "INR").toUpperCase();
+    try {
+      return new Intl.NumberFormat(code === "INR" ? "en-IN" : "en-US", {
+        style: "currency",
+        currency: code,
+        maximumFractionDigits: 2,
+      }).format(Number(value));
+    } catch {
+      return `${code} ${Number(value).toLocaleString()}`;
+    }
   }
 
   function formatPct(value) {
@@ -1190,14 +1213,17 @@
 
   function renderPatterns(patterns, patternCanvasId, hasChart) {
     if (!patterns?.length) {
-      return '<p class="detail-empty">No chart pattern detected on recent daily prices.</p>';
+      return '<p class="detail-empty">No chart pattern with ≥15% measured move to target on recent daily prices.</p>';
     }
-    const statusLabel = {
-      confirmed: "Formed / breakout",
-      forming: "Near breakout",
-      early: "Building",
-    };
-    const primary = patterns[0];
+    const sorted = [...patterns].sort((a, b) => {
+      const lifecycleOrder = { CONFIRMED: 0, RETESTING: 1, NEAR_BREAKOUT: 2, BUILDING: 3, TARGET_ACHIEVED: 4, TARGET_OVERSHOT: 5, EXPIRED: 6, INVALIDATED: 7 };
+      const aState = a.lifecycle_state || ({ confirmed: "CONFIRMED", forming: "NEAR_BREAKOUT", early: "BUILDING" }[a.status]);
+      const bState = b.lifecycle_state || ({ confirmed: "CONFIRMED", forming: "NEAR_BREAKOUT", early: "BUILDING" }[b.status]);
+      const stateDiff = (lifecycleOrder[aState] ?? 9) - (lifecycleOrder[bState] ?? 9);
+      if (stateDiff !== 0) return stateDiff;
+      return (b.heuristic_score ?? b.confidence ?? 0) - (a.heuristic_score ?? a.confidence ?? 0);
+    });
+    const primary = sorted[0];
     const overlay =
       hasChart && primary.points?.length
         ? `<div class="pattern-overlay-wrap">
@@ -1211,22 +1237,34 @@
              </p>
            </div>`
         : "";
-    const rows = patterns
+    const rows = sorted
       .map((p) => {
-        const bias = p.bias === "bearish" ? "negative" : "positive";
+        const lifecycle = p.lifecycle_state || ({ confirmed: "CONFIRMED", forming: "NEAR_BREAKOUT", early: "BUILDING" }[p.status]);
+        const score = p.heuristic_score ?? p.confidence ?? 0;
+        const horizon = p.estimated_horizon || {};
+        const window = horizon.min_trading_days != null
+          ? `${horizon.min_trading_days}–${horizon.max_trading_days} sessions`
+          : `~${p.duration_days || "—"} sessions`;
+        const remaining = p.bias === "bearish"
+          ? p.remaining_downside_pct ?? Math.abs(p.upside_to_target_pct ?? 0)
+          : p.remaining_upside_pct ?? Math.max(0, p.upside_to_target_pct ?? 0);
+        const move = p.target_status && p.target_status !== "ACTIVE"
+          ? p.target_status.replaceAll("_", " ").toLowerCase()
+          : `${Number(remaining).toFixed(1)}% ${p.bias === "bearish" ? "downside" : "upside"}`;
         return `<tr>
           <td>${escapeHtml(p.label)}</td>
-          <td>${statusLabel[p.status] || p.status}</td>
-          <td>${p.confidence}%</td>
-          <td>${formatInr(p.target_price)}</td>
-          <td class="${bias}">${formatPct(p.upside_to_target_pct)}</td>
-          <td>~${p.duration_days}d</td>
+          <td>${escapeHtml(PATTERN_STATUS_LABEL[lifecycle] || lifecycle)}</td>
+          <td>${Number(score).toFixed(0)}/100</td>
+          <td>${formatCurrency(p.target_price, p.currency)}</td>
+          <td>${escapeHtml(p.target_status || "ACTIVE")}</td>
+          <td>${escapeHtml(window)}</td>
+          <td class="${p.bias === "bearish" ? "negative" : "positive"}">${escapeHtml(move)}</td>
         </tr>`;
       })
       .join("");
     return `${overlay}
     <table class="patterns-inline-table">
-      <thead><tr><th>Pattern</th><th>Status</th><th>Conf.</th><th>Target</th><th>Upside</th><th>Horizon</th></tr></thead>
+      <thead><tr><th>Pattern</th><th>Lifecycle</th><th>Quality</th><th>Measured target</th><th>Target state</th><th>Est. window</th><th>Remaining move</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>
     <p class="detail-note">${escapeHtml(primary.note || "")}</p>`;
@@ -1813,23 +1851,31 @@
   function patternPillMarkup(primary) {
     const bias = primary.bias === "bearish" ? "bear" : "bull";
     const arrow = primary.bias === "bearish" ? "▼" : "▲";
-    const statusLabel = PATTERN_STATUS_LABEL[primary.status] || primary.status;
-    const upside =
-      primary.upside_to_target_pct != null
-        ? `${primary.upside_to_target_pct > 0 ? "+" : ""}${primary.upside_to_target_pct}%`
-        : "";
+    const lifecycle = primary.lifecycle_state || ({ confirmed: "CONFIRMED", forming: "NEAR_BREAKOUT", early: "BUILDING" }[primary.status]);
+    const statusLabel = PATTERN_STATUS_LABEL[lifecycle] || lifecycle;
+    const remaining = primary.bias === "bearish"
+      ? primary.remaining_downside_pct ?? Math.abs(primary.upside_to_target_pct ?? 0)
+      : primary.remaining_upside_pct ?? Math.max(0, primary.upside_to_target_pct ?? 0);
+    const move = primary.target_status && primary.target_status !== "ACTIVE"
+      ? primary.target_status.replaceAll("_", " ").toLowerCase()
+      : `${Number(remaining).toFixed(1)}% ${primary.bias === "bearish" ? "downside" : "upside"}`;
+    const horizon = primary.estimated_horizon || {};
+    const window = horizon.min_trading_days != null
+      ? `${horizon.min_trading_days}–${horizon.max_trading_days} sessions`
+      : primary.duration_days ? `~${primary.duration_days} sessions` : "";
+    const score = primary.heuristic_score ?? primary.confidence ?? 0;
     const tip =
       `${primary.label} · ${statusLabel}` +
-      (primary.target_price != null ? ` · target ₹${primary.target_price}` : "") +
-      (upside ? ` (${upside})` : "") +
-      (primary.duration_days ? ` · ~${primary.duration_days}d` : "") +
-      ` · ${primary.confidence}% confidence`;
+      (primary.target_price != null ? ` · target ${formatCurrency(primary.target_price, primary.currency)}` : "") +
+      ` · ${move}` +
+      (window ? ` · ${window}` : "") +
+      ` · quality ${Number(score).toFixed(0)}/100 (not probability)`;
     return (
       `<button type="button" class="pattern-pill pattern-pill-${bias} pattern-pill-${primary.status}" ` +
       `title="${tip.replace(/"/g, "&quot;")}" data-pattern-expand="1">` +
       `<span class="pattern-pill-arrow" aria-hidden="true">${arrow}</span>` +
       `<span class="pattern-pill-text">${primary.label}</span>` +
-      (upside ? `<span class="pattern-pill-upside">${upside}</span>` : "") +
+      `<span class="pattern-pill-upside">${escapeHtml(move)}</span>` +
       `</button>`
     );
   }

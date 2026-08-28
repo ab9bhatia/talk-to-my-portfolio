@@ -6,6 +6,7 @@
 
 {% block head %}
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ app_path('/static/css/patterns-v2.css') }}">
 {% endblock %}
 
 {% block content %}
@@ -134,8 +135,8 @@
   </div>
   {% endif %}
 
+  {% include "portfolio/_chart_patterns_panel.html" %}
   <div class="dash-secondary">
-    {% include "portfolio/_chart_patterns_panel.html" %}
     <div class="dash-panel dash-panel--compact">
       {% include "portfolio/_sarwa_weekly_panel.html" %}
     </div>

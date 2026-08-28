@@ -117,12 +117,24 @@ class ChartPatternEvidence:
     pattern: str
     label: str
     bias: str
+    lifecycle_state: str
+    target_status: str
     status: str
     confidence: float
+    heuristic_score: float
+    confidence_semantics: str
+    calibrated_target_hit_probability: float | None
+    sample_size: int | None
     as_of: str | None
+    currency: str
+    current_price: float | None
     target_price: float | None
+    measured_target: float | None
     target_date: str | None
     upside_to_target_pct: float | None
+    remaining_upside_pct: float | None
+    remaining_downside_pct: float | None
+    estimated_horizon: dict[str, Any]
     note: str
     active: bool
     stale: bool

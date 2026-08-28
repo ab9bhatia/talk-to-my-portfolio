@@ -34,7 +34,7 @@ def _synthetic_inverse_hs() -> _Series:
         (95, 76.0),   # head (deepest)
         (112, 99.0),  # neckline peak
         (130, 87.0),  # right shoulder (recent)
-        (179, 112.0),  # breakout
+        (179, 100.0),  # near breakout — ~22% upside to measured target
     ]
     closes = _interpolate(anchors, n)
     highs = list(closes)
@@ -72,6 +72,25 @@ def test_analyze_series_returns_sorted():
     patterns = analyze_series(series)
     assert patterns
     assert patterns[0]["confidence"] >= patterns[-1]["confidence"]
+
+
+def test_analyze_series_skips_low_upside():
+    series = _synthetic_inverse_hs()
+    patterns = analyze_series(series)
+    assert patterns
+    assert all(abs(p["upside_to_target_pct"]) >= 15 for p in patterns)
+
+
+def test_analyze_series_uses_horizon_without_exact_target_date():
+    series = _synthetic_inverse_hs()
+    patterns = analyze_series(series)
+    assert patterns
+    primary = patterns[0]
+    assert primary["target_date"] is None
+    horizon = primary["estimated_horizon"]
+    assert horizon["min_trading_days"] < horizon["median_trading_days"]
+    assert horizon["median_trading_days"] < horizon["max_trading_days"]
+    assert horizon["method"] == "heuristic_until_calibrated"
 
 
 def test_double_bottom_on_flat_series_returns_none():
