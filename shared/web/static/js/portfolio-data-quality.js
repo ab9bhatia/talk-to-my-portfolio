@@ -3,6 +3,7 @@
   const form = document.getElementById("reconciliation-resolution-form");
   const title = document.getElementById("resolution-title");
   const status = document.getElementById("resolution-status");
+  const context = document.getElementById("resolution-context");
   if (!dialog || !form) return;
 
   const endpoint = window.appUrl
@@ -15,6 +16,22 @@
       form.elements.instrument_id.value = button.dataset.instrumentId || "";
       form.elements.as_of_date.value = new Date().toISOString().slice(0, 10);
       title.textContent = `Resolve ${button.dataset.securityName || "discrepancy"}`;
+      if (context) {
+        const contextRow = (label, value) => {
+          const row = document.createElement("div");
+          const caption = document.createElement("span");
+          const detail = document.createElement("strong");
+          caption.textContent = label;
+          detail.textContent = value;
+          row.append(caption, detail);
+          return row;
+        };
+        context.replaceChildren(
+          contextRow("Likely cause", button.dataset.likelyCause || "Review required"),
+          contextRow("Recommended check", button.dataset.repairAction || "Compare source evidence"),
+          contextRow("Sources", `${button.dataset.brokerSource || "Broker/import"} ↔ ${button.dataset.marketSource || "Independent mark"}`),
+        );
+      }
       status.textContent = "";
       dialog.showModal();
     });

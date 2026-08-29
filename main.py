@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -15,7 +16,7 @@ from modules.portfolio.db import portfolio_cache as portfolio_cache_store
 from modules.portfolio.db import tokens as token_store
 from modules.portfolio.router import router as portfolio_router
 from shared.config import APP_BASE_URL, APP_HOST, APP_NAME, APP_PORT, APP_ROOT_PATH, APP_TAGLINE
-from shared.web.app_urls import app_path
+from shared.web.app_urls import app_path, portfolio_display_url
 from shared.web.http_auth import add_http_basic_auth, http_auth_enabled
 
 logger = logging.getLogger(__name__)
@@ -79,11 +80,21 @@ async def lifespan(app: FastAPI):
     from modules.portfolio.services.market_data import start_daily_yahoo_refresh_scheduler
 
     start_daily_yahoo_refresh_scheduler()
-    logging.getLogger("uvicorn.error").info(
-        "%s ready — portfolio available at %s",
-        APP_NAME,
+    portfolio_url = portfolio_display_url(
         APP_BASE_URL,
+        bind_host=APP_HOST,
+        display_host=os.getenv("APP_DISPLAY_HOST"),
     )
+    logging.getLogger("uvicorn.error").info(
+        "%s ready — open from this device or your local network: %s",
+        APP_NAME,
+        portfolio_url,
+    )
+    if APP_HOST in {"0.0.0.0", "::"} and not http_auth_enabled():
+        logging.getLogger("uvicorn.error").warning(
+            "Portfolio is exposed on the local network without HTTP Basic Auth; "
+            "set PORTFOLIO_HTTP_USER and PORTFOLIO_HTTP_PASSWORD before sharing it."
+        )
     yield
 
 

@@ -220,6 +220,7 @@ __marimo__/
 # Portfolio local config & runtime data (see README)
 modules/portfolio/accounts.json
 modules/portfolio/data/
+/data/
 run.local.md
 scripts/com.*.plist
 *.ttmpbackup

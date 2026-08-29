@@ -9,6 +9,125 @@ from typing import Any
 ACTION_REVIEW = {"SELL", "REDUCE", "RECONCILE", "ADD", "STRONG_ADD"}
 NO_ACTION = {"HOLD", "HOLD_NO_ADD", "WATCH", "CAP"}
 
+ISSUE_GROUPS = {
+    "IDENTITY": {
+        "what_wrong": "Some securities do not have a trusted canonical identity.",
+        "why_wrong": "Without an ISIN or authoritative broker mapping, quotes and advice can attach to the wrong instrument.",
+        "required_action": "Resolve the identity from Data Quality before using any buy or sell call.",
+        "destination": "/portfolio/data-quality",
+    },
+    "VALUE_MISMATCH": {
+        "what_wrong": "Broker values and independent market marks differ materially.",
+        "why_wrong": "Timestamp, quantity, FX, or corporate-action differences can distort allocation and return calculations.",
+        "required_action": "Review the largest mismatches, attach source evidence, and save only an audited explanation.",
+        "destination": "/portfolio/data-quality",
+    },
+    "CORPORATE_ACTION": {
+        "what_wrong": "A corporate action or cost-basis transition is unresolved.",
+        "why_wrong": "Splits, mergers, bonuses, and symbol changes can make quantity and cost basis unreliable.",
+        "required_action": "Reconcile the broker or exchange notice before acting on the affected position.",
+        "destination": "/portfolio/data-quality",
+    },
+    "PRICE": {
+        "what_wrong": "A current, sourced market price is missing.",
+        "why_wrong": "Position value, portfolio weight, and expected-return scenarios cannot be trusted without a valid mark.",
+        "required_action": "Refresh market evidence and verify the canonical exchange mapping.",
+        "destination": "/portfolio/data-quality",
+    },
+    "TRADABILITY": {
+        "what_wrong": "One or more positions may be suspended or untradeable.",
+        "why_wrong": "A recommendation is not executable until the exchange or broker confirms a valid trading path.",
+        "required_action": "Confirm tradability, relisting, or the recovery process; do not assume an immediate exit.",
+        "destination": "/portfolio/data-quality",
+    },
+    "GOVERNANCE": {
+        "what_wrong": "A governance concern is missing authoritative, dated evidence.",
+        "why_wrong": "An unsourced claim must not create a fundamental sell decision.",
+        "required_action": "Attach an exchange filing or company disclosure and reassess the thesis.",
+        "destination": "/portfolio/research",
+    },
+    "TAX_PROFILE": {
+        "what_wrong": "Residency, account type, or tax-lot evidence is incomplete.",
+        "why_wrong": "The same sale can have different settlement, repatriation, withholding, and tax consequences by account.",
+        "required_action": "Complete each account profile in Setup and obtain CA review where flagged.",
+        "destination": "/portfolio/setup",
+    },
+    "OTHER_DATA": {
+        "what_wrong": "Required portfolio evidence is incomplete.",
+        "why_wrong": "The deterministic engine lowers confidence or blocks action instead of filling gaps with guesses.",
+        "required_action": "Inspect the affected securities in Data Quality and supply the missing source evidence.",
+        "destination": "/portfolio/data-quality",
+    },
+    "REDUCE": {
+        "what_wrong": "Some holdings are below the hold hurdle or above portfolio limits.",
+        "why_wrong": "Low expected return, overlap, or concentration reduces portfolio efficiency; momentum only changes timing.",
+        "required_action": "Review staged reductions in Action Center after data, tax, and settlement checks pass.",
+        "destination": "/portfolio/advisor",
+    },
+    "ADD": {
+        "what_wrong": "Some holdings clear the deterministic add band.",
+        "why_wrong": "The base scenario is attractive relative to the configured hurdle, subject to evidence and concentration limits.",
+        "required_action": "Validate filings and account constraints, then review a staged allocation—never an automatic order.",
+        "destination": "/portfolio/advisor",
+    },
+    "DEADLINE": {
+        "what_wrong": "A dated result, corporate, or ownership event is approaching.",
+        "why_wrong": "The event can materially change the thesis or invalidate stale evidence.",
+        "required_action": "Review the sourced event and refresh the decision after it occurs.",
+        "destination": "/portfolio/research",
+    },
+}
+
+
+def _group_for_flag(code: str) -> str:
+    code = code.upper()
+    if "UNRESOLVED" in code or "IDENTITY" in code:
+        return "IDENTITY"
+    if "CORPORATE_ACTION" in code or "COST_BASIS" in code:
+        return "CORPORATE_ACTION"
+    if "RECONCILIATION" in code or "DISPLAYED_COST" in code:
+        return "VALUE_MISMATCH"
+    if "PRICE" in code or "QUOTE" in code or "FX_" in code:
+        return "PRICE"
+    if "SUSPENDED" in code or "TRADABLE" in code:
+        return "TRADABILITY"
+    if "GOVERNANCE" in code:
+        return "GOVERNANCE"
+    if "TAX" in code or "SETTLEMENT" in code or "RESIDENCY" in code:
+        return "TAX_PROFILE"
+    return "OTHER_DATA"
+
+
+def _build_issue_groups(grouped_symbols: dict[str, set[str]]) -> list[dict[str, Any]]:
+    priority = {
+        "TRADABILITY": 1,
+        "GOVERNANCE": 1,
+        "IDENTITY": 1,
+        "CORPORATE_ACTION": 1,
+        "VALUE_MISMATCH": 2,
+        "PRICE": 2,
+        "TAX_PROFILE": 3,
+        "OTHER_DATA": 3,
+        "DEADLINE": 4,
+        "REDUCE": 5,
+        "ADD": 6,
+    }
+    rows = []
+    for key, symbols in grouped_symbols.items():
+        spec = ISSUE_GROUPS[key]
+        ordered = sorted(symbol for symbol in symbols if symbol)
+        rows.append(
+            {
+                "key": key,
+                "priority": priority[key],
+                "count": len(ordered),
+                "affected_symbols": ordered,
+                "symbol_preview": ordered[:6],
+                **spec,
+            }
+        )
+    return sorted(rows, key=lambda row: (row["priority"], row["key"]))
+
 
 def build_today_brief(
     *,
@@ -20,6 +139,7 @@ def build_today_brief(
 ) -> dict[str, Any]:
     recommendations = advisory.get("recommendations") or []
     issues: list[dict[str, Any]] = []
+    grouped_symbols: dict[str, set[str]] = {}
     blocking = 0
     action_review = 0
     no_action = 0
@@ -29,6 +149,12 @@ def build_today_brief(
         blocking_flags = [flag for flag in flags if flag.get("blocking")]
         if blocking_flags or action == "RECONCILE":
             blocking += 1
+            groups = {
+                _group_for_flag(str(flag.get("code") or "OTHER_DATA"))
+                for flag in blocking_flags
+            } or {"VALUE_MISMATCH"}
+            for group in groups:
+                grouped_symbols.setdefault(group, set()).add(str(item.get("symbol") or ""))
             issues.append(
                 {
                     "priority": 1,
@@ -41,6 +167,8 @@ def build_today_brief(
             continue
         if action in ACTION_REVIEW:
             action_review += 1
+            action_group = "ADD" if action in {"ADD", "STRONG_ADD"} else "REDUCE"
+            grouped_symbols.setdefault(action_group, set()).add(str(item.get("symbol") or ""))
             issues.append(
                 {
                     "priority": 5 if action in {"ADD", "STRONG_ADD"} else 2,
@@ -62,6 +190,7 @@ def build_today_brief(
             continue
         if today <= event_day <= today + timedelta(days=30):
             deadline_count += 1
+            grouped_symbols.setdefault("DEADLINE", set()).add(str(event.get("instrument_id") or ""))
             issues.append(
                 {
                     "priority": 3,
@@ -93,6 +222,7 @@ def build_today_brief(
         "no_action_count": no_action,
         "holdings_count": len(recommendations),
         "review_queue": issues,
+        "issue_groups": _build_issue_groups(grouped_symbols),
         "summary_lines": [
             f"Portfolio status: {status}",
             f"Data reconciled: {reconciled_pct:.1f}%",

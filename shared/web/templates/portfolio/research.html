@@ -26,7 +26,19 @@
         <p>{{ candidate.role }} · max {{ candidate.max_weight_pct }}%</p>
         <small>Evidence {{ candidate.source_coverage_pct }}% · overlap {{ candidate.overlap_impact }}</small>
       </a>
-      {% else %}<div class="os-empty-state"><p>No candidates yet. Add canonical instruments through the research API, then explicitly mark them RESEARCH or APPROVED.</p></div>{% endfor %}
+      {% else %}<div class="os-empty-state"><h3>No approved research candidates yet.</h3><p>Your held universe is available below. Promotion to RESEARCH or APPROVED remains an explicit, sourced decision.</p></div>{% endfor %}
+    </div>
+  </section>
+
+  <section class="os-panel">
+    <div class="os-panel-heading"><div><p class="dash-eyebrow">Already in the portfolio</p><h2>Start research from real exposure</h2></div><span>{{ held_universe_count }} canonical holdings</span></div>
+    <p class="research-onramp-copy">This is a read-only view of the largest held positions, not a recommendation. Open a canonical scorecard where available; adding a thesis, source, and invalidation trigger is the next step.</p>
+    <div class="research-held-grid">
+      {% for row in held_universe %}
+        {% if row.instrument_id %}<a class="research-held-card" href="{{ app_path('/portfolio/research/scorecard/' ~ row.instrument_id) }}">{% else %}<article class="research-held-card research-held-card--disabled">{% endif %}
+          <div><strong>{{ row.symbol }}</strong><span>₹{{ '{:,.0f}'.format(row.current_value) }}</span></div><p>{{ row.display_name }}</p><small>{{ row.sector }} · {{ row.accounts | join(', ') }}{% if not row.instrument_id %} · resolve identity first{% endif %}</small>
+        {% if row.instrument_id %}</a>{% else %}</article>{% endif %}
+      {% else %}<div class="os-empty-state"><p>Sync holdings to seed the research universe.</p></div>{% endfor %}
     </div>
   </section>
 

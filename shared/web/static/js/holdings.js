@@ -2,7 +2,10 @@
   const chartInstances = new Map();
   let searchDebounceTimer = null;
   let holdingsPageByTable = new Map();
+  let chartJsPromise = null;
+  const rowMetadataCache = new WeakMap();
   const DEFAULT_PAGE_SIZE = 50;
+  const CHART_JS_URL = "https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js";
 
   let patternsOnlyActive = false;
   const PATTERN_STATUS_LABEL = {
@@ -42,6 +45,35 @@
     "#fb923c",
     "#94a3b8",
   ];
+
+  function ensureChartJs() {
+    if (window.Chart) return Promise.resolve(window.Chart);
+    if (chartJsPromise) return chartJsPromise;
+
+    chartJsPromise = new Promise((resolve, reject) => {
+      const script = document.createElement("script");
+      const timeout = window.setTimeout(() => {
+        script.remove();
+        chartJsPromise = null;
+        reject(new Error("Price chart library timed out"));
+      }, 8000);
+      script.src = CHART_JS_URL;
+      script.async = true;
+      script.onload = () => {
+        window.clearTimeout(timeout);
+        if (window.Chart) resolve(window.Chart);
+        else reject(new Error("Price chart library was unavailable"));
+      };
+      script.onerror = () => {
+        window.clearTimeout(timeout);
+        script.remove();
+        chartJsPromise = null;
+        reject(new Error("Price chart library could not load"));
+      };
+      document.head.appendChild(script);
+    });
+    return chartJsPromise;
+  }
 
   function showLoader(message) {
     const loader = document.getElementById("page-loader");
@@ -197,11 +229,34 @@
     return [...boxes].filter((box) => box.checked).map((box) => box.value);
   }
 
+  function rowMetadata(row) {
+    const cached = rowMetadataCache.get(row);
+    if (cached) return cached;
+    let accountBreakdown = null;
+    if (row.dataset.accountBreakdown) {
+      try {
+        accountBreakdown = JSON.parse(row.dataset.accountBreakdown);
+      } catch {
+        accountBreakdown = null;
+      }
+    }
+    const metadata = {
+      accountBreakdown,
+      accountCodes: (row.dataset.accountCodes || "")
+        .split(",")
+        .map((part) => part.trim())
+        .filter(Boolean),
+      assetClass: row.dataset.assetClass || "equity",
+      haystack: (row.dataset.search || row.dataset.symbol || "").toLowerCase(),
+    };
+    rowMetadataCache.set(row, metadata);
+    return metadata;
+  }
+
   function rowMatchesAssetClass(row, selectedClasses) {
     if (selectedClasses === null) return true;
     if (!selectedClasses.length) return false;
-    const assetClass = row.dataset.assetClass || "equity";
-    return selectedClasses.includes(assetClass);
+    return selectedClasses.includes(rowMetadata(row).assetClass);
   }
 
   function rowFinancials(row, selectedCodes) {
@@ -225,10 +280,7 @@
       return { invested, current, pnl: current - invested };
     }
 
-    const accountCodes = (row.dataset.accountCodes || "")
-      .split(",")
-      .map((part) => part.trim())
-      .filter(Boolean);
+    const accountCodes = rowMetadata(row).accountCodes;
     if (selectedCodes?.length && accountCodes.length) {
       const matched = accountCodes.some((code) => selectedCodes.includes(code));
       if (!matched) {
@@ -266,13 +318,7 @@
   const SIGNAL_GROUP_ORDER = ["B+", "B", "H", "S", "S+", "Unrated"];
 
   function parseAccountBreakdown(row) {
-    const raw = row.dataset.accountBreakdown;
-    if (!raw) return null;
-    try {
-      return JSON.parse(raw);
-    } catch {
-      return null;
-    }
+    return rowMetadata(row).accountBreakdown;
   }
 
   function rowSliceMetrics(row, selectedCodes) {
@@ -318,8 +364,7 @@
     if (!rowMatchesAccounts(row, selectedCodes)) return false;
     if (!rowMatchesAssetClass(row, selectedAssets)) return false;
     if (patternsOnlyActive && row.dataset.hasPattern !== "1") return false;
-    const haystack = (row.dataset.search || row.dataset.symbol || "").toLowerCase();
-    if (query && !haystack.includes(query)) return false;
+    if (query && !rowMetadata(row).haystack.includes(query)) return false;
     const fin = rowFinancials(row, selectedCodes);
     return fin.current > 0 || fin.invested > 0;
   }
@@ -444,6 +489,7 @@
           label: groupEl.dataset.groupLabel || "?",
           value: groupValue,
           pct: groupPct,
+          count: groupCount,
         });
       }
     });
@@ -454,17 +500,9 @@
     }
 
     const overview = document.getElementById("portfolio-groups-chart");
-    if (overview && groupTotals.length) {
+    if (overview) {
       const ordered = sortGroupTotalsForChart(groupTotals, groupBy);
-      renderOverviewBarChart(
-        "portfolio-groups-chart",
-        {
-          labels: ordered.map((g) => g.label),
-          values: ordered.map((g) => g.value),
-          pcts: ordered.map((g) => g.pct),
-        },
-        "portfolio-overview"
-      );
+      renderAllocationOverview(ordered);
     }
   }
 
@@ -476,12 +514,13 @@
     });
   }
 
-  function updateFilteredPortfolioSummary() {
+  function updateFilteredPortfolioSummary(precomputedTotals = null) {
     const wrap = document.getElementById("portfolio-summary");
     const query = (document.getElementById("symbol-search")?.value || "").trim().toLowerCase();
     const selectedCodes = getSelectedAccountCodes();
     const selectedAssets = getSelectedAssetClasses();
-    const totals = computeFilteredTotals(query, selectedCodes, selectedAssets);
+    const totals =
+      precomputedTotals || computeFilteredTotals(query, selectedCodes, selectedAssets);
 
     if (wrap) {
       const totalPnlPct = totals.totalInvested
@@ -518,10 +557,7 @@
   function rowMatchesAccounts(row, selectedCodes) {
     if (selectedCodes === null) return true;
     if (!selectedCodes.length) return false;
-    const codes = (row.dataset.accountCodes || "")
-      .split(",")
-      .map((part) => part.trim())
-      .filter(Boolean);
+    const codes = rowMetadata(row).accountCodes;
     if (!codes.length) return true;
     return codes.some((code) => selectedCodes.includes(code));
   }
@@ -707,7 +743,7 @@
       }
     }
 
-    updateFilteredPortfolioSummary();
+    updateFilteredPortfolioSummary(totals);
   }
 
   function filterBoxesForGroup(group) {
@@ -831,156 +867,46 @@
     }, 120);
   }
 
-  function parseChartData(canvas) {
-    const raw = canvas?.dataset?.chart;
-    if (!raw) return null;
-    try {
-      return JSON.parse(raw);
-    } catch {
-      return null;
-    }
-  }
+  function renderAllocationOverview(groups) {
+    const root = document.getElementById("portfolio-groups-chart");
+    if (!root) return;
 
-  function chartSegmentPcts(chartData) {
-    const total = chartData.values.reduce((sum, value) => sum + Number(value || 0), 0);
-    if (chartData.pcts?.length === chartData.values.length) {
-      return chartData.pcts.map((pct) => Number(pct));
-    }
-    return chartData.values.map((value) =>
-      total > 0 ? (Number(value || 0) / total) * 100 : 0
-    );
-  }
+    const total = groups.reduce((sum, group) => sum + Number(group.value || 0), 0);
+    const totalEl = document.getElementById("grouped-overview-total");
+    if (totalEl) totalEl.textContent = formatInrSummary(total);
+    root.style.setProperty("--group-count", String(groups.length));
 
-  function renderDoughnutChart(canvasId, chartData, instanceKey, options = {}) {
-    const canvas = document.getElementById(canvasId);
-    if (!canvas || !window.Chart || !chartData?.values?.length) return;
-
-    if (chartInstances.has(instanceKey)) {
-      chartInstances.get(instanceKey).destroy();
+    if (!groups.length) {
+      root.innerHTML =
+        '<p class="allocation-overview-empty">No allocation matches the current filters.</p>';
+      return;
     }
 
-    const showPercentages = Boolean(options.showPercentages);
-    const pcts = chartSegmentPcts(chartData);
-    const legendLabels = showPercentages
-      ? chartData.labels.map((label, index) => `${label} (${pcts[index].toFixed(1)}%)`)
-      : chartData.labels;
-
-    const chart = new Chart(canvas, {
-      type: "doughnut",
-      data: {
-        labels: legendLabels,
-        datasets: [
-          {
-            data: chartData.values,
-            backgroundColor: chartData.labels.map(
-              (_, i) => PIE_COLORS[i % PIE_COLORS.length]
-            ),
-            borderWidth: 0,
-          },
-        ],
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: {
-            position: "right",
-            labels: { color: "#94a3b8", boxWidth: 10, font: { size: 10 } },
-          },
-          tooltip: showPercentages
-            ? {
-                callbacks: {
-                  label(context) {
-                    const value = context.parsed ?? 0;
-                    const pct = pcts[context.dataIndex] ?? 0;
-                    return `${chartData.labels[context.dataIndex]}: ${formatInr(value)} (${pct.toFixed(1)}%)`;
-                  },
-                },
-              }
-            : {},
-        },
-      },
-    });
-
-    chartInstances.set(instanceKey, chart);
-  }
-
-  function renderOverviewBarChart(canvasId, chartData, instanceKey) {
-    const canvas = document.getElementById(canvasId);
-    if (!canvas || !window.Chart || !chartData?.values?.length) return;
-
-    if (chartInstances.has(instanceKey)) {
-      chartInstances.get(instanceKey).destroy();
-    }
-
-    const pcts = chartSegmentPcts(chartData);
-    const labels = chartData.labels.map(
-      (label, index) => `${label} · ${pcts[index].toFixed(1)}%`
-    );
-
-    const chart = new Chart(canvas, {
-      type: "bar",
-      data: {
-        labels,
-        datasets: [
-          {
-            data: chartData.values,
-            backgroundColor: chartData.labels.map((_, i) => PIE_COLORS[i % PIE_COLORS.length]),
-            borderRadius: 4,
-            barThickness: 14,
-          },
-        ],
-      },
-      options: {
-        indexAxis: "y",
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: { display: false },
-          tooltip: {
-            callbacks: {
-              label(context) {
-                const idx = context.dataIndex;
-                const value = context.parsed?.x ?? 0;
-                return `${chartData.labels[idx]}: ${formatInrWhole(value)} (${pcts[idx].toFixed(1)}%)`;
-              },
-            },
-          },
-        },
-        scales: {
-          x: {
-            ticks: {
-              color: "#94a3b8",
-              callback: (value) => formatInrWhole(value),
-            },
-            grid: { color: "rgba(148, 163, 184, 0.12)" },
-          },
-          y: {
-            ticks: { color: "#e2e8f0", font: { size: 11 } },
-            grid: { display: false },
-          },
-        },
-      },
-    });
-
-    chartInstances.set(instanceKey, chart);
-  }
-
-  function initGroupCharts() {
-    const overview = document.getElementById("portfolio-groups-chart");
-    if (!overview) return;
-
-    const data = parseChartData(overview);
-    if (!data) return;
-
-    const kind = overview.dataset.chartKind || "bar";
-    if (kind === "bar") {
-      renderOverviewBarChart("portfolio-groups-chart", data, "portfolio-overview");
-    } else {
-      renderDoughnutChart("portfolio-groups-chart", data, "portfolio-overview", {
-        showPercentages: true,
-      });
-    }
+    root.innerHTML = groups
+      .map((group, index) => {
+        const color = PIE_COLORS[index % PIE_COLORS.length];
+        const pct = Math.max(0, Math.min(100, Number(group.pct || 0)));
+        const count = Number(group.count || 0);
+        const countLabel = count === 1 ? "1 holding" : `${count} holdings`;
+        const label = escapeHtml(group.label || "Unclassified");
+        return `<div class="allocation-overview-item" role="listitem" style="--allocation-color: ${color}">
+          <div class="allocation-overview-meta">
+            <span class="allocation-overview-name">
+              <span class="allocation-overview-swatch" aria-hidden="true"></span>
+              <strong>${label}</strong>
+              <span>${countLabel}</span>
+            </span>
+            <span class="allocation-overview-value">
+              <strong>${formatInrSummary(Number(group.value || 0))}</strong>
+              <span>${pct.toFixed(1)}%</span>
+            </span>
+          </div>
+          <div class="allocation-overview-track" role="progressbar" aria-label="${label} allocation" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct.toFixed(1)}">
+            <span class="allocation-overview-fill" style="width: ${pct.toFixed(1)}%"></span>
+          </div>
+        </div>`;
+      })
+      .join("");
   }
 
   function toggleGroupPanel(button) {
@@ -1699,6 +1625,17 @@
 
       asyncSlot.dataset.loaded = "true";
       if (hasChart) {
+        try {
+          await ensureChartJs();
+        } catch {
+          const chartWrap = asyncSlot.querySelector(".chart-wrap");
+          if (chartWrap) {
+            chartWrap.innerHTML =
+              '<p class="detail-empty">Price chart could not load. The holdings table and analysis remain available.</p>';
+          }
+          asyncSlot.querySelector(".pattern-overlay-wrap")?.remove();
+          return;
+        }
         const chartSection = asyncSlot.querySelector(".chart-section");
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
@@ -2088,12 +2025,10 @@
     initPortfolioFilters();
     initPatternsToggle();
     initGroupBySelect();
-    initGroupCharts();
     initGroupExpanders();
     initColumnResize();
     initColumnResizeReset();
     applySymbolSearch();
-    updateFilteredPortfolioSummary();
 
     document.querySelectorAll(".row-expander").forEach((button) => {
       button.addEventListener("click", () => toggleRow(button));

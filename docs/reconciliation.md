@@ -26,7 +26,7 @@ Milestone 7B adds the local trust layer used before valuation-dependent advice.
 
 ## Manual resolution
 
-Use **Data Quality → Resolve**. A resolution requires a reason, source document, evidence date, and approver. The original state stays in the append-only audit history. Overrides explain discrepancies; they do not enable execution.
+Use **Data Quality → Review mismatch**. First compare the broker/import source with the independent market-price source and check quantity, timestamp, currency/FX, and corporate actions. A resolution requires a typed explanation, reason, source document, evidence date, and approver. Saving inserts an append-only row in `reconciliation_overrides` plus its audit row. The original values remain unchanged. Overrides explain discrepancies; they do not enable execution.
 
 ## API
 

@@ -37,7 +37,7 @@ PatternStatus = Literal["confirmed", "forming", "early"]
 PatternBias = Literal["bullish", "bearish"]
 
 _CACHE: dict[str, tuple[float, list[dict[str, Any]]]] = {}
-_CACHE_TTL = int(os.getenv("CHART_PATTERNS_CACHE_TTL", str(6 * 60 * 60)))
+_CACHE_TTL = int(os.getenv("CHART_PATTERNS_CACHE_TTL", str(24 * 60 * 60)))
 _SCAN_LOCK = threading.Lock()
 _ASYNC_SCAN_LOCK = threading.Lock()
 _ASYNC_SCAN_STATE: dict[str, dict[str, Any]] = {}
@@ -735,6 +735,7 @@ def _scan_holdings_unlocked(
     holdings: list[dict[str, Any]],
     *,
     max_workers: int = 4,
+    use_cache: bool = True,
 ) -> list[dict[str, Any]]:
     """Scan unique equity symbols from holdings list."""
     from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -756,7 +757,7 @@ def _scan_holdings_unlocked(
 
     def _one(item: tuple[str, str | None, str | None]) -> dict[str, Any]:
         sym, exch, currency = item
-        row = detect_patterns_for_symbol(sym, exch, currency=currency)
+        row = detect_patterns_for_symbol(sym, exch, currency=currency, use_cache=use_cache)
         row["holding_count"] = sum(
             1
             for h in holdings
@@ -799,10 +800,41 @@ def scan_holdings(
     holdings: list[dict[str, Any]],
     *,
     max_workers: int = 4,
+    refresh: bool = False,
 ) -> list[dict[str, Any]]:
-    """Scan once per process so overlapping pages do not duplicate Yahoo requests."""
+    """Return a one-day local scan, avoiding provider calls during page rendering."""
+    from modules.portfolio.db import pattern_cache
+
+    universe_key = _holdings_universe_key(holdings)
+    if not refresh:
+        cached = pattern_cache.get_scan(
+            universe_key,
+            detector_version=_DETECTOR_VERSION,
+        )
+        if cached is not None:
+            return list(cached.get("results") or [])
     with _SCAN_LOCK:
-        return _scan_holdings_unlocked(holdings, max_workers=max_workers)
+        if not refresh:
+            cached = pattern_cache.get_scan(
+                universe_key,
+                detector_version=_DETECTOR_VERSION,
+            )
+            if cached is not None:
+                return list(cached.get("results") or [])
+        results = _scan_holdings_unlocked(
+            holdings,
+            max_workers=max_workers,
+            use_cache=not refresh,
+        )
+        completed_at = time.time()
+        pattern_cache.save_scan(
+            universe_key,
+            detector_version=_DETECTOR_VERSION,
+            completed_at=completed_at,
+            ttl_seconds=_CACHE_TTL,
+            results=results,
+        )
+        return results
 
 
 def _holdings_universe_key(holdings: list[dict[str, Any]]) -> str:
@@ -828,6 +860,23 @@ def scan_holdings_async(
     """Return immediately while the portfolio-wide history scan runs in a daemon thread."""
     key = _holdings_universe_key(holdings)
     now = time.time()
+    if not refresh:
+        from modules.portfolio.db import pattern_cache
+
+        cached = pattern_cache.get_scan(key, detector_version=_DETECTOR_VERSION, now=now)
+        if cached is not None:
+            completed = {
+                "status": "complete",
+                "universe_key": key,
+                "started_at": cached["completed_at"],
+                "completed_at": cached["completed_at"],
+                "results": list(cached.get("results") or []),
+                "error": None,
+                "cached": True,
+            }
+            with _ASYNC_SCAN_LOCK:
+                _ASYNC_SCAN_STATE[key] = completed
+            return dict(completed)
     with _ASYNC_SCAN_LOCK:
         state = _ASYNC_SCAN_STATE.get(key)
         if (
@@ -851,11 +900,19 @@ def scan_holdings_async(
 
     def _run() -> None:
         try:
+            if refresh:
+                results = scan_holdings(
+                    holdings,
+                    max_workers=max_workers,
+                    refresh=True,
+                )
+            else:
+                results = scan_holdings(holdings, max_workers=max_workers)
             completed = {
                 **state,
                 "status": "complete",
                 "completed_at": time.time(),
-                "results": scan_holdings(holdings, max_workers=max_workers),
+                "results": results,
             }
         except Exception as exc:
             completed = {

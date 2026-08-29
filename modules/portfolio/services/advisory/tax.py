@@ -35,7 +35,8 @@ def assess_tax_and_settlement(
     *,
     action: Action,
 ) -> TaxAssessment:
-    profiles = list((holding.get("account_profiles") or {}).values())
+    profiles_by_account = holding.get("account_profiles") or {}
+    profiles = list(profiles_by_account.values())
     flags: list[DataQualityFlag] = []
     references: list[TaxRuleReference] = []
     tax_notes: list[str] = []
@@ -58,6 +59,29 @@ def assess_tax_and_settlement(
         for profile in profiles
     }
     requires_ca_review = False
+
+    guardrail_breaches: list[str] = []
+    for position in holding.get("positions") or []:
+        account_id = str(position.get("account_id") or "")
+        profile = profiles_by_account.get(account_id) or {}
+        limit = profile.get("max_position_pct")
+        weight = float(position.get("account_weight_pct") or 0)
+        if limit is not None and weight > float(limit):
+            guardrail_breaches.append(
+                f"{position.get('account_code') or account_id} {weight:.1f}% > {float(limit):.1f}%"
+            )
+    if guardrail_breaches:
+        flags.append(
+            DataQualityFlag(
+                code="ACCOUNT_POSITION_LIMIT_EXCEEDED",
+                severity="warning",
+                message="Account-level position limit exceeded: " + "; ".join(guardrail_breaches),
+            )
+        )
+        settlement_notes.append(
+            "Do not add in accounts above their configured position limit; use account-level "
+            "placement or reduction review first."
+        )
 
     if any("GIFT" in item for item in account_types):
         gift_profiles = [

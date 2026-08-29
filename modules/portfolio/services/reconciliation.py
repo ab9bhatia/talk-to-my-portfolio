@@ -253,15 +253,20 @@ def _price_provenance(holding: dict[str, Any], *, family: dict[str, Any]) -> dic
     }
 
 
-def _corporate_action_pending(holding: dict[str, Any]) -> tuple[bool, list[dict[str, Any]]]:
+def _corporate_action_pending(
+    holding: dict[str, Any],
+    *,
+    actions_by_instrument: dict[str, list[dict[str, Any]]] | None = None,
+) -> tuple[bool, list[dict[str, Any]]]:
     instrument_id = holding.get("instrument_id")
-    actions = (
-        instrument_store.list_corporate_actions(
+    if instrument_id and actions_by_instrument is not None:
+        actions = actions_by_instrument.get(str(instrument_id), [])
+    elif instrument_id:
+        actions = instrument_store.list_corporate_actions(
             instrument_id=str(instrument_id), pending_only=True
         )
-        if instrument_id
-        else []
-    )
+    else:
+        actions = []
     pending = bool(
         holding.get("corporate_action_pending")
         or holding.get("cost_basis_unreconciled")
@@ -275,8 +280,10 @@ def reconcile_holding(
     *,
     family: dict[str, Any],
     family_value: float,
+    corporate_actions_by_instrument: dict[str, list[dict[str, Any]]] | None = None,
+    overrides_by_instrument: dict[str, list[dict[str, Any]]] | None = None,
 ) -> dict[str, Any]:
-    row = enrich_holding_identity(holding)
+    row = dict(holding) if "symbol_resolved" in holding else enrich_holding_identity(holding)
     provenance = _price_provenance(row, family=family)
     quantity = _number(row.get("reconciled_quantity"))
     if quantity is None:
@@ -304,7 +311,10 @@ def reconcile_holding(
 
     reasons: list[str] = []
     repair_action = "No action required."
-    corporate_action, actions = _corporate_action_pending(row)
+    corporate_action, actions = _corporate_action_pending(
+        row,
+        actions_by_instrument=corporate_actions_by_instrument,
+    )
     unresolved = not bool(row.get("symbol_resolved"))
     suspended = (
         row.get("is_suspended") is True
@@ -363,9 +373,13 @@ def reconcile_holding(
                     if state in {"RECONCILED", "RECONCILED_WITH_TIMING_DIFFERENCE"}:
                         state = "WARNING"
 
-    override_rows = instrument_store.list_overrides(
-        instrument_id=str(row.get("instrument_id"))
-    ) if row.get("instrument_id") else []
+    instrument_id = str(row.get("instrument_id") or "")
+    if instrument_id and overrides_by_instrument is not None:
+        override_rows = overrides_by_instrument.get(instrument_id, [])
+    elif instrument_id:
+        override_rows = instrument_store.list_overrides(instrument_id=instrument_id)
+    else:
+        override_rows = []
     active_overrides = [item for item in override_rows if item.get("active")]
     if active_overrides:
         reasons.append(f"Manual override present: {active_overrides[0]['override_type']}.")
@@ -437,6 +451,13 @@ def reconcile_family(family: dict[str, Any]) -> dict[str, Any]:
         list(family.get("portfolios") or []),
         family=family,
     )
+    pending_actions = instrument_store.list_corporate_actions(pending_only=True)
+    actions_by_instrument: defaultdict[str, list[dict[str, Any]]] = defaultdict(list)
+    for action in pending_actions:
+        actions_by_instrument[str(action.get("instrument_id") or "")].append(action)
+    overrides_by_instrument: defaultdict[str, list[dict[str, Any]]] = defaultdict(list)
+    for override in instrument_store.list_overrides():
+        overrides_by_instrument[str(override.get("instrument_id") or "")].append(override)
     family_value = sum(
         float(item.get("display_value") or item.get("current_value") or 0)
         for block in original_blocks
@@ -449,7 +470,13 @@ def reconcile_family(family: dict[str, Any]) -> dict[str, Any]:
     for block in original_blocks:
         account_code = str(block.get("account_code") or block.get("account_id") or "UNKNOWN")
         holdings = [
-            reconcile_holding(item, family=family, family_value=family_value)
+            reconcile_holding(
+                item,
+                family=family,
+                family_value=family_value,
+                corporate_actions_by_instrument=actions_by_instrument,
+                overrides_by_instrument=overrides_by_instrument,
+            )
             for item in block.get("holdings") or []
         ]
         for item in holdings:
@@ -510,6 +537,12 @@ def reconcile_family(family: dict[str, Any]) -> dict[str, Any]:
                 "states": [],
                 "blocking": False,
                 "accounts": [],
+                "broker_value_sources": [],
+                "market_price_sources": [],
+                "broker_value_as_of": [],
+                "market_price_as_of": [],
+                "reasons": [],
+                "repair_actions": [],
             },
         )
         item["broker_reported_value"] += float(row.get("broker_reported_value") or 0)
@@ -518,6 +551,13 @@ def reconcile_family(family: dict[str, Any]) -> dict[str, Any]:
         item["states"].append(row.get("reconciliation_state"))
         item["blocking"] = bool(item["blocking"] or row.get("reconciliation_blocking"))
         item["accounts"].append(row.get("account_code") or row.get("account_id"))
+        detail = row.get("reconciliation") or {}
+        item["broker_value_sources"].append(detail.get("broker_value_source"))
+        item["market_price_sources"].append(detail.get("market_price_source"))
+        item["broker_value_as_of"].append(detail.get("broker_value_as_of"))
+        item["market_price_as_of"].append(detail.get("market_price_as_of"))
+        item["reasons"].extend(detail.get("reasons") or [])
+        item["repair_actions"].append(detail.get("repair_action"))
 
     security_rows = []
     for item in by_security.values():
@@ -534,6 +574,26 @@ def reconcile_family(family: dict[str, Any]) -> dict[str, Any]:
         item["marked_value"] = round(item["marked_value"], 2)
         item["reconciliation_delta"] = round(item["reconciliation_delta"], 2)
         item["accounts"] = sorted({str(code) for code in item["accounts"] if code})
+        for field in (
+            "broker_value_sources",
+            "market_price_sources",
+            "broker_value_as_of",
+            "market_price_as_of",
+            "reasons",
+            "repair_actions",
+        ):
+            item[field] = sorted({str(value) for value in item[field] if value})
+        item["likely_cause"] = item["reasons"][0] if item["reasons"] else "Within configured tolerances."
+        material_repairs = [
+            value for value in item["repair_actions"] if value != "No action required."
+        ]
+        item["repair_action"] = (
+            material_repairs[0]
+            if item["blocking"] and material_repairs
+            else item["repair_actions"][0]
+            if item["repair_actions"]
+            else "No action required."
+        )
         security_rows.append(item)
 
     total_marked = sum(float(item.get("marked_value") or 0) for item in security_rows)
@@ -579,6 +639,6 @@ def reconcile_family(family: dict[str, Any]) -> dict[str, Any]:
         "by_account": sorted(by_account.values(), key=lambda item: item["account_code"]),
         "by_security": security_rows,
         "unresolved_instruments": [item for item in security_rows if not item.get("instrument_id")],
-        "corporate_action_review": instrument_store.list_corporate_actions(pending_only=True),
+        "corporate_action_review": pending_actions,
     }
     return family_copy

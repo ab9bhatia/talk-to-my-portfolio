@@ -7,6 +7,8 @@ TalkToMyPortfolio remains a local, single-user application. Bind to `127.0.0.1` 
 For localhost, keep `APP_HOST=127.0.0.1`. For a trusted LAN, set a strong Basic Auth password or a random bearer token, then rely on the built-in origin/CSRF check and rate limits:
 
 ```text
+APP_HOST=0.0.0.0
+# APP_DISPLAY_HOST=192.168.1.25  # Only needed if automatic LAN detection picks the wrong adapter.
 PORTFOLIO_HTTP_USER=local-user
 PORTFOLIO_HTTP_PASSWORD=<long-random-password>
 PORTFOLIO_BEARER_TOKEN=<long-random-token-for-api-clients>

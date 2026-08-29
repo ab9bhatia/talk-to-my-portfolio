@@ -4,6 +4,7 @@
 
   const rowsEl = document.getElementById("advisor-rows");
   const noticeEl = document.getElementById("advisor-notice");
+  const focusFilter = document.getElementById("advisor-focus-filter");
   const actionFilter = document.getElementById("advisor-action-filter");
   const sellFilter = document.getElementById("advisor-sell-filter");
   const patternFilter = document.getElementById("advisor-pattern-filter");
@@ -11,8 +12,10 @@
   const conflictsOnly = document.getElementById("advisor-conflicts-only");
   const searchEl = document.getElementById("advisor-search");
   const resultCount = document.getElementById("advisor-result-count");
+  const showMore = document.getElementById("advisor-show-more");
   let payload = null;
   let loadVersion = 0;
+  let visibleLimit = 24;
 
   function esc(value) {
     const div = document.createElement("div");
@@ -100,19 +103,40 @@
     const trace = (item.rule_trace || [])
       .map((row) => `<li><code>${esc(row.rule)}</code> ${row.matched === false ? "not matched" : esc(row.effect || row.result || "considered")}</li>`)
       .join("");
-    return `<details class="advisor-evidence"><summary>Inspect evidence, constraints, and rule trace</summary>
-      <div class="advisor-evidence-grid">
-        <div><h4>Why now</h4><p>${esc(item.why_now)}</p><h4>Tax / settlement</h4><p>${esc(item.tax_note)}</p><p>${esc(item.settlement_note)}</p></div>
+    return `<details class="advisor-evidence"><summary>View rationale and evidence</summary>
+      <div class="advisor-evidence-grid advisor-evidence-grid--plain">
+        <div><h4>What must be true</h4><ul>${(item.add_conditions || []).map((row) => `<li>${esc(row)}</li>`).join("") || "<li>No add conditions.</li>"}</ul></div>
+        <div><h4>Before you act</h4><p>${esc(item.tax_note)}</p><p>${esc(item.settlement_note)}</p></div>
+      </div>
+      <details class="advisor-audit-trail"><summary>Technical audit trail</summary><div class="advisor-evidence-grid">
         <div><h4>Dated evidence</h4><ul>${evidence || "<li>No dated evidence available.</li>"}</ul></div>
         <div><h4>Data quality</h4><ul>${flags || "<li>No data-quality flags.</li>"}</ul></div>
-        <div><h4>Deterministic trace</h4><ul>${trace || "<li>No trace entries.</li>"}</ul></div>
-      </div></details>`;
+        <div><h4>Deterministic rules</h4><ul>${trace || "<li>No trace entries.</li>"}</ul></div>
+      </div></details>
+    </details>`;
+  }
+
+  function requiredAction(item) {
+    if (item.action === "RECONCILE" || item.evidence_state === "NEEDS_DATA") {
+      return "Resolve the missing evidence before relying on this decision.";
+    }
+    if (["SELL", "REDUCE"].includes(item.action)) {
+      return `Review a ${pct(item.sell_pct)} staged reduction toward ${pct(item.target_weight_pct)} family weight.`;
+    }
+    if (["ADD", "STRONG_ADD"].includes(item.action)) {
+      return `Validate filings and account limits, then consider building toward ${pct(item.target_weight_pct)} family weight.`;
+    }
+    return `No trade now. Review again at: ${item.hold_until?.value || "the next material update"}.`;
   }
 
   function filteredRows() {
     const momentumOrder = { STRONG: 5, POSITIVE: 4, NEUTRAL: 3, WEAK: 2, BROKEN: 1 };
     const search = searchEl.value.trim().toLowerCase();
     let rows = [...(payload?.recommendations || [])];
+    const focus = focusFilter.value;
+    if (focus === "ACTION") rows = rows.filter((row) => ["SELL", "REDUCE", "ADD", "STRONG_ADD"].includes(row.action));
+    if (focus === "DATA") rows = rows.filter((row) => row.action === "RECONCILE" || row.evidence_state === "NEEDS_DATA" || (row.data_quality_flags || []).some((flag) => flag.blocking));
+    if (focus === "MONITOR") rows = rows.filter((row) => !["SELL", "REDUCE", "ADD", "STRONG_ADD", "RECONCILE"].includes(row.action));
     if (actionFilter.value) rows = rows.filter((row) => row.action === actionFilter.value);
     if (sellFilter.value) rows = rows.filter((row) => row.sell_type === sellFilter.value);
     if (patternFilter.value) rows = rows.filter((row) => patternBucket(row.chart_pattern) === patternFilter.value);
@@ -140,10 +164,12 @@
   function renderRows() {
     if (!payload) return;
     const rows = filteredRows();
-    resultCount.textContent = `${rows.length} of ${payload.recommendations?.length || 0} positions`;
-    rowsEl.innerHTML = rows.map((item) => {
+    const visible = rows.slice(0, visibleLimit);
+    resultCount.textContent = `Showing ${visible.length} of ${rows.length} decisions`;
+    showMore.hidden = visible.length >= rows.length;
+    rowsEl.innerHTML = visible.map((item) => {
       const conflict = item.decision_conflicts?.length
-        ? `<div class="advisor-conflict">△ ${esc(item.decision_conflicts.join(", "))}</div>`
+        ? `<div class="advisor-conflict">Timing conflict · ${esc(item.decision_conflicts.join(", "))}</div>`
         : "";
       const meterWidth = Math.max(2, Math.min(100, Number(item.family_weight_pct || 0) * 5));
       const visibleAction = item.evidence_state === "NEEDS_DATA" ? "NEEDS DATA" : item.action;
@@ -153,15 +179,20 @@
         : item.evidence_state === "DOCUMENTED_MODEL"
           ? badge("DOCUMENTED", "documented-model")
           : badge("RESEARCH REQUIRED", "needs-data");
-      return `<tr class="advisor-main-row">
-        <td><strong class="advisor-symbol">${esc(item.symbol)}</strong><small>${esc(item.instrument_type)} · decision confidence ${item.action_confidence}%</small>${conflict}</td>
-        <td>${badge(visibleAction, actionKind)}<br>${item.sell_type !== "NONE" ? badge(item.sell_type, "sell-type") : ""}<small>${item.sell_pct ? `${pct(item.sell_pct)} staged sale` : "No sale modeled"}</small></td>
-        <td><span class="advisor-scenarios">${pct(item.expected_3y_irr?.bear_pct)} / <strong>${pct(item.expected_3y_irr?.base_pct)}</strong> / ${pct(item.expected_3y_irr?.bull_pct)}</span><small>Bear / base / bull · ${esc(item.expected_3y_irr?.method || "unavailable")}</small>${modelTier}</td>
-        <td>${badge(item.momentum_regime || "UNKNOWN", "momentum")}<br>${patternSummary(item.chart_pattern)}</td>
-        <td>${pct(item.family_weight_pct)} → <strong>${pct(item.target_weight_pct)}</strong><div class="advisor-weight-meter"><i style="width:${meterWidth}%"></i></div><small>${money(item.consolidated_value)}</small></td>
-        <td>${esc(item.hold_until?.type || "—")}<small>${esc(item.hold_until?.value || "—")}</small></td>
-      </tr><tr class="advisor-detail-row"><td colspan="6">${evidenceDrawer(item)}</td></tr>`;
-    }).join("") || '<tr><td class="advisor-empty-row" colspan="6">No recommendations match these filters.</td></tr>';
+      return `<article class="advisor-decision-card">
+        <header class="advisor-decision-card__head">
+          <div><strong class="advisor-symbol">${esc(item.symbol)}</strong><small>${esc(item.instrument_type)} · ${money(item.consolidated_value)} · ${pct(item.family_weight_pct)} of family</small></div>
+          <div>${badge(visibleAction, actionKind)}${item.sell_type !== "NONE" ? badge(item.sell_type, "sell-type") : ""}</div>
+        </header>
+        <div class="advisor-decision-card__body">
+          <section><span>Why</span><p>${esc(item.why_now)}</p></section>
+          <section class="advisor-required-action"><span>Required action</span><p>${esc(requiredAction(item))}</p></section>
+          <section class="advisor-decision-metrics"><span>Decision context</span><div><b>${item.action_confidence}%</b><small>confidence</small></div><div><b>${pct(item.expected_3y_irr?.base_pct)}</b><small>base 3Y scenario</small></div><div><b>${pct(item.family_weight_pct)} → ${pct(item.target_weight_pct)}</b><small>portfolio weight</small></div><div class="advisor-weight-meter"><i style="width:${meterWidth}%"></i></div>${modelTier}</section>
+        </div>
+        <div class="advisor-decision-timing"><span>Timing</span>${badge(item.momentum_regime || "UNKNOWN", "momentum")}${patternSummary(item.chart_pattern)}</div>
+        ${conflict}${evidenceDrawer(item)}
+      </article>`;
+    }).join("") || '<div class="advisor-empty-row">No recommendations match these filters.</div>';
   }
 
   function queueRow(title, values) {
@@ -212,15 +243,27 @@
     return `${body.schema_version} · generated ${new Date(body.generated_at).toLocaleString()} · ${errors ? `${errors} account sync warning(s)` : "all loaded accounts included"} · execution disabled`;
   }
 
-  async function loadPatternOverlay(version) {
-    noticeEl.textContent = `${decisionSetLabel(payload)} · refreshing pattern timing in background…`;
+  async function loadPatternOverlay(version, attempt = 0) {
+    noticeEl.textContent = `${decisionSetLabel(payload)} · decisions ready; setup timing is updating in the background…`;
     const controller = new AbortController();
-    const timeoutId = window.setTimeout(() => controller.abort(), 120000);
+    const timeoutId = window.setTimeout(() => controller.abort(), 10000);
     try {
-      const scanResponse = await fetch("/api/portfolio/patterns", { signal: controller.signal });
+      const scanResponse = await fetch("/api/portfolio/patterns" + "?blocking=false", { signal: controller.signal });
       const scanBody = await scanResponse.json();
       if (!scanResponse.ok) throw new Error(scanBody.detail || `Pattern scan failed (${scanResponse.status})`);
       if (version !== loadVersion) return;
+      if (scanBody.status === "scanning") {
+        if (attempt >= 24) {
+          noticeEl.textContent = `${decisionSetLabel(payload)} · decisions ready; setup timing will appear when the daily scan completes`;
+          noticeEl.className = "advisor-notice advisor-notice--warning";
+          return;
+        }
+        window.setTimeout(() => loadPatternOverlay(version, attempt + 1), 4000);
+        return;
+      }
+      if (scanBody.status !== "complete") {
+        throw new Error(scanBody.error || "scan did not complete");
+      }
 
       const response = await fetch("/api/portfolio/advisory?refresh=false&patterns=true");
       const body = await response.json();
@@ -232,7 +275,7 @@
       noticeEl.className = body.runtime?.account_errors ? "advisor-notice advisor-notice--warning" : "advisor-notice advisor-notice--ok";
     } catch (error) {
       if (version !== loadVersion) return;
-      const message = error.name === "AbortError" ? "scan exceeded 120 seconds" : (error.message || "scan failed");
+      const message = error.name === "AbortError" ? "background scan request timed out" : (error.message || "scan failed");
       noticeEl.textContent = `${decisionSetLabel(payload)} · decisions ready; pattern timing unavailable (${message})`;
       noticeEl.className = "advisor-notice advisor-notice--warning";
     } finally {
@@ -265,16 +308,18 @@
     }
   }
 
-  [actionFilter, sellFilter, patternFilter, sortEl, conflictsOnly].forEach((node) => node.addEventListener("change", renderRows));
+  [focusFilter, actionFilter, sellFilter, patternFilter, sortEl, conflictsOnly].forEach((node) => node.addEventListener("change", () => { visibleLimit = 24; renderRows(); }));
   searchEl.addEventListener("input", renderRows);
   document.getElementById("advisor-clear").addEventListener("click", () => {
     actionFilter.value = "";
     sellFilter.value = "";
     patternFilter.value = "";
+    focusFilter.value = "ACTION";
     conflictsOnly.checked = false;
     searchEl.value = "";
     renderRows();
   });
+  showMore.addEventListener("click", () => { visibleLimit += 24; renderRows(); });
   document.getElementById("advisor-refresh").addEventListener("click", () => load(true));
   load(false);
 })();

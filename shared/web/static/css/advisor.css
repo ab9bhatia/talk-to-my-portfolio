@@ -105,7 +105,7 @@
 
 .advisor-controls {
   display: grid;
-  grid-template-columns: minmax(13rem, 1.4fr) repeat(4, minmax(9.5rem, 1fr)) auto auto;
+  grid-template-columns: minmax(14rem, 1.4fr) minmax(12rem, 1fr) minmax(11rem, 1fr) auto auto;
   align-items: end;
   gap: .72rem;
   margin-bottom: 1rem;
@@ -113,6 +113,10 @@
   border-color: var(--advisor-line);
   background: rgba(9, 19, 34, .76);
 }
+.advisor-advanced-controls { align-self: end; position: relative; }
+.advisor-advanced-controls > summary { min-height: 2.45rem; display: flex; align-items: center; padding: .5rem .72rem; border: 1px solid rgba(148, 163, 184, .17); border-radius: .62rem; color: #a8b8cc; cursor: pointer; list-style: none; font-size: .72rem; }
+.advisor-advanced-controls > summary::-webkit-details-marker { display: none; }
+.advisor-advanced-controls[open] > div { position: absolute; z-index: 12; right: 0; top: calc(100% + .4rem); width: min(44rem, 82vw); display: grid; grid-template-columns: repeat(3, minmax(9rem, 1fr)); gap: .7rem; padding: .85rem; border: 1px solid rgba(148, 163, 184, .2); border-radius: .8rem; background: #0c1728; box-shadow: 0 20px 55px rgba(2, 8, 23, .55); }
 .advisor-controls label { display: grid; gap: .34rem; color: #8291a7; font-size: .65rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
 .advisor-controls select,
 .advisor-controls input[type="search"] {
@@ -142,6 +146,29 @@
 .advisor-section-head h2 { margin: .12rem 0 0; color: var(--advisor-ink); font-size: 1.1rem; letter-spacing: -.025em; }
 .advisor-section-head > span { color: #64748b; font-size: .7rem; }
 .advisor-section-kicker { margin: 0; color: #5eead4; font-size: .62rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+.advisor-result-tools { display: flex; align-items: center; gap: .65rem; color: #64748b; font-size: .7rem; }
+.advisor-result-tools button { padding: .35rem .55rem; border: 1px solid rgba(96, 165, 250, .25); border-radius: .5rem; background: rgba(37, 99, 235, .1); color: #93c5fd; cursor: pointer; }
+.advisor-decision-list { display: grid; gap: .75rem; padding: .85rem; }
+.advisor-decision-card { padding: 1rem; border: 1px solid rgba(148, 163, 184, .11); border-radius: .9rem; background: linear-gradient(145deg, rgba(15, 23, 42, .72), rgba(7, 16, 29, .82)); }
+.advisor-decision-card__head { display: flex; justify-content: space-between; gap: 1rem; align-items: flex-start; padding-bottom: .75rem; border-bottom: 1px solid rgba(148, 163, 184, .09); }
+.advisor-decision-card__head small { display: block; margin-top: .25rem; color: #718199; font-size: .68rem; }
+.advisor-decision-card__body { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(0, 1.2fr) minmax(15rem, .9fr); gap: .75rem; padding: .8rem 0; }
+.advisor-decision-card__body > section { min-width: 0; padding: .75rem; border: 1px solid rgba(148, 163, 184, .08); border-radius: .7rem; background: rgba(15, 23, 42, .34); }
+.advisor-decision-card__body section > span, .advisor-decision-timing > span { display: block; margin-bottom: .35rem; color: #718199; font-size: .62rem; font-weight: 780; letter-spacing: .09em; text-transform: uppercase; }
+.advisor-decision-card__body p { margin: 0; color: #c0cde0; font-size: .76rem; line-height: 1.55; }
+.advisor-required-action { border-color: rgba(45, 212, 191, .16) !important; }
+.advisor-required-action p { color: #d5f9f1; }
+.advisor-decision-metrics { display: flex; flex-wrap: wrap; align-content: flex-start; gap: .45rem .75rem; }
+.advisor-decision-metrics > span { width: 100%; }
+.advisor-decision-metrics > div:not(.advisor-weight-meter) { display: grid; gap: .08rem; }
+.advisor-decision-metrics b { color: #f1f5f9; font-size: .78rem; }
+.advisor-decision-metrics small { color: #718199; font-size: .6rem; }
+.advisor-decision-metrics .advisor-weight-meter { width: 100%; }
+.advisor-decision-timing { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem; padding: .15rem 0 .45rem; }
+.advisor-decision-timing > span { width: 100%; }
+.advisor-decision-timing .advisor-pattern-line, .advisor-decision-timing .advisor-pattern-meta { width: 100%; }
+.advisor-audit-trail { margin-top: .6rem; padding-top: .55rem; border-top: 1px solid rgba(148, 163, 184, .08); }
+.advisor-audit-trail > summary { color: #718199; }
 .advisor-table-wrap { overflow-x: auto; }
 .advisor-table { width: 100%; min-width: 1100px; border-collapse: collapse; font-size: .8rem; }
 .advisor-table th,
@@ -201,6 +228,7 @@
   .advisor-hero-actions { align-items: flex-start; }
   .advisor-stats, .advisor-lower-grid, .advisor-evidence-grid { grid-template-columns: 1fr 1fr; }
   .advisor-controls { grid-template-columns: 1fr 1fr; }
+  .advisor-decision-card__body { grid-template-columns: 1fr; }
   .advisor-search { grid-column: span 2; }
 }
 @media (max-width: 620px) {
@@ -208,4 +236,6 @@
   .advisor-notice { margin-left: .65rem; margin-right: .65rem; }
   .advisor-stats, .advisor-lower-grid, .advisor-evidence-grid, .advisor-controls { grid-template-columns: 1fr; }
   .advisor-search { grid-column: auto; }
+  .advisor-decision-card__head { flex-direction: column; }
+  .advisor-advanced-controls[open] > div { position: static; width: 100%; grid-template-columns: 1fr; margin-top: .4rem; }
 }

@@ -7,10 +7,14 @@ This is the acceptance flow for a portfolio owner who wants to connect every acc
 | Step | User goal | Primary screen | Successful outcome |
 |---|---|---|---|
 | 1. Connect | Bring every account into one local portfolio | Setup & Config | Every enabled account shows `Ready` or a specific recovery action; LLM and guardrails are explicit |
-| 2. Understand | Verify total value, allocation, holdings, and data freshness | Dashboard | Family totals are masked by default, account status is visible, and every holding can be inspected or filtered |
-| 3. Track | Understand change over time | Growth | Period return, drawdown, best recorded day, charts, and breakdowns match the recorded daily snapshots |
-| 4. Decide | Turn evidence into a review queue | Action Center | Deterministic recommendations render promptly; chart-pattern timing enriches them without blocking the queue |
-| 5. Ask | Explore a decision in plain language | Portfolio Agent | A non-empty question starts a local portfolio-grounded conversation; no question is sent without an explicit click |
+| 2. Triage | See the small number of root causes that need attention today | Today Brief | Repeated flags are grouped into **what is wrong / why it matters / required action** |
+| 3. Understand | Verify total value, allocation, holdings, and data freshness | Dashboard | Family totals are masked by default, account status is visible, and every holding can be inspected or filtered |
+| 4. Trust | Explain broker-versus-market discrepancies before advice | Data Quality | Source lineage is visible and every accepted explanation is append-only and audited |
+| 5. Decide | Turn evidence into a review queue | Action Center | Decision cards lead with action, reason, and required next step; chart timing enriches them in the background |
+| 6. Investigate | Deepen evidence only for relevant exposures | Research / Fund Intelligence | Held exposures become the on-ramp; missing public evidence is named rather than guessed |
+| 7. Locate | Choose the right eligible account for a planned exposure | Asset Location | Residency, account type, repatriability, and account guardrails constrain placement |
+| 8. Ask | Explore a decision in plain language | Portfolio Agent | A provider outage falls back to the local deterministic queue instead of returning an empty answer |
+| 9. Track | Understand change over time | Growth | Period return, drawdown, best recorded day, charts, and breakdowns match recorded daily snapshots |
 
 ## Detailed flow and acceptance criteria
 
@@ -21,19 +25,33 @@ This is the acceptance flow for a portfolio owner who wants to connect every acc
 3. Use the account-specific recovery action for missing or expired credentials.
 4. Configure the LLM provider only if Portfolio Agent is required.
 5. Set risk, target-return, position, sector, and cash guardrails.
-6. Run **Weekly portfolio sync** once in dry-run mode and resolve any account-specific warning.
-7. Install the OS scheduler after a successful real run, then return to the dashboard.
+6. Edit each account and set residency, country, account type, repatriability, risk, and account-level concentration limits. Do not infer an NRI account subtype; select the broker's actual NRO/NRE/PIS configuration.
+7. Run **Weekly portfolio sync** once in dry-run mode and resolve any account-specific warning.
+8. Install the OS scheduler after a successful real run, then return to the dashboard.
 
 Pass conditions:
 
 - Account cards expose one unambiguous status and recovery action.
 - Secrets are never displayed after save.
 - Saving one account does not overwrite another account's credentials.
+- Family guardrails remain defaults; stricter per-account position limits and residency/account constraints affect deterministic placement warnings.
 - Dashboard navigation respects `APP_ROOT_PATH`.
 - Dry run records an audit but never creates portfolio snapshots or digest files.
 - Every weekly run distinguishes position freshness from price freshness, captured time from market-session date, and current from stale manual imports.
 
-### 2. Dashboard — understand
+### 2. Today Brief — triage
+
+1. Start here after the daily sync.
+2. Review each root-cause card in order: **what is wrong**, **why it matters**, and **required action**.
+3. Open Data Quality for source discrepancies or Action Center for investment decisions.
+
+Pass conditions:
+
+- Hundreds of repeated position flags are grouped into a small number of actionable causes.
+- Each cause retains affected-position counts and representative symbols.
+- The brief never converts a data-quality issue into a buy/sell recommendation.
+
+### 3. Dashboard — understand
 
 1. Verify the data-freshness label and connected-account chips.
 2. Reveal family values only when needed; masking is the default.
@@ -47,8 +65,68 @@ Pass conditions:
 - Refresh has a visible loading state and resolves to current or clearly labelled snapshot data.
 - Filtering never changes the underlying consolidated totals.
 - Wide tables scroll inside their panel; the page itself does not overflow horizontally.
+- Cached group views do not re-run quote consensus or reconciliation for every switch.
+- Allocation by group renders from local row metadata; Chart.js remains lazy and is not required for the overview.
 
-### 3. Growth — track
+### 4. Data Quality — trust
+
+1. Compare the immutable broker snapshot value with the independent marked value.
+2. Review quantity, timestamp, price source, currency/FX, and corporate actions.
+3. Click **Review mismatch** only when a blocking/warning row needs an explanation.
+4. Save a sourced resolution with type, reason, evidence date, source document, and approver.
+
+Pass conditions:
+
+- Broker value is the position/value received from the broker or imported statement; independent value is canonical quantity multiplied by a sourced market price, with dated FX where needed.
+- Resolution inserts an append-only `reconciliation_overrides` row and audit row; it does not overwrite broker or market evidence.
+- The default page renders the 60 highest-priority rows; **Show all** is explicit.
+
+### 5. Action Center — decide
+
+1. Keep **Decisions requiring action** selected for the daily review.
+2. Read the action, **Why**, and **Required action** before opening technical evidence.
+3. Use advanced filters only when investigating data issues or monitor-only rows.
+4. Treat fundamentals and portfolio constraints as authoritative.
+5. If a bullish setup conflicts with a reduce/sell decision, keep the fundamental action but stage execution around the setup; never turn a timing signal into an automatic buy.
+
+Pass conditions:
+
+- Baseline decisions load independently of Yahoo Finance pattern latency.
+- Chart scanning uses deterministic Yahoo OHLC history, never the LLM, and is cached in local SQLite for 24 hours per detector version and portfolio universe.
+- The notice distinguishes `decisions ready`, `refreshing pattern timing`, `pattern timing ready`, and a recoverable pattern failure.
+- Pattern enrichment recomputes decision conflicts rather than decorating a stale recommendation.
+- Execution remains disabled; the page never places an order.
+
+### 6. Research and Fund Intelligence — investigate
+
+1. Start research from a held exposure or an approved candidate, not a blank free-form screen.
+2. Keep candidate approval separate from deterministic portfolio actions.
+3. For fund wrappers, map each holding to a dated AMC/index factsheet before showing TER, constituents, overlap, or liquidity conclusions.
+
+Pass conditions:
+
+- An empty research database still shows the highest-value held exposures as an on-ramp.
+- Unmapped fund wrappers show known broker value and the exact missing factsheet requirement.
+- No score, constituent, or cost is fabricated.
+
+### 7. Asset Location — locate
+
+Asset Allocation answers **what should the family own**. Asset Location answers **which eligible account should hold it after tax, settlement, repatriability, and concentration constraints**. Use this only after Data Quality is clear and each account's local profile is complete.
+
+### 8. Portfolio Agent — ask
+
+1. Ask one decision-focused question after the deterministic queue is ready.
+2. Review whether the result is LLM-authored or a deterministic fallback.
+3. On HTTP 429, wait and check provider quota/model in Setup; the local Action Center remains healthy.
+
+Pass conditions:
+
+- Empty Ask and Follow-up actions show visible validation.
+- A provider 429 returns the highest-priority local ADD/REDUCE/RECONCILE decisions with a clear degraded-mode warning.
+- No prompt is sent until the user explicitly submits it.
+- Account IDs, quantities, values, tax details, and proceeds remain local unless the explicit privacy override permits them.
+
+### 9. Growth — track
 
 1. Record one snapshot after each market close; do not use intraday refreshes as performance history.
 2. Open Growth for the weekly review rather than as the daily landing page.
@@ -63,46 +141,15 @@ Pass conditions:
 - Missing history explains how to create the first snapshot.
 - Tables remain usable on desktop and mobile without page-level horizontal overflow.
 
-### 4. Action Center — decide
-
-1. Open Action Center.
-2. Review the deterministic queue immediately after local evidence loads.
-3. While the queue remains usable, let the background chart scan add lifecycle-aware timing.
-4. Treat fundamentals and portfolio constraints as authoritative.
-5. If a bullish setup conflicts with a reduce/sell decision, keep the fundamental action but stage execution around the setup; never turn a timing signal into an automatic buy.
-6. Inspect dated evidence, data-quality flags, constraints, and rule trace before acting.
-
-Pass conditions:
-
-- Baseline decisions load independently of Yahoo Finance pattern latency.
-- The notice distinguishes `decisions ready`, `refreshing pattern timing`, `pattern timing ready`, and a recoverable pattern failure.
-- Pattern enrichment recomputes decision conflicts rather than visually decorating a stale recommendation.
-- Execution remains disabled; the page never places an order.
-
-### 5. Portfolio Agent — ask
-
-1. Open Portfolio Agent.
-2. Enter a decision-focused question.
-3. Click **Ask portfolio agent**.
-4. Review the streamed answer and deterministic portfolio context.
-5. Ask follow-ups in the same chat or start a new chat after changing goals.
-
-Pass conditions:
-
-- Empty Ask and Follow-up actions show visible validation and focus the relevant field.
-- The UI clearly reports a missing provider key or stream error.
-- No prompt is sent until the user explicitly submits it.
-- Account IDs, quantities, values, tax details, and proceeds remain local unless the explicit privacy override permits them.
-
 ## Daily operating rhythm
 
 ### After market close — 5 minutes
 
-1. Open Dashboard and confirm every enabled account is `Live` or clearly labelled as a cached snapshot.
-2. Click **Refresh live** once, check account freshness, and investigate only failed or stale accounts.
-3. Scan holdings for concentration, unusual price moves, and setup/street conflicts; expand evidence before acting.
-4. Open Action Center and review `SELL / REDUCE`, `ADD / BUILD`, and signal conflicts. Fundamentals decide the action; patterns only time execution.
-5. Open Growth and record the market close once. A single day is a baseline, five sessions is a useful weekly view, and roughly 20 sessions makes drawdown and benchmark comparisons more meaningful.
+1. Open Dashboard and click **Refresh live** once; confirm every enabled account is live or clearly labelled as a snapshot.
+2. Open Today Brief and clear root causes, starting with stale/blocking Data Quality issues.
+3. Open Action Center with **Decisions requiring action**; review action → why → required action. Fundamentals decide; patterns only time execution.
+4. Use Research/Fund Intelligence only for the positions selected in step 3.
+5. Record the market close once in Growth. A single day is a baseline, five sessions is a useful weekly view, and roughly 20 sessions supports more meaningful comparisons.
 
 ### Weekly — 20 minutes
 
@@ -135,9 +182,9 @@ Growth should remain in the product, but it is a review surface—not the daily 
 | Manual account is out of date | Report `MANUAL_STALE`; a recent import is `MANUAL_CURRENT`, with position and price dates separated |
 | Browser/app restarts during accepted sync | Poll durable SQLite truth; startup marks the orphaned job `INTERRUPTED`, never temporary 404 |
 | OAuth reconnect occurs during active sync | Coalesce exactly one forced `MANUAL_RERUN` after the current job finishes |
-| Yahoo pattern scan is slow or unavailable | Keep deterministic decisions usable and show pattern timing as pending/unavailable |
+| Yahoo pattern scan is slow or unavailable | Keep deterministic decisions usable, use a 24-hour local scan cache, and show timing as pending/unavailable |
 | Only one growth snapshot exists | Explain that two snapshots are required for a best-day calculation |
-| LLM is unavailable | Keep Dashboard, Growth, and Action Center functional; direct the user to Setup & Config |
+| LLM is rate-limited/unavailable | Return the local deterministic decision queue in degraded mode; direct the user to provider quota/model in Setup |
 
 ## Regression test
 

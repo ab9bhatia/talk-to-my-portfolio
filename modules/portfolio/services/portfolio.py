@@ -35,6 +35,8 @@ logger = logging.getLogger(__name__)
 
 # In-memory hot cache (holdings + metrics). Yahoo metrics also cached separately (6h).
 _PORTFOLIO_CACHE: dict[str, tuple[float, dict]] = {}
+_FINALIZED_FAMILY_CACHE: dict[str, tuple[str, dict]] = {}
+_FINALIZED_FAMILY_LOCK = threading.Lock()
 CACHE_TTL_SECONDS = int(os.getenv("PORTFOLIO_CACHE_TTL_SECONDS", "300"))
 _STALE_MAX_SECONDS = int(os.getenv("PORTFOLIO_STALE_MAX_SECONDS", str(7 * 24 * 3600)))
 _QUOTE_SESSION_CACHE: dict[tuple[str, str, str], float | None] = {}
@@ -59,6 +61,43 @@ def _holdings_hash(payload: dict) -> str:
     return hashlib.sha256(json.dumps(slim, default=str).encode()).hexdigest()[:16]
 
 
+def _family_finalization_signature(payload: dict, *, with_metrics: bool) -> str:
+    """Stable key for expensive identity, quote, and reconciliation work."""
+    holdings = [
+        (
+            block.get("account_id"),
+            row.get("symbol"),
+            row.get("isin"),
+            row.get("quantity"),
+            row.get("avg_price"),
+            row.get("last_price"),
+            row.get("market_price"),
+            row.get("current_value"),
+        )
+        for block in payload.get("portfolios") or []
+        for row in block.get("holdings") or []
+    ]
+    signature = {
+        "with_metrics": with_metrics,
+        "cached_at": payload.get("cached_at"),
+        "holdings": sorted(holdings, key=lambda item: tuple(str(value) for value in item[:3])),
+    }
+    return hashlib.sha256(
+        json.dumps(signature, sort_keys=True, default=str).encode("utf-8")
+    ).hexdigest()
+
+
+def _current_cache_metadata(result: dict, payload: dict) -> dict:
+    """Keep request-specific cache flags accurate on finalized-cache hits."""
+    current = copy.deepcopy(result)
+    for key in ("cached_at", "from_cache", "stale", "auth_degraded", "errors"):
+        if key in payload:
+            current[key] = copy.deepcopy(payload[key])
+        else:
+            current.pop(key, None)
+    return current
+
+
 def _apply_llm_sector_cache(payload: dict) -> dict:
     """Apply SQLite sector cache + symbol overrides to cached holdings (no Yahoo / LLM)."""
     try:
@@ -80,6 +119,8 @@ def invalidate_portfolio_cache(
     preserve_disk: bool = False,
 ) -> None:
     """Clear hot data, optionally retaining the last trusted durable snapshot."""
+    with _FINALIZED_FAMILY_LOCK:
+        _FINALIZED_FAMILY_CACHE.clear()
     if account_id is None:
         _PORTFOLIO_CACHE.clear()
         if preserve_disk:
@@ -853,13 +894,24 @@ def _finalize_family_payload(
     with_metrics: bool,
     refresh: bool = False,
 ) -> dict:
+    cache_key = _cache_key(None, with_metrics)
+    signature = _family_finalization_signature(payload, with_metrics=with_metrics)
+    if not refresh:
+        with _FINALIZED_FAMILY_LOCK:
+            cached = _FINALIZED_FAMILY_CACHE.get(cache_key)
+        if cached and cached[0] == signature:
+            return _current_cache_metadata(cached[1], payload)
+
     payload = _merge_sarwa_into_family(payload, with_metrics=with_metrics, refresh=refresh)
     payload = _ensure_family_payload_metrics(payload, with_metrics=with_metrics)
     from modules.portfolio.services.quote_reconciliation import apply_family_quote_consensus
     from modules.portfolio.services.reconciliation import reconcile_family
 
     payload = apply_family_quote_consensus(payload)
-    return reconcile_family(payload)
+    finalized = reconcile_family(payload)
+    with _FINALIZED_FAMILY_LOCK:
+        _FINALIZED_FAMILY_CACHE[cache_key] = (signature, copy.deepcopy(finalized))
+    return finalized
 
 
 def fetch_family_portfolio(

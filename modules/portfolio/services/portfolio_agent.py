@@ -149,6 +149,99 @@ def external_context_preview(context: dict[str, Any]) -> dict[str, Any]:
     return preview
 
 
+def _provider_error_message(provider: str, status_code: int) -> str:
+    label = provider.title() if provider else "LLM provider"
+    if status_code == 429:
+        return (
+            f"{label} rate or quota limit reached. Your local portfolio API is healthy; "
+            "wait briefly and retry, then check provider billing/quota and the selected model in Setup if it persists."
+        )
+    if status_code in {401, 403}:
+        return f"{label} rejected the API credentials or model access. Re-save the provider key and model in Setup."
+    if status_code == 404:
+        return f"{label} could not access the configured model. Select a model available to this API key in Setup."
+    if status_code >= 500:
+        return f"{label} is temporarily unavailable. Your deterministic Action Center remains available; retry later."
+    return f"{label} request failed ({status_code}). Provider details were redacted; verify the model and credentials in Setup."
+
+
+def _deterministic_provider_fallback(
+    *,
+    context: dict[str, Any],
+    question: str,
+    provider: str,
+    status_code: int,
+) -> dict[str, Any]:
+    """Use only the local audited decision set when narrative generation fails."""
+    recommendations = list((context.get("advisory") or {}).get("recommendations") or [])
+    priority = {"SELL": 0, "REDUCE": 1, "RECONCILE": 2, "STRONG_ADD": 3, "ADD": 4}
+    selected = sorted(
+        [row for row in recommendations if str(row.get("action")) in priority],
+        key=lambda row: (
+            priority[str(row.get("action"))],
+            -float(row.get("family_weight_pct") or 0),
+        ),
+    )[:10]
+    symbols = []
+    for row in selected:
+        flags = row.get("data_quality_flags") or []
+        symbols.append(
+            {
+                "symbol": str(row.get("symbol") or ""),
+                "deterministic_action": str(row.get("action") or "WATCH"),
+                "sell_type": str(row.get("sell_type") or "NONE"),
+                "explanation": str(row.get("why_now") or ""),
+                "uncertainty": str(
+                    (flags[0].get("message") if flags else None)
+                    or "Review the dated evidence before acting."
+                ),
+            }
+        )
+    asks_return = "xirr" in question.lower() or "return" in question.lower()
+    answer = (
+        "A target XIRR is a stretch objective, not a guarantee. The external LLM could not "
+        "generate a narrative, so the app is showing only the current deterministic action queue; "
+        "review its ADD/REDUCE rows and evidence in Action Center."
+        if asks_return
+        else "The external LLM could not generate a narrative, so the app is showing the highest-priority deterministic decisions without changing any action."
+    )
+    warning = _provider_error_message(provider, status_code)
+    return {
+        "schema_version": "advisor-conversation-v2",
+        "symbols": symbols,
+        "portfolio_actions": [],
+        "evidence_used": [],
+        "warnings": [warning],
+        "stance": "Deterministic fallback — no LLM-authored interpretation was used.",
+        "xirr_outlook": "Unavailable from the provider fallback; true XIRR requires dated cash flows.",
+        "buy": [
+            {
+                "symbol": row["symbol"],
+                "action": "add",
+                "rationale": row["explanation"],
+                "horizon": "3y+",
+            }
+            for row in symbols
+            if row["deterministic_action"] in {"ADD", "STRONG_ADD"}
+        ],
+        "sell_or_trim": [
+            {
+                "symbol": row["symbol"],
+                "action": "exit" if row["deterministic_action"] == "SELL" else "trim",
+                "rationale": row["explanation"],
+            }
+            for row in symbols
+            if row["deterministic_action"] in {"SELL", "REDUCE"}
+        ],
+        "rebalance": [],
+        "red_flags": [warning],
+        "theme_opportunities": [],
+        "macro_view": "Unavailable while the narrative provider is rate-limited.",
+        "answer": answer,
+        "degraded": True,
+    }
+
+
 def _parse_agent_json(content: str) -> dict[str, Any]:
     text = content.strip()
     if text.startswith("```"):
@@ -622,6 +715,8 @@ def stream_portfolio_agent(
 
     provider = active_provider() or "unknown"
     started = time.perf_counter()
+    context: dict[str, Any] | None = None
+    active_thread_id: str | None = None
 
     def record(status: str, error_code: str | None = None) -> None:
         try:
@@ -701,7 +796,44 @@ def stream_portfolio_agent(
         )
     except urllib.error.HTTPError as exc:
         record("ERROR", f"HTTP_{exc.code}")
-        yield _format_sse("error", {"message": f"LLM API error ({exc.code}); provider response redacted."})
+        message = _provider_error_message(provider, exc.code)
+        if context is not None and active_thread_id:
+            fallback = _deterministic_provider_fallback(
+                context=context,
+                question=user_message,
+                provider=provider,
+                status_code=exc.code,
+            )
+            append_message(active_thread_id, "assistant", fallback["answer"])
+            save_thread_recommendations(active_thread_id, fallback)
+            yield _format_sse(
+                "done",
+                {
+                    "thread_id": active_thread_id,
+                    "question": user_message,
+                    "recommendations": fallback,
+                    "degraded": True,
+                    "provider_error": {
+                        "status_code": exc.code,
+                        "message": message,
+                        "setup_path": "/portfolio/setup",
+                    },
+                    "context_meta": {
+                        "holdings_count": len(context.get("holdings") or []),
+                        "cached_at": context.get("cached_at"),
+                        "from_cache": context.get("from_cache"),
+                    },
+                },
+            )
+        else:
+            yield _format_sse(
+                "error",
+                {
+                    "message": message,
+                    "status_code": exc.code,
+                    "setup_path": "/portfolio/setup",
+                },
+            )
     except Exception as exc:
         record("ERROR", type(exc).__name__)
         yield _format_sse("error", {"message": redact_text(exc, limit=300)})

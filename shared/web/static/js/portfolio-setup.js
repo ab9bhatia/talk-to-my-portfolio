@@ -301,6 +301,69 @@
     return label;
   }
 
+  function appendAccountPlanningFields(account) {
+    const profile = account.account_profile || {};
+    const panel = document.createElement("fieldset");
+    panel.className = "setup-profile-fields";
+    const legend = document.createElement("legend");
+    legend.textContent = "Owner, residency & account guardrails";
+    panel.appendChild(legend);
+    const note = document.createElement("p");
+    note.textContent = "Used by tax, settlement, account concentration, and buy/sell placement checks. UNKNOWN values lower confidence rather than being guessed.";
+    panel.appendChild(note);
+    const grid = document.createElement("div");
+    grid.className = "setup-form-grid";
+
+    const field = (name, labelText, type = "text", options = []) => {
+      const label = document.createElement("label");
+      label.className = "setup-field";
+      const caption = document.createElement("span");
+      caption.className = "setup-field-label";
+      caption.textContent = labelText;
+      let input;
+      if (options.length) {
+        input = document.createElement("select");
+        options.forEach(([value, text]) => {
+          const option = document.createElement("option");
+          option.value = value;
+          option.textContent = text;
+          input.appendChild(option);
+        });
+      } else {
+        input = document.createElement("input");
+        input.type = type;
+        if (type === "number") {
+          input.min = "0";
+          input.max = "100";
+          input.step = "0.1";
+        }
+      }
+      input.className = "setup-input";
+      input.name = name;
+      input.dataset.accountProfile = "1";
+      input.value = profile[name] ?? "";
+      label.append(caption, input);
+      return label;
+    };
+
+    grid.append(
+      field("owner_ref", "Owner name / reference"),
+      field("country_of_residence", "Country of residence (ISO-2)"),
+      field("india_residency_status", "India residency status", "text", [["UNKNOWN", "Unknown"], ["RESIDENT", "Resident"], ["NRI", "NRI"], ["NON_RESIDENT", "Other non-resident"]]),
+      field("account_type", "Account type", "text", [["UNKNOWN", "Unknown"], ["NRO_NON_PIS", "NRO Non-PIS"], ["NRE_PIS", "NRE PIS"], ["RESIDENT_DEMAT", "Resident demat"], ["GIFT_IBU", "GIFT IBU"], ["US_BROKER", "US broker"], ["GLOBAL_BROKER", "Global broker"]]),
+      field("base_currency", "Base currency"),
+      field("repatriability", "Repatriability", "text", [["UNKNOWN", "Unknown"], ["NON_REPATRIABLE", "Non-repatriable"], ["REPATRIABLE", "Repatriable"], ["CONDITIONAL", "Conditional"]]),
+      field("risk_profile", "Risk profile", "text", [["unknown", "Unknown"], ["conservative", "Conservative"], ["moderate", "Moderate"], ["aggressive", "Aggressive"]]),
+      field("target_return_pct", "Target return %", "number"),
+      field("max_position_pct", "Max position %", "number"),
+      field("max_sector_pct", "Max sector %", "number"),
+      field("max_group_exposure_pct", "Max group exposure %", "number"),
+      field("cash_buffer_pct", "Cash buffer %", "number"),
+    );
+    panel.appendChild(grid);
+    fieldsEl.appendChild(panel);
+  }
+
   function fillEditFields(account) {
     const broker = catalog.find((b) => b.id === account.broker) || { fields: [] };
     const defs = broker.fields || [];
@@ -349,6 +412,8 @@
       renderAuth();
       fieldsEl.appendChild(wrap);
     }
+
+    appendAccountPlanningFields(account);
 
     enabledWrap.hidden = false;
     enabledInput.checked = account.enabled !== false;
@@ -516,6 +581,7 @@
     const payload = {};
     fd.forEach((v, k) => {
       if (["import_file", "edit_mode", "edit_broker", "edit_id"].includes(k)) return;
+      if (v === "" && form.elements[k]?.dataset?.accountProfile === "1") return;
       if (k === "enabled") payload.enabled = enabledInput.checked;
       else payload[k] = v;
     });

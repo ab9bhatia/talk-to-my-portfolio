@@ -17,6 +17,14 @@
     <article><span>Annual wrapper cost</span><strong>₹{{ '{:,.0f}'.format(cost.estimated_annual_cost or 0) }}</strong></article>
   </section>
 
+  {% if unmapped_funds %}
+  <section class="os-panel fund-onramp-panel">
+    <div class="os-panel-heading"><div><p class="dash-eyebrow">Detected in your holdings</p><h2>{{ unmapped_funds | length }} fund wrappers need factsheet mapping</h2></div><span>Nothing is guessed from the fund name</span></div>
+    <p>Portfolio value is already known from the broker. TER, index/category, constituents, and liquidity stay blank until a dated AMC/index factsheet is ingested.</p>
+    <div class="fund-unmapped-grid">{% for row in unmapped_funds %}<article><div><strong>{{ row.symbol }}</strong><span>₹{{ '{:,.0f}'.format(row.current_value) }}</span></div><small>{{ row.instrument_type | replace('_', ' ') }} · {{ row.instrument_id or 'canonical identity required' }}</small></article>{% endfor %}</div>
+  </section>
+  {% endif %}
+
   <section class="os-panel">
     <div class="os-panel-heading"><div><p class="dash-eyebrow">Pairwise matrix</p><h2>Constituent overlap</h2></div><span>Names and labels are not overlap evidence</span></div>
     <div class="fund-overlap-grid">

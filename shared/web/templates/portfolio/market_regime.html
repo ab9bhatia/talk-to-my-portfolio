@@ -57,7 +57,14 @@
     </article>
   </section>
   {% else %}
-  <section class="os-panel os-empty-state"><h2>No market score is shown.</h2><p>Add sourced component observations through the local API. Missing provider data lowers coverage; the app never invents a live value.</p></section>
+  <section class="os-panel market-readiness-panel">
+    <div class="os-panel-heading"><div><p class="dash-eyebrow">Data readiness</p><h2>No score until the public inputs are sourced</h2></div><span>{{ 'Market queries enabled' if market_data_sharing_enabled else 'Provider access disabled' }}</span></div>
+    <p class="market-readiness-copy">MRMI needs broad-market evidence, not your holdings and not an LLM opinion. The app will remain empty rather than turn your portfolio’s own price moves into a biased “market mood” score.</p>
+    <div class="market-readiness-grid">
+      {% for row in component_readiness %}<article><div><strong>{{ row.name | replace('_', ' ') | title }}</strong><span>{{ row.weight }}%</span></div><p>{{ row.required_source }}</p><small>Missing · source and as-of date required</small></article>{% endfor %}
+    </div>
+    <div class="market-readiness-action"><div><strong>Required from you</strong><p>No holdings, secrets, or LLM credits. Keep market-data sharing enabled and configure an approved public-data provider for the eight series above.</p></div><a class="setup-btn setup-btn-ghost" href="{{ app_path('/portfolio/system-health') }}">Review privacy controls</a></div>
+  </section>
   {% endif %}
 
   <section class="os-panel">

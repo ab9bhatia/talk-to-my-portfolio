@@ -6,6 +6,18 @@ The format is inspired by Keep a Changelog and semantic versioning.
 
 ## [Unreleased]
 
+### Local-network startup URL
+
+- Replaced the non-browsable `0.0.0.0` startup link with the detected LAN IPv4 address and the exact portfolio route, with `APP_DISPLAY_HOST` available for multi-network machines.
+- Added an explicit startup warning when LAN binding is enabled without HTTP Basic Auth.
+
+### Dashboard grouping performance and allocation visualization
+
+- Reused finalized family reconciliation across sort/group requests and replaced per-holding corporate-action/override queries with two batch reads.
+- Stopped Group-by navigation from live-verifying every Groww account; dashboard status now comes from the already-loaded family snapshot while the explicit status API retains live verification.
+- Replaced the fragile CDN-dependent allocation canvas with an immediate, accessible ranked allocation view showing group value, portfolio share, and holding count.
+- Moved Chart.js to lazy loading for expanded price charts, cached parsed row metadata, and removed a duplicate portfolio-summary scan on every filter interaction.
+
 ### Milestone 10 — portfolio operating console
 
 - Added a material-change-first Today Brief with hard-risk/reconciliation priority and explicit no-action majority.

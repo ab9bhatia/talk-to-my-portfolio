@@ -57,7 +57,8 @@ def test_action_center_uses_progressive_pattern_enrichment():
     assert baseline in script
     assert enrichment in script
     assert scan in script
-    assert "scan exceeded 120 seconds" in script
+    assert "?blocking=false" in script
+    assert "background scan request timed out" in script
     assert script.index(baseline) < script.index("loadPatternOverlay(version);")
 
 
@@ -91,10 +92,38 @@ def test_chart_setup_filter_has_explicit_semantics_and_state():
     assert "color: var(--text-muted);" in styles
 
 
+def test_group_allocation_is_immediate_accessible_and_chart_cdn_is_lazy():
+    template = _read("shared/web/templates/portfolio/_holdings_grouped.html")
+    table = _read("shared/web/templates/portfolio/_holdings_table.html")
+    script = _read("shared/web/static/js/holdings.js")
+    styles = _read("shared/web/static/css/app.css")
+
+    assert 'class="allocation-overview"' in template
+    assert 'role="progressbar"' in template
+    assert '<canvas id="portfolio-groups-chart"' not in template
+    assert "chart.umd.min.js\"></script>" not in table
+    assert "function ensureChartJs()" in script
+    assert "function renderAllocationOverview(groups)" in script
+    assert "const rowMetadataCache = new WeakMap();" in script
+    assert "updateFilteredPortfolioSummary(totals);" in script
+    assert ".allocation-overview-track {" in styles
+
+
 def test_primary_layout_can_shrink_inside_the_viewport():
     styles = _read("shared/web/static/css/app.css")
     assert "grid-template-columns: var(--sidebar-width) minmax(0, 1fr);" in styles
     assert ".main {\n  min-width: 0;" in styles
+    assert ".os-page { display: grid; min-width: 0;" in styles
+    assert "overscroll-behavior-inline: contain;" in styles
+
+
+def test_data_quality_defaults_to_a_bounded_auditable_queue():
+    router = _read("modules/portfolio/router.py")
+    template = _read("shared/web/templates/portfolio/data_quality.html")
+    assert "limit: int = Query(60, ge=20, le=500)" in router
+    assert '"security_rows": security_rows[:limit]' in router
+    assert "Show all {{ security_rows_total }}" in template
+    assert "append-only record in <code>reconciliation_overrides</code>" in template
 
 
 def test_weekly_sync_setup_flow_is_root_aware_and_explicitly_non_trading():

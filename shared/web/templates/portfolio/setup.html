@@ -89,7 +89,7 @@
     <div class="setup-section-head">
       <h2 id="setup-goals-title" class="setup-section-title">Goals & guardrails</h2>
       <p class="setup-section-sub">
-        Your risk preferences (target return, concentration limits, cash buffer). Saved locally and injected into every Portfolio Agent prompt and concentration flags in context.
+        Family defaults for target return, concentration, and cash. These drive deterministic limits and the Portfolio Agent. Edit each account below to add stricter account-level guardrails, residency, and settlement constraints.
       </p>
     </div>
     <article class="setup-card setup-card--goals">
@@ -264,7 +264,7 @@
   <section class="setup-accounts-section" aria-labelledby="setup-accounts-title">
     <div class="setup-section-head">
       <h2 id="setup-accounts-title" class="setup-section-title">Your accounts</h2>
-      <p class="setup-section-sub">Click a card to edit credentials or upload new holdings.</p>
+      <p class="setup-section-sub">Click a card to edit credentials, residency, account type, and account-specific risk limits. Personal profile data stays in your local gitignored configuration.</p>
     </div>
 
     <div id="setup-accounts-list" class="setup-accounts-grid" aria-live="polite">
@@ -293,6 +293,7 @@
           </div>
         </div>
         <h3 class="setup-card-name">{{ acc.label }}</h3>
+        {% if acc.account_profile %}<p class="setup-card-profile">{{ acc.account_profile.india_residency_status | replace('_', ' ') }} · {{ acc.account_profile.account_type | replace('_', ' ') }} · {{ acc.account_profile.country_of_residence }}</p>{% endif %}
         <p class="setup-card-detail">
           {% if acc.broker == 'zerodha' %}
             {% if acc.connected %}Session active{% elif acc.credentials_ok %}Keys in .env — tap to edit or reconnect{% else %}Missing API keys{% endif %}

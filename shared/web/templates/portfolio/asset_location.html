@@ -14,13 +14,18 @@
     <div class="brief-status"><span>CA review queue</span><strong>{{ review_queue | length }}</strong><small>Planning only · execution disabled</small></div>
   </header>
 
+  <section class="os-panel asset-location-purpose">
+    <div class="os-panel-heading"><div><p class="dash-eyebrow">Why this exists</p><h2>The same security can be suitable in one account and constrained in another</h2></div><a class="setup-btn setup-btn-primary" href="{{ app_path('/portfolio/setup') }}">Complete account profiles</a></div>
+    <p>Asset Allocation decides <em>what</em> the family should own. Asset Location decides <em>where</em> to hold or sell it after residency, account type, repatriation, settlement, concentration, and estate checks. It does not claim tax certainty; flagged cases stay in the CA review queue.</p>
+  </section>
+
   <section class="os-panel">
-    <div class="os-panel-heading"><div><p class="dash-eyebrow">Eligibility matrix</p><h2>Family accounts</h2></div><a class="setup-btn setup-btn-primary" href="{{ app_path('/api/portfolio/tax/ca-package.xlsx') }}">Download CA package</a></div>
-    <div class="asset-location-grid asset-location-head"><span>Account</span><span>Owner</span><span>Type</span><span>Currency</span><span>Repatriability</span><span>Evidence</span></div>
+    <div class="os-panel-heading"><div><p class="dash-eyebrow">Eligibility matrix</p><h2>Family accounts</h2></div><a class="setup-btn setup-btn-ghost" href="{{ app_path('/api/portfolio/tax/ca-package.xlsx') }}">Download CA package</a></div>
+    <div class="asset-location-grid asset-location-head"><span>Account</span><span>Owner</span><span>Residency</span><span>Type</span><span>Guardrails</span><span>Evidence</span></div>
     {% for row in accounts %}
     <div class="asset-location-grid">
       <strong>{{ row.code }}<small>{{ row.holding_count }} holdings</small></strong>
-      <span>{{ row.owner_ref }}</span><span>{{ row.account_type | replace('_', ' ') }}</span><span>{{ row.currency }}</span><span>{{ row.repatriability | replace('_', ' ') }}</span>
+      <span>{{ row.owner_ref }}</span><span>{{ row.india_residency_status | replace('_', ' ') }}<small>{{ row.country_of_residence }}</small></span><span>{{ row.account_type | replace('_', ' ') }}<small>{{ row.currency }} · {{ row.repatriability | replace('_', ' ') }}</small></span><span>{{ row.risk_profile | title }}<small>Target {{ row.target_return_pct or '—' }}% · max position {{ row.max_position_pct or '—' }}%</small></span>
       {% if row.missing %}<span class="os-state os-state-warning">Review {{ row.missing | length }}</span>{% else %}<span class="os-state">Ready</span>{% endif %}
     </div>
     {% else %}<div class="os-empty-state"><h3>No cached accounts.</h3><p>Sync holdings, then complete account tax profiles in Setup &amp; Config.</p></div>{% endfor %}

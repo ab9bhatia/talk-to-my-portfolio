@@ -24,27 +24,38 @@
     <article><span>Blocking securities</span><strong>{{ summary.blocking_securities | default(0) }}</strong></article>
   </section>
 
+  <section class="os-panel data-quality-explainer">
+    <div class="os-panel-heading"><div><p class="dash-eyebrow">How reconciliation works</p><h2>Two values, one audited decision</h2></div><span>No source value is overwritten</span></div>
+    <div class="data-quality-flow">
+      <article><span>1 · Broker snapshot</span><strong>What your broker reported</strong><p>Position value, quantity, price, and timestamp from the broker sync or imported statement. This remains immutable source evidence.</p></article>
+      <article><span>2 · Independent mark</span><strong>What the position is worth now</strong><p>Canonical quantity × sourced market price, with dated FX conversion where required. The source and as-of time are retained.</p></article>
+      <article><span>3 · Resolution</span><strong>Explain the difference</strong><p>Review identity, timestamp, quantity, FX, and corporate actions. Saving a resolution appends an audited override; it never deletes the original values.</p></article>
+    </div>
+  </section>
+
   <section class="os-panel">
     <div class="os-panel-heading">
       <div><p class="dash-eyebrow">Largest discrepancies</p><h2>Security reconciliation</h2></div>
-      <span>{{ security_rows | length }} canonical instruments</span>
+      <span>Showing {{ security_rows | length }} of {{ security_rows_total }} canonical instruments</span>
     </div>
     <div class="os-table-wrap">
       <table class="os-table">
-        <thead><tr><th>Security</th><th>Identity</th><th>Broker value</th><th>Marked value</th><th>Delta</th><th>State</th><th>Accounts</th><th>Repair</th></tr></thead>
+        <thead><tr><th>Security</th><th>Identity</th><th>Broker snapshot value</th><th>Independent marked value</th><th>Delta</th><th>State</th><th>Accounts</th><th>Next step</th></tr></thead>
         <tbody>
         {% for row in security_rows %}
           <tr>
             <td><strong>{{ row.display_name or row.symbol }}</strong><small>{{ row.exchange }}</small></td>
             <td><code>{{ row.instrument_id or 'UNRESOLVED' }}</code>{% if row.isin %}<small>{{ row.isin }}</small>{% endif %}</td>
-            <td>₹{{ '{:,.0f}'.format(row.broker_reported_value or 0) }}</td>
-            <td>₹{{ '{:,.0f}'.format(row.marked_value or 0) }}</td>
+            <td>₹{{ '{:,.0f}'.format(row.broker_reported_value or 0) }}<small>{{ row.broker_value_sources | join(', ') or 'Broker/import source' }}</small></td>
+            <td>₹{{ '{:,.0f}'.format(row.marked_value or 0) }}<small>{{ row.market_price_sources | join(', ') or 'Market source unavailable' }}</small></td>
             <td class="{% if row.reconciliation_delta and row.reconciliation_delta|abs > 50 %}text-negative{% endif %}">₹{{ '{:,.0f}'.format(row.reconciliation_delta or 0) }}</td>
             <td><span class="os-state os-state-{{ row.state | lower }}">{{ row.state | replace('_', ' ') }}</span></td>
             <td>{{ row.accounts | join(', ') }}</td>
             <td>
-              {% if row.instrument_id %}
-              <button class="os-link-button" type="button" data-open-resolution data-instrument-id="{{ row.instrument_id }}" data-security-name="{{ row.display_name or row.symbol }}">Resolve</button>
+              {% if row.instrument_id and row.state != 'RECONCILED' %}
+              <button class="os-link-button" type="button" data-open-resolution data-instrument-id="{{ row.instrument_id }}" data-security-name="{{ row.display_name or row.symbol }}" data-likely-cause="{{ row.likely_cause }}" data-repair-action="{{ row.repair_action }}" data-broker-source="{{ row.broker_value_sources | join(', ') }}" data-market-source="{{ row.market_price_sources | join(', ') }}">Review mismatch</button>
+              {% elif row.state == 'RECONCILED' %}
+              <span class="text-muted">No action</span>
               {% else %}
               <span class="text-muted">Resolve identity first</span>
               {% endif %}
@@ -56,6 +67,12 @@
         </tbody>
       </table>
     </div>
+    {% if security_rows_total > security_rows | length %}
+    <div class="os-table-footer">
+      <span>Highest-priority discrepancies are shown first to keep this screen fast.</span>
+      <a class="setup-btn" href="{{ app_path('/portfolio/data-quality?limit=500') }}">Show all {{ security_rows_total }}</a>
+    </div>
+    {% endif %}
   </section>
 
   <section class="os-split-grid">
@@ -80,12 +97,12 @@
         <button class="os-dialog-close" type="button" data-close-resolution aria-label="Close">×</button>
       </div>
       <input type="hidden" name="instrument_id">
+      <div class="resolution-context" id="resolution-context"></div>
       <label>Resolution type
         <select name="override_type" required>
           <option value="accept_timing_difference">Accept timing difference</option>
-          <option value="accept_broker_value">Accept broker-reported value</option>
-          <option value="accept_market_mark">Accept independent market mark</option>
-          <option value="corporate_action_explained">Corporate action explained</option>
+          <option value="value_explanation">Record sourced value explanation</option>
+          <option value="corporate_action_confirmed">Corporate action confirmed</option>
         </select>
       </label>
       <label>Reason<textarea name="reason" minlength="8" required placeholder="Explain why this discrepancy is safe to override."></textarea></label>
@@ -94,7 +111,7 @@
         <label>Evidence as of<input type="date" name="as_of_date" required></label>
         <label>Approved by<input name="approved_by" required placeholder="Your name"></label>
       </div>
-      <p class="text-muted">The original evidence and state remain in the audit trail. This never enables trade execution.</p>
+      <p class="text-muted">This creates an append-only record in <code>reconciliation_overrides</code> plus its audit row. Accepted explanations can lower a block to a warning; the original broker and market evidence remains unchanged.</p>
       <div class="os-form-actions"><span id="resolution-status" aria-live="polite"></span><button class="setup-btn setup-btn-primary" type="submit">Save resolution</button></div>
     </form>
   </dialog>

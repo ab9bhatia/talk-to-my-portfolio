@@ -8,7 +8,7 @@
   {% set gb_hint = 'Sector weights — expand a row to see holdings in that sector.' %}
 {% elif gb == 'account' %}
   {% set gb_title = 'Account' %}
-  {% set gb_hint = 'Per family account (AB, RB, SB, HB) — values are that account’s slice only.' %}
+  {% set gb_hint = 'Each connected family account is shown as its own slice of the visible portfolio.' %}
 {% elif gb == 'signal' %}
   {% set gb_title = 'Street view' %}
   {% set gb_hint = 'External Yahoo analyst consensus/target groups; this is not the portfolio advisor decision.' %}
@@ -23,16 +23,53 @@
 <div class="grouped-overview card">
   <div class="grouped-overview-header">
     <div>
+      <span class="grouped-overview-kicker">Portfolio composition</span>
       <h3>Allocation by {{ gb_title }}</h3>
       <p class="cell-muted">{{ gb_hint }}</p>
     </div>
-    <span class="grouped-overview-badge" id="grouped-overview-badge">{{ holdings_view.groups | length }} groups</span>
+    <div class="grouped-overview-summary">
+      <span class="grouped-overview-total-label">Visible value</span>
+      <strong class="grouped-overview-total" id="grouped-overview-total">
+        {{ format_inr(holdings_view.groups | sum(attribute='summary.total_current_value')) }}
+      </strong>
+      <span class="grouped-overview-badge" id="grouped-overview-badge">{{ holdings_view.groups | length }} groups</span>
+    </div>
   </div>
   <div
-    class="grouped-overview-chart grouped-overview-chart-bar"
+    class="allocation-overview"
+    id="portfolio-groups-chart"
+    role="list"
+    aria-label="Allocation by {{ gb_title }}"
     style="--group-count: {{ holdings_view.groups | length }}"
   >
-    <canvas id="portfolio-groups-chart" data-chart="{{ holdings_view.overview_chart_json }}" data-chart-kind="bar"></canvas>
+    {% for group in holdings_view.groups %}
+    {% set pct = group.summary.pct_of_portfolio %}
+    {% set color_idx = loop.index0 % 8 %}
+    {% set group_color = ['#60a5fa','#34d399','#fbbf24','#f472b6','#a78bfa','#22d3ee','#fb923c','#94a3b8'][color_idx] %}
+    <div class="allocation-overview-item" role="listitem" style="--allocation-color: {{ group_color }}">
+      <div class="allocation-overview-meta">
+        <span class="allocation-overview-name">
+          <span class="allocation-overview-swatch" aria-hidden="true"></span>
+          <strong>{{ group.label }}</strong>
+          <span>{{ group.summary.holdings_count }} holdings</span>
+        </span>
+        <span class="allocation-overview-value">
+          <strong>{{ format_inr(group.summary.total_current_value) }}</strong>
+          <span>{{ pct }}%</span>
+        </span>
+      </div>
+      <div
+        class="allocation-overview-track"
+        role="progressbar"
+        aria-label="{{ group.label }} allocation"
+        aria-valuemin="0"
+        aria-valuemax="100"
+        aria-valuenow="{{ pct }}"
+      >
+        <span class="allocation-overview-fill" style="width: {{ [pct, 100] | min }}%"></span>
+      </div>
+    </div>
+    {% endfor %}
   </div>
 </div>
 

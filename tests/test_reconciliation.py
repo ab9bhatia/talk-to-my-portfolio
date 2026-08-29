@@ -308,3 +308,29 @@ def test_family_totals_equal_account_totals():
     account_total = sum(row["marked_value"] for row in reconciliation["by_account"])
     assert account_total == reconciliation["summary"]["family_marked_value"]
     assert reconciliation["summary"]["family_reconciliation_delta"] == 0
+
+
+def test_reconciliation_batches_actions_and_overrides(monkeypatch):
+    action_calls: list[dict] = []
+    override_calls: list[dict] = []
+
+    def actions(**kwargs):
+        action_calls.append(kwargs)
+        return []
+
+    def overrides(**kwargs):
+        override_calls.append(kwargs)
+        return []
+
+    monkeypatch.setattr(store, "list_corporate_actions", actions)
+    monkeypatch.setattr(store, "list_overrides", overrides)
+    reconcile_family(
+        _family(
+            _holding("BATCHA7B", broker_value=100, market_price=100),
+            _holding("BATCHB7B", broker_value=200, market_price=200),
+            _holding("BATCHC7B", broker_value=300, market_price=300),
+        )
+    )
+
+    assert action_calls == [{"pending_only": True}]
+    assert override_calls == [{}]

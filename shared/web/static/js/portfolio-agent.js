@@ -497,7 +497,12 @@
           terminalEventReceived = true;
           threadId = data.thread_id || threadId;
           if (data.recommendations) renderRecommendations(data.recommendations);
-          if (outcomeMeta) outcomeMeta.textContent = " · updated just now";
+          if (data.degraded && data.provider_error?.message) {
+            showError(`${data.provider_error.message} Deterministic results are shown below.`);
+          }
+          if (outcomeMeta) outcomeMeta.textContent = data.degraded
+            ? " · deterministic fallback · no LLM interpretation"
+            : " · updated just now";
           streamBubble?.remove();
           const summary =
             (data.recommendations?.answer || "").trim() ||

@@ -1263,8 +1263,19 @@ def _symbol_suggestions(holdings: list[dict]) -> list[str]:
     return sorted({h["symbol"] for h in holdings if h.get("symbol")})
 
 
-def _account_statuses() -> list[dict]:
-    """Build account connection status for the dashboard."""
+def _account_statuses(*, family: dict | None = None) -> list[dict]:
+    """Build account status; a loaded family snapshot avoids live broker probes."""
+    loaded_accounts = {
+        str(value)
+        for block in (family or {}).get("portfolios") or []
+        for value in (block.get("account_id"), block.get("account_code"))
+        if value
+    }
+    errors_by_account = {
+        str(error.get("account")): str(error.get("error") or "Account was not loaded.")
+        for error in (family or {}).get("errors") or []
+        if error.get("account")
+    }
     statuses = []
     for account_id, account in ACCOUNTS.items():
         token_status = token_store.get_token_status(account_id)
@@ -1285,7 +1296,19 @@ def _account_statuses() -> list[dict]:
         )
 
     for account_id, account in GROWW_ACCOUNTS.items():
-        conn = get_groww_connection_status(account_id) if account.get("enabled") else {}
+        if account.get("enabled") and family is not None:
+            connected = account_id in loaded_accounts or account["code"] in loaded_accounts
+            conn = {
+                "connected": connected,
+                "needs_login": not connected,
+                "message": (
+                    "Synced in the current portfolio snapshot"
+                    if connected
+                    else errors_by_account.get(account["code"], "Refresh to verify this account")
+                ),
+            }
+        else:
+            conn = get_groww_connection_status(account_id) if account.get("enabled") else {}
         statuses.append(
             {
                 "account_id": account_id,
@@ -1370,10 +1393,14 @@ def _family_holdings_view(
     return family, holdings_view, raw_holdings
 
 
-def _export_account_choices() -> list[dict[str, str]]:
+def _export_account_choices(
+    account_statuses: list[dict] | None = None,
+) -> list[dict[str, str]]:
     return [
         {"code": account["code"], "label": account["label"]}
-        for account in _account_statuses()
+        for account in (
+            account_statuses if account_statuses is not None else _account_statuses()
+        )
         if account.get("enabled")
     ]
 
@@ -1400,6 +1427,7 @@ def portfolio_dashboard(
     )
     weekly_status = weekly_history.weekly_status()
     cache_meta = meta_for_family(fresh_ttl=CACHE_TTL_SECONDS)
+    account_statuses = _account_statuses(family=family)
     export_qs = _export_query_string(view_params["sort"], view_params["order"], view_params["group_by"])
 
     return templates.TemplateResponse(
@@ -1409,7 +1437,7 @@ def portfolio_dashboard(
             "active_module": "portfolio",
             "summary": family["summary"],
             "holdings_view": holdings_view,
-            "accounts": _account_statuses(),
+            "accounts": account_statuses,
             "errors": errors,
             "cached_at": family.get("cached_at"),
             "from_cache": family.get("from_cache", False),
@@ -1423,7 +1451,7 @@ def portfolio_dashboard(
             "export_api_url": "/api/portfolio/export",
             "export_column_options": export_column_options(include_account=True),
             "export_include_account": True,
-            "export_account_choices": _export_account_choices(),
+            "export_account_choices": _export_account_choices(account_statuses),
             "refresh": refresh,
             "symbol_suggestions": _symbol_suggestions(raw_holdings),
             "holdings_financials_json": json.dumps(
@@ -1463,10 +1491,15 @@ def portfolio_advisor_page(request: Request):
 
 
 @router.get("/portfolio/data-quality")
-def portfolio_data_quality_page(request: Request, refresh: bool = Query(False)):
+def portfolio_data_quality_page(
+    request: Request,
+    refresh: bool = Query(False),
+    limit: int = Query(60, ge=20, le=500),
+):
     """Canonical identity and reconciliation control center."""
     family = fetch_family_portfolio(refresh=refresh, stale_ok=True)
     reconciliation = family.get("reconciliation") or {}
+    security_rows = reconciliation.get("by_security") or []
     return templates.TemplateResponse(
         request,
         "portfolio/data_quality.html",
@@ -1474,7 +1507,9 @@ def portfolio_data_quality_page(request: Request, refresh: bool = Query(False)):
             "active_module": "data_quality",
             "reconciliation": reconciliation,
             "summary": reconciliation.get("summary") or {},
-            "security_rows": reconciliation.get("by_security") or [],
+            "security_rows": security_rows[:limit],
+            "security_rows_total": len(security_rows),
+            "security_rows_limit": limit,
             "account_rows": reconciliation.get("by_account") or [],
             "corporate_actions": reconciliation.get("corporate_action_review") or [],
             "trading_enabled": False,
@@ -1487,8 +1522,20 @@ def portfolio_market_regime_page(request: Request):
     """Original, transparent India Market Regime & Mood Index."""
     from modules.portfolio.db import market_regime
     from modules.portfolio.services.market_regime import methodology
+    from modules.portfolio.services.privacy_controls import privacy_status
 
     observation = market_regime.latest(market="INDIA")
+    method = methodology()
+    source_guidance = {
+        "market_breadth": "NSE advancing/declining and 200-day breadth",
+        "index_momentum": "NIFTY 50 daily index history",
+        "volatility_regime": "India VIX daily history",
+        "fpi_flow_regime": "NSDL/CDSL or exchange FPI flow data",
+        "participation_strength": "NSE equal-weight vs headline-index participation",
+        "derivatives_sentiment": "NSE index futures/options positioning",
+        "valuation_stretch": "Dated NIFTY valuation percentile",
+        "safe_haven_liquidity": "Dated liquidity and safe-haven stress series",
+    }
     return templates.TemplateResponse(
         request,
         "portfolio/market_regime.html",
@@ -1496,7 +1543,12 @@ def portfolio_market_regime_page(request: Request):
             "active_module": "market_regime",
             "observation": observation,
             "history": market_regime.history(market="INDIA", limit=365),
-            "methodology": methodology(),
+            "methodology": method,
+            "component_readiness": [
+                {"name": name, "weight": spec["weight"], "required_source": source_guidance[name]}
+                for name, spec in method["components"].items()
+            ],
+            "market_data_sharing_enabled": privacy_status()["market_data_symbol_queries"]["enabled"],
             "trading_enabled": False,
         },
     )
@@ -1507,6 +1559,28 @@ def portfolio_research_page(request: Request):
     """Local, instrument-specific research workspace."""
     from modules.portfolio.db import research
 
+    family = fetch_family_portfolio(refresh=False, stale_ok=True)
+    held_by_key: dict[str, dict[str, Any]] = {}
+    for portfolio in family.get("portfolios") or []:
+        for row in portfolio.get("holdings") or []:
+            key = str(row.get("instrument_id") or f"{row.get('exchange')}:{row.get('symbol')}")
+            item = held_by_key.setdefault(
+                key,
+                {
+                    "instrument_id": row.get("instrument_id"),
+                    "symbol": row.get("symbol") or key,
+                    "display_name": row.get("canonical_display_name") or row.get("symbol") or key,
+                    "sector": row.get("sector") or "Unclassified",
+                    "current_value": 0.0,
+                    "accounts": set(),
+                },
+            )
+            item["current_value"] += float(row.get("display_value") or row.get("current_value") or 0)
+            item["accounts"].add(str(portfolio.get("account_code") or portfolio.get("account_id") or ""))
+    held_universe = sorted(held_by_key.values(), key=lambda row: -row["current_value"])
+    for row in held_universe:
+        row["accounts"] = sorted(code for code in row["accounts"] if code)
+        row["current_value"] = round(row["current_value"], 2)
     return templates.TemplateResponse(
         request,
         "portfolio/research.html",
@@ -1516,6 +1590,8 @@ def portfolio_research_page(request: Request):
             "candidates": research.list_candidates(),
             "watchlist": research.list_watchlist(),
             "events": research.list_events(),
+            "held_universe": held_universe[:16],
+            "held_universe_count": len(held_universe),
             "trading_enabled": False,
         },
     )
@@ -1568,6 +1644,27 @@ def portfolio_fund_intelligence_page(request: Request):
 
     schemes = fund_intelligence.list_schemes()
     positions = _family_fund_positions()
+    scheme_ids = {str(row.get("instrument_id") or "") for row in schemes}
+    unmapped_by_key: dict[str, dict[str, Any]] = {}
+    for row in positions:
+        instrument_type = str(row.get("instrument_type") or row.get("asset_class") or "").lower()
+        if instrument_type not in {"mf", "mutual_fund", "etf", "fund"}:
+            continue
+        instrument_id = str(row.get("instrument_id") or "")
+        if instrument_id and instrument_id in scheme_ids:
+            continue
+        key = instrument_id or str(row.get("symbol") or row.get("name") or "UNKNOWN")
+        item = unmapped_by_key.setdefault(
+            key,
+            {
+                "instrument_id": instrument_id,
+                "symbol": row.get("symbol") or row.get("name") or key,
+                "instrument_type": instrument_type,
+                "current_value": 0.0,
+            },
+        )
+        item["current_value"] += float(row.get("display_value") or row.get("current_value") or 0)
+    unmapped_funds = sorted(unmapped_by_key.values(), key=lambda row: -row["current_value"])
     overlaps = [
         pairwise_overlap(first["instrument_id"], second["instrument_id"])
         for index, first in enumerate(schemes)
@@ -1584,6 +1681,7 @@ def portfolio_fund_intelligence_page(request: Request):
             "cost": weighted_ter(positions),
             "liquidity": [etf_analytics(row) for row in schemes if row.get("instrument_type") == "etf"],
             "consolidation": consolidation_candidates(positions),
+            "unmapped_funds": unmapped_funds,
             "trading_enabled": False,
         },
     )
@@ -1639,9 +1737,14 @@ def portfolio_asset_location_page(request: Request):
                 "account_id": account_id,
                 "code": block.get("account_code") or account_id,
                 "owner_ref": profile.get("owner_ref") or "Unspecified",
+                "country_of_residence": profile.get("country_of_residence") or "UNKNOWN",
+                "india_residency_status": profile.get("india_residency_status") or "UNKNOWN",
                 "account_type": profile.get("account_type") or "UNKNOWN",
                 "currency": profile.get("base_currency") or block.get("currency") or "UNKNOWN",
                 "repatriability": profile.get("repatriability") or "UNKNOWN",
+                "risk_profile": profile.get("risk_profile") or "unknown",
+                "target_return_pct": profile.get("target_return_pct"),
+                "max_position_pct": profile.get("max_position_pct"),
                 "holding_count": len(block.get("holdings") or []),
                 "missing": missing,
             }
@@ -1852,7 +1955,7 @@ def api_portfolio_patterns(
 ):
     """
     Scan portfolio equities for chart patterns (cup & handle, inverse H&S, etc.).
-    Uses Yahoo daily history; results are cached per symbol (~6h).
+    Uses Yahoo daily history; portfolio scans are cached locally for one day.
     """
     from modules.portfolio.services.chart_patterns import scan_holdings, scan_holdings_async
     from modules.portfolio.services.holdings_view import all_holdings_from_view, prepare_holdings_view
@@ -1863,7 +1966,7 @@ def api_portfolio_patterns(
     holdings_view = prepare_holdings_view(raw, aggregate_across_accounts=True)
     holdings = all_holdings_from_view(holdings_view)
     if blocking:
-        scanned = scan_holdings(holdings)
+        scanned = scan_holdings(holdings, refresh=refresh)
         scan_status = "complete"
         scan_error = None
     else:
@@ -1892,7 +1995,7 @@ def api_symbol_patterns(
     """Pattern scan for a single symbol."""
     from modules.portfolio.services.chart_patterns import detect_patterns_for_symbol
 
-    return detect_patterns_for_symbol(symbol.upper(), exchange, use_cache=False)
+    return detect_patterns_for_symbol(symbol.upper(), exchange, use_cache=True)
 
 
 @router.get("/api/portfolio/advisory")

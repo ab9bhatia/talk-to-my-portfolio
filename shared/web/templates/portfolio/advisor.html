@@ -17,7 +17,7 @@
       <div class="dash-hero-copy advisor-hero-copy">
         <p class="dash-eyebrow advisor-eyebrow"><span></span> Advisor Action Center · deterministic decision system</p>
         <h1 class="dash-title">Your portfolio, translated into action.</h1>
-        <p class="dash-lead">One family-level queue for what to hold, reduce, add, or reconcile—with the evidence and constraints behind every call.</p>
+        <p class="dash-lead">Start with the decision, understand the reason, then open the evidence only when you need it.</p>
         <div class="advisor-policy-strip">
           <span>Fundamentals authoritative</span>
           <span>Patterns time execution only</span>
@@ -39,19 +39,12 @@
     <label class="advisor-search">Find a security
       <span><span aria-hidden="true">⌕</span><input id="advisor-search" type="search" placeholder="Symbol, action, setup…" autocomplete="off"></span>
     </label>
-    <label>Action
-      <select id="advisor-action-filter"><option value="">All actions</option></select>
-    </label>
-    <label>Sell type
-      <select id="advisor-sell-filter"><option value="">All sell types</option></select>
-    </label>
-    <label>Pattern lifecycle
-      <select id="advisor-pattern-filter">
-        <option value="">All lifecycle states</option>
-        <option value="ACTIVE">Active confirmed</option>
-        <option value="BUILDING">Building / near breakout</option>
-        <option value="COMPLETED">Target achieved / overshot</option>
-        <option value="INACTIVE">Expired / invalidated</option>
+    <label>Show me
+      <select id="advisor-focus-filter">
+        <option value="ACTION">Decisions requiring action</option>
+        <option value="DATA">Data to resolve</option>
+        <option value="MONITOR">Hold and monitor</option>
+        <option value="ALL">Everything</option>
       </select>
     </label>
     <label>Prioritize by
@@ -63,21 +56,24 @@
         <option value="action">Action</option>
       </select>
     </label>
-    <label class="advisor-checkbox"><input id="advisor-conflicts-only" type="checkbox"><span>Signal conflicts only</span></label>
+    <details class="advisor-advanced-controls">
+      <summary>Advanced filters</summary>
+      <div>
+        <label>Action<select id="advisor-action-filter"><option value="">All actions</option></select></label>
+        <label>Sell type<select id="advisor-sell-filter"><option value="">All sell types</option></select></label>
+        <label>Pattern lifecycle<select id="advisor-pattern-filter"><option value="">All lifecycle states</option><option value="ACTIVE">Active confirmed</option><option value="BUILDING">Building / near breakout</option><option value="COMPLETED">Target achieved / overshot</option><option value="INACTIVE">Expired / invalidated</option></select></label>
+        <label class="advisor-checkbox"><input id="advisor-conflicts-only" type="checkbox"><span>Signal conflicts only</span></label>
+      </div>
+    </details>
     <button type="button" class="advisor-clear" id="advisor-clear">Clear</button>
   </section>
 
   <section class="dash-panel advisor-decision-panel">
     <header class="advisor-section-head">
-      <div><p class="advisor-section-kicker">Decision queue</p><h2>Holding-level recommendations</h2></div>
-      <span id="advisor-result-count">Loading…</span>
+      <div><p class="advisor-section-kicker">Decision queue</p><h2>Your next decisions</h2></div>
+      <div class="advisor-result-tools"><span id="advisor-result-count">Loading…</span><button type="button" id="advisor-show-more" hidden>Show more</button></div>
     </header>
-    <div class="advisor-table-wrap">
-      <table class="advisor-table">
-        <thead><tr><th>Security</th><th>Decision</th><th>3Y return scenarios</th><th>Technical timing</th><th>Portfolio fit</th><th>Review trigger</th></tr></thead>
-        <tbody id="advisor-rows"></tbody>
-      </table>
-    </div>
+    <div class="advisor-decision-list" id="advisor-rows"></div>
   </section>
 
   <div class="advisor-lower-grid">
@@ -87,5 +83,5 @@
     <section class="dash-panel advisor-mini-panel"><p class="advisor-section-kicker">Trust</p><h2 class="dash-panel-title">Evidence health</h2><div id="advisor-evidence-status"></div></section>
   </div>
 </div>
-<script src="{{ app_path('/static/js/portfolio-advisor.js') }}?v=20260828-user-journey-2"></script>
+<script src="{{ app_path('/static/js/portfolio-advisor.js') }}?v=20260829-decision-first"></script>
 {% endblock %}

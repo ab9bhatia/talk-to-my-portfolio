@@ -18,9 +18,19 @@
     <article><span>No action</span><strong>{{ brief.no_action_count }}</strong><small>of {{ brief.holdings_count }} holdings</small></article>
   </section>
 
-  <section class="os-panel">
-    <div class="os-panel-heading"><div><p class="dash-eyebrow">Priority order</p><h2>What deserves attention</h2></div><span>Hard risk → constraints → deadlines → actions</span></div>
-    {% for row in brief.review_queue %}<div class="brief-queue-row"><span class="brief-priority">P{{ row.priority }}</span><div><strong>{{ row.symbol or 'Portfolio' }} · {{ row.title }}</strong><small>{{ row.type | replace('_', ' ') }}{% if row.event_date %} · {{ row.event_date }}{% endif %}</small></div><span class="os-state">{{ row.action or 'REVIEW' }}</span></div>{% else %}<div class="os-empty-state"><h3>No material change.</h3><p>Continue the normal review cadence; trivial price moves are intentionally omitted.</p></div>{% endfor %}
+  <section class="os-panel brief-focus-panel">
+    <div class="os-panel-heading"><div><p class="dash-eyebrow">Decision brief</p><h2>What is wrong, why it matters, and what to do</h2></div><span>{{ brief.issue_groups | length }} root causes · {{ brief.review_queue | length }} affected items</span></div>
+    <div class="brief-issue-grid">
+    {% for row in brief.issue_groups %}
+      <article class="brief-issue-card brief-issue-card--{{ row.key | lower }}">
+        <header><span class="brief-priority">P{{ row.priority }}</span><div><strong>{{ row.what_wrong }}</strong><small>{{ row.count }} affected securit{{ 'y' if row.count == 1 else 'ies' }}</small></div></header>
+        <div class="brief-reason"><span>Why it matters</span><p>{{ row.why_wrong }}</p></div>
+        <div class="brief-action"><span>Required action</span><p>{{ row.required_action }}</p></div>
+        {% if row.symbol_preview %}<p class="brief-symbols">{{ row.symbol_preview | join(' · ') }}{% if row.count > row.symbol_preview | length %} · +{{ row.count - (row.symbol_preview | length) }} more{% endif %}</p>{% endif %}
+        <a class="setup-btn setup-btn-ghost" href="{{ app_path(row.destination) }}">Open workspace</a>
+      </article>
+    {% else %}<div class="os-empty-state"><h3>No material change.</h3><p>Continue the normal review cadence; trivial price moves are intentionally omitted.</p></div>{% endfor %}
+    </div>
   </section>
 
   <section class="os-panel">
