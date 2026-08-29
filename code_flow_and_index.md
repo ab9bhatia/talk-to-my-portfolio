@@ -22,6 +22,14 @@ flowchart TB
     MD[market_data.py]
     PAT[chart_patterns.py lifecycle semantics]
     ADV[advisory/ deterministic engine]
+    IM[instrument_master.py]
+    REC[reconciliation.py]
+    TX[transaction_import.py]
+    PERF[performance.py + tax_lots.py]
+    MRMI[market_regime.py + mrmi_advisory.py]
+    RESEARCH[research scorecards + screener + compare]
+    FUNDS[fund_intelligence.py]
+    OPS[today_brief + stress + what_if + alerts]
     CTX[portfolio_context.py]
     AG[portfolio_agent.py]
   end
@@ -36,12 +44,29 @@ flowchart TB
     DAILY[daily history]
     WEEKLY[portfolio_history.db]
     GOALS[profile_goals in portfolio_profile.db]
+    MASTER[instrument_master.db]
+    LEDGER[transaction_ledger.db]
+    REGIME[market_regime.db]
+    RESEARCHDB[research_workspace.db]
+    FUNDDB[fund_intelligence.db]
+    OPSDB[operating_console.db]
   end
   UI --> R
   R --> PF --> Z
   R --> PF --> G
   R --> PF --> C
   PF --> MD
+  PF --> IM --> MASTER
+  IM --> REC --> ADV
+  PF --> PERF
+  TX --> LEDGER --> PERF
+  MRMI --> REGIME
+  MRMI --> ADV
+  RESEARCH --> RESEARCHDB
+  FUNDS --> FUNDDB
+  FUNDS --> ADV
+  OPS --> OPSDB
+  PF --> OPS
   R --> PAT
   PAT --> ADV
   PF --> CACHE
@@ -103,6 +128,12 @@ flowchart TB
 | `sector_llm_cache.py` | `sector_llm_cache.db` | LLM sector labels cache |
 | `buy_thesis_cache.py` | `buy_thesis_cache.db` | Optional buy-thesis cache |
 | `amfi_cap_cache.py` | `amfi_cap_cache.db` | MF cap classification cache |
+| `instrument_master.py` | `instrument_master.db` | Versioned instruments, aliases, corporate actions, and override audit |
+| `transaction_ledger.py` | `transaction_ledger.db` | Preview batches, canonical transactions, unresolved queue, rollback |
+| `market_regime.py` | `market_regime.db` | Append-only methodology-versioned MRMI observations |
+| `research.py` | `research_workspace.db` | Saved screens/revisions, candidates, watchlists, thesis, sourced events |
+| `fund_intelligence.py` | `fund_intelligence.db` | Scheme variants and dated constituent observations |
+| `operating_console.py` | `operating_console.db` | Saved stress assumptions and alert hysteresis/history |
 
 #### `services/` — business logic
 
@@ -110,6 +141,26 @@ flowchart TB
 |------|------|
 | **`portfolio.py`** | Fetch & merge family holdings; normalize; enrich; cache (memory + SQLite) |
 | **`holdings_view.py`** | Sort, group, aggregate, Excel export, account filters |
+| **`instrument_master.py`** | Authoritative-first canonical identity resolver and normalized instrument metadata |
+| **`reconciliation.py`** | Broker/market provenance and position, security, account, family reconciliation |
+| **`transaction_import.py`** | Pluggable normalized preview/commit/rollback import framework |
+| **`tax_lots.py`** | Account-specific FIFO lot transformations and disposal audit |
+| **`performance.py`** | Coverage-aware XIRR, TWRR, return bridge, FX/fee/tax attribution |
+| **`performance_export.py`** | Multi-sheet transaction/lot/performance/reconciliation audit workbook |
+| **`market_regime.py`** | Sourced component normalization, confidence, bands, trend, persistence |
+| **`mrmi_advisory.py`** | Timing/sizing-only deterministic recommendation overlay |
+| **`mrmi_backtest.py`** | Research-only no-look-ahead calibration harness |
+| **`research_scorecards.py`** | Instrument-specific transparent scorecard adapters |
+| **`research_screener.py`** | Whitelisted typed AND/OR screening engine |
+| **`research_compare.py`** | Two-to-five instrument comparison with incompatibility explanations |
+| **`research_events.py`** | Sourced event freshness and candidate-approval boundary |
+| **`research_context.py`** | Structured redacted LLM explanation context |
+| **`fund_intelligence.py`** | Recursive look-through, overlap, family exposure, TER, ETF/MF analytics, consolidation |
+| **`fund_export.py`** | Scheme, constituent, and overlap audit workbook |
+| **`today_brief.py`** | Material review queue and no-action summary |
+| **`stress_testing.py`** | Versioned direct/look-through deterministic shocks |
+| **`what_if.py`** | Immutable constraint-aware portfolio simulation |
+| **`alerts.py`** | Material-event filtering, hysteresis, and cooldown |
 | **`market_data.py`** | Yahoo metrics, sector, signals, daily LTP refresh scheduler |
 | **`advisory/`** | Deterministic consolidation, scenarios, momentum, rules, sourced tax safety records, and recommendation schema |
 | **`mf_metrics.py`** | Mutual fund NAV metrics |
@@ -172,6 +223,10 @@ flowchart TB
 | `portfolio-setup-llm.js` | Setup | LLM provider modal |
 | `portfolio-goals.js` | Setup | Save goals & guardrails |
 | `portfolio-weekly-sync.js` | Setup | Run the one-shot sync and present its audited result |
+| `portfolio-data-quality.js` | Data Quality | Submit sourced, audited local reconciliation resolutions |
+| `portfolio-performance.js` | Growth | True-performance cards, coverage explanation, and return bridge |
+| `portfolio-market-regime.js` | Market Mood | Versioned MRMI history chart |
+| `portfolio-operating-console.js` | Today Brief | Stress runner and read-only what-if builder |
 
 ### `docs/`
 
@@ -321,6 +376,11 @@ Full mobile contract: [docs/api-contract-v1.md](docs/api-contract-v1.md).
 | GET | `/api/portfolio/sync/jobs/{run_id}` | Poll durable queued/running/terminal truth |
 | POST | `/api/portfolio/agent/ask/stream` | Agent SSE |
 | GET | `/api/portfolio/version` | API contract version |
+| GET/POST | `/api/portfolio/tax/*` | Sourced rules, after-tax comparison, location planning, harvesting, and CA export |
+
+After-tax planning lives in `services/after_tax.py`, `services/asset_location.py`, and `services/tax_harvesting.py`. It reuses the versioned registry in `services/advisory/tax_rules.py`, account configuration in `account_profile.py`, and FIFO ledger output from `services/tax_lots.py`. `services/tax_location_export.py` produces the local CA-review workbook.
+
+Security/recovery flows use `services/secret_storage.py` for verified OS/encrypted secret migration, `db/schema_migrations.py` for integrity/version refusal, `services/backup_restore.py` for encrypted staged restore, `shared/web/http_auth.py` for auth/CSRF/rate limits/headers, and `services/diagnostics.py` for redacted health/support bundles. The offline operator entry point is `scripts/portfolio_recovery.py`.
 
 ---
 

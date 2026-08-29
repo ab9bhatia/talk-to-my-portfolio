@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block title %}Asset Location · {{ app_name }}{% endblock %}
+{% block main_class %}main-wide dash-main{% endblock %}
+
+{% block content %}
+<div class="os-page asset-location-page">
+  <header class="os-hero">
+    <div>
+      <p class="dash-eyebrow">After-tax planning · {{ as_of }}</p>
+      <h1>Put each exposure in<br><em>the right account.</em></h1>
+      <p>Compare evidenced after-tax outcomes while preserving ownership, eligibility, settlement, repatriation, liquidity, and estate constraints.</p>
+    </div>
+    <div class="brief-status"><span>CA review queue</span><strong>{{ review_queue | length }}</strong><small>Planning only · execution disabled</small></div>
+  </header>
+
+  <section class="os-panel">
+    <div class="os-panel-heading"><div><p class="dash-eyebrow">Eligibility matrix</p><h2>Family accounts</h2></div><a class="setup-btn setup-btn-primary" href="{{ app_path('/api/portfolio/tax/ca-package.xlsx') }}">Download CA package</a></div>
+    <div class="asset-location-grid asset-location-head"><span>Account</span><span>Owner</span><span>Type</span><span>Currency</span><span>Repatriability</span><span>Evidence</span></div>
+    {% for row in accounts %}
+    <div class="asset-location-grid">
+      <strong>{{ row.code }}<small>{{ row.holding_count }} holdings</small></strong>
+      <span>{{ row.owner_ref }}</span><span>{{ row.account_type | replace('_', ' ') }}</span><span>{{ row.currency }}</span><span>{{ row.repatriability | replace('_', ' ') }}</span>
+      {% if row.missing %}<span class="os-state os-state-warning">Review {{ row.missing | length }}</span>{% else %}<span class="os-state">Ready</span>{% endif %}
+    </div>
+    {% else %}<div class="os-empty-state"><h3>No cached accounts.</h3><p>Sync holdings, then complete account tax profiles in Setup &amp; Config.</p></div>{% endfor %}
+  </section>
+
+  <section class="os-split-grid">
+    <article class="os-panel">
+      <div class="os-panel-heading"><div><p class="dash-eyebrow">Required before comparison</p><h2>CA review queue</h2></div></div>
+      {% for row in review_queue %}<div class="research-list-item"><strong>{{ row.code }} · {{ row.account_type | replace('_', ' ') }}</strong><p>Complete: {{ row.missing | join(', ') }}</p><small>No tax certainty until evidence is dated and sourced.</small></div>{% else %}<p class="text-muted">Account profiles are complete. Product-level evidence may still be required.</p>{% endfor %}
+    </article>
+    <article class="os-panel">
+      <div class="os-panel-heading"><div><p class="dash-eyebrow">Versioned evidence</p><h2>Tax rule registry</h2></div><span>{{ tax_registry.rules | length }} rules</span></div>
+      {% for rule in tax_registry.rules %}<details class="tax-rule"><summary><strong>{{ rule.rule_id }}</strong><span>{{ rule.jurisdiction }} · {{ rule.confidence }}</span></summary><p>{{ rule.reference }}</p><p>{{ rule.planning_note }}</p><a href="{{ rule.source_url }}" target="_blank" rel="noopener">{{ rule.source }} ↗</a><small>Effective {{ rule.effective_from }}{% if rule.effective_to %}–{{ rule.effective_to }}{% endif %} · reviewed {{ rule.last_reviewed }}</small></details>{% endfor %}
+    </article>
+  </section>
+</div>
+{% endblock %}

@@ -20,12 +20,18 @@ def initialize_isolated_databases():
         buy_thesis_cache,
         custom_holdings,
         daily_history,
+        fund_intelligence,
         groww_tokens,
         import_audit,
+        instrument_master,
+        market_regime,
+        operating_console,
         portfolio_cache,
         profile_goals,
+        research,
         sector_llm_cache,
         tokens,
+        transaction_ledger,
         weekly_history,
         weekly_sync,
     )
@@ -42,7 +48,13 @@ def initialize_isolated_databases():
         buy_thesis_cache,
         custom_holdings,
         import_audit,
+        instrument_master,
+        fund_intelligence,
+        market_regime,
+        operating_console,
+        transaction_ledger,
         profile_goals,
+        research,
     ):
         store.init_db()
     yield

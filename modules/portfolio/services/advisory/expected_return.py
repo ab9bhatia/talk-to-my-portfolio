@@ -72,6 +72,31 @@ def expected_three_year_irr(
     flags: list[DataQualityFlag] = []
     evidence_tier = str(inputs.get("model_quality") or "documented")
 
+    if holding.get("reconciliation_blocking"):
+        flags.append(
+            DataQualityFlag(
+                code="RECONCILIATION_BLOCKS_VALUATION",
+                severity="error",
+                message=(
+                    "Expected return is unavailable until identity, quantity, price, "
+                    "FX, or corporate-action reconciliation is complete."
+                ),
+                blocking=True,
+            )
+        )
+        return (
+            ExpectedThreeYearIrr(
+                bear_pct=None,
+                base_pct=None,
+                bull_pct=None,
+                probability_above_target=None,
+                method="unavailable_reconciliation",
+                assumptions=["Valuation-dependent output suppressed by reconciliation."],
+                evidence_tier="needs_data",
+            ),
+            flags,
+        )
+
     if method not in {"eps", "fund_build_up"}:
         flags.append(
             DataQualityFlag(

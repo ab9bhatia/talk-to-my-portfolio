@@ -71,6 +71,10 @@ class TaxRuleReference:
     source_url: str
     last_reviewed: str
     required_inputs: list[str] = field(default_factory=list)
+    applicability: list[str] = field(default_factory=list)
+    calculation_method: str = "review_only"
+    confidence: str = "documented"
+    ca_review_required: bool = True
 
 
 @dataclass(frozen=True)
@@ -154,6 +158,11 @@ class AccountPosition:
 @dataclass(frozen=True)
 class HoldingRecommendation:
     symbol: str
+    instrument_id: str | None
+    isin: str | None
+    reconciliation_state: str | None
+    reconciliation_delta: float | None
+    reconciliation_blocking: bool
     instrument_type: InstrumentType
     accounts: list[AccountPosition]
     consolidated_qty: float

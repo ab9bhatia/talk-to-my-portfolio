@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+
+{% block title %}System Health · {{ app_name }}{% endblock %}
+{% block main_class %}main-wide dash-main{% endblock %}
+
+{% block content %}
+<div class="os-page">
+  <header class="os-hero">
+    <div><p class="dash-eyebrow">Local security and recovery</p><h1>Your portfolio OS is<br><em>{{ diagnostics.status }}.</em></h1><p>Integrity, privacy, scheduler, and recovery controls. Support bundles exclude secrets and raw holdings by default.</p></div>
+    <div class="brief-status"><span>Trading</span><strong>OFF</strong><small>Public internet unsupported</small></div>
+  </header>
+  <section class="os-stat-grid">
+    <article><span>Databases</span><strong>{{ diagnostics.databases | length }}</strong><small>integrity checked</small></article>
+    <article><span>Data permissions</span><strong>{{ diagnostics.data_directory_permissions or '—' }}</strong><small>recommended 0o700</small></article>
+    <article><span>Scheduler</span><strong>{{ 'Ready' if diagnostics.scheduler.installed else 'Review' }}</strong><small>{{ diagnostics.scheduler.platform }}</small></article>
+    <article><span>Raw support data</span><strong>OFF</strong><small>explicit opt-in only</small></article>
+  </section>
+  <section class="os-split-grid">
+    <article class="os-panel"><div class="os-panel-heading"><div><p class="dash-eyebrow">SQLite</p><h2>Integrity and schema</h2></div></div>{% for row in diagnostics.databases %}<div class="research-list-item"><strong>{{ row.database }}</strong><p>{{ row.integrity }} · schema {{ row.schema_version or 'unregistered' }}</p><small>{{ row.size_bytes }} bytes</small></div>{% endfor %}</article>
+    <article class="os-panel"><div class="os-panel-heading"><div><p class="dash-eyebrow">Outbound data</p><h2>Privacy controls</h2></div><a class="setup-btn" href="{{ app_path('/api/portfolio/security/support-bundle.zip') }}">Redacted support bundle</a></div>{% for name, row in privacy.items() %}<div class="research-list-item"><strong>{{ name | replace('_', ' ') | title }}</strong><p>{{ 'Enabled' if row.enabled else 'Disabled' }}</p><small>{{ row.default or row.provider or ('explicit request' if row.requires_explicit_request else '') }}</small></div>{% endfor %}</article>
+  </section>
+</div>
+{% endblock %}

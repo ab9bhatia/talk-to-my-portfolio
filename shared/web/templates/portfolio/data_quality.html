@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+
+{% block title %}Data Quality · {{ app_name }}{% endblock %}
+
+{% block head %}
+<script defer src="{{ app_path('/static/js/portfolio-data-quality.js') }}?v=20260829-7b"></script>
+{% endblock %}
+
+{% block content %}
+<div class="os-page page-data-quality">
+  <header class="os-hero">
+    <div>
+      <p class="dash-eyebrow">Portfolio trust layer</p>
+      <h1>Know what reconciles.<br><em>See what blocks action.</em></h1>
+      <p>Canonical identity, broker values, independent marks, FX, and corporate-action review—without overwriting source evidence.</p>
+    </div>
+    <a class="setup-btn setup-btn-primary" href="{{ app_path('/portfolio/data-quality?refresh=true') }}">Refresh evidence</a>
+  </header>
+
+  <section class="os-stat-grid" aria-label="Reconciliation summary">
+    <article><span>Family value reconciled</span><strong>{{ summary.family_value_reconciled_pct | default(0) }}%</strong></article>
+    <article><span>Securities resolved</span><strong>{{ summary.securities_resolved_pct | default(0) }}%</strong></article>
+    <article><span>Quote coverage</span><strong>{{ summary.value_weighted_quote_coverage_pct | default(0) }}%</strong></article>
+    <article><span>Blocking securities</span><strong>{{ summary.blocking_securities | default(0) }}</strong></article>
+  </section>
+
+  <section class="os-panel">
+    <div class="os-panel-heading">
+      <div><p class="dash-eyebrow">Largest discrepancies</p><h2>Security reconciliation</h2></div>
+      <span>{{ security_rows | length }} canonical instruments</span>
+    </div>
+    <div class="os-table-wrap">
+      <table class="os-table">
+        <thead><tr><th>Security</th><th>Identity</th><th>Broker value</th><th>Marked value</th><th>Delta</th><th>State</th><th>Accounts</th><th>Repair</th></tr></thead>
+        <tbody>
+        {% for row in security_rows %}
+          <tr>
+            <td><strong>{{ row.display_name or row.symbol }}</strong><small>{{ row.exchange }}</small></td>
+            <td><code>{{ row.instrument_id or 'UNRESOLVED' }}</code>{% if row.isin %}<small>{{ row.isin }}</small>{% endif %}</td>
+            <td>₹{{ '{:,.0f}'.format(row.broker_reported_value or 0) }}</td>
+            <td>₹{{ '{:,.0f}'.format(row.marked_value or 0) }}</td>
+            <td class="{% if row.reconciliation_delta and row.reconciliation_delta|abs > 50 %}text-negative{% endif %}">₹{{ '{:,.0f}'.format(row.reconciliation_delta or 0) }}</td>
+            <td><span class="os-state os-state-{{ row.state | lower }}">{{ row.state | replace('_', ' ') }}</span></td>
+            <td>{{ row.accounts | join(', ') }}</td>
+            <td>
+              {% if row.instrument_id %}
+              <button class="os-link-button" type="button" data-open-resolution data-instrument-id="{{ row.instrument_id }}" data-security-name="{{ row.display_name or row.symbol }}">Resolve</button>
+              {% else %}
+              <span class="text-muted">Resolve identity first</span>
+              {% endif %}
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="8">No holdings are available to reconcile.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="os-split-grid">
+    <article class="os-panel">
+      <div class="os-panel-heading"><div><p class="dash-eyebrow">Account integrity</p><h2>Account totals</h2></div></div>
+      {% for row in account_rows %}
+      <div class="os-list-row"><strong>{{ row.account_code }}</strong><span>₹{{ '{:,.0f}'.format(row.marked_value or 0) }} marked</span><span>{{ row.blocking_positions }} blocking</span></div>
+      {% else %}<p class="text-muted">No account reconciliation yet.</p>{% endfor %}
+    </article>
+    <article class="os-panel">
+      <div class="os-panel-heading"><div><p class="dash-eyebrow">Lineage queue</p><h2>Corporate actions</h2></div></div>
+      {% for row in corporate_actions %}
+      <div class="os-list-row"><strong>{{ row.action_type }}</strong><span>{{ row.effective_date }}</span><span>{{ row.status }}</span></div>
+      {% else %}<p class="text-muted">No pending corporate-action reviews.</p>{% endfor %}
+    </article>
+  </section>
+
+  <dialog class="os-dialog" id="reconciliation-resolution-dialog">
+    <form class="os-resolution-form" id="reconciliation-resolution-form">
+      <div class="os-panel-heading">
+        <div><p class="dash-eyebrow">Audited local override</p><h2 id="resolution-title">Resolve discrepancy</h2></div>
+        <button class="os-dialog-close" type="button" data-close-resolution aria-label="Close">×</button>
+      </div>
+      <input type="hidden" name="instrument_id">
+      <label>Resolution type
+        <select name="override_type" required>
+          <option value="accept_timing_difference">Accept timing difference</option>
+          <option value="accept_broker_value">Accept broker-reported value</option>
+          <option value="accept_market_mark">Accept independent market mark</option>
+          <option value="corporate_action_explained">Corporate action explained</option>
+        </select>
+      </label>
+      <label>Reason<textarea name="reason" minlength="8" required placeholder="Explain why this discrepancy is safe to override."></textarea></label>
+      <label>Source document<input name="source_document" required placeholder="Broker statement, exchange notice, or local file reference"></label>
+      <div class="os-form-grid">
+        <label>Evidence as of<input type="date" name="as_of_date" required></label>
+        <label>Approved by<input name="approved_by" required placeholder="Your name"></label>
+      </div>
+      <p class="text-muted">The original evidence and state remain in the audit trail. This never enables trade execution.</p>
+      <div class="os-form-actions"><span id="resolution-status" aria-live="polite"></span><button class="setup-btn setup-btn-primary" type="submit">Save resolution</button></div>
+    </form>
+  </dialog>
+</div>
+{% endblock %}

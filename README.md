@@ -136,11 +136,19 @@ Design and Stage 6A contract: [docs/pattern-execution-overlay.md](docs/pattern-e
 | Route | Purpose |
 |-------|---------|
 | `/portfolio` | Family dashboard (holdings + chart pattern pills) |
+| `/portfolio/brief` | Material Today Brief, stress, what-if, and alerts |
 | `/portfolio/agent` | Agent chat (SSE) |
 | `/portfolio/growth` | Growth & benchmarks |
+| `/portfolio/data-quality` | Canonical identity, reconciliation, and audited repair |
+| `/portfolio/market-regime` | India MRMI score, components, freshness, and history |
+| `/portfolio/research` | Scorecards, screens, comparisons, candidates, thesis, events |
+| `/portfolio/funds` | ETF/MF look-through, overlap, TER, liquidity, consolidation |
+| `/portfolio/asset-location` | After-tax account eligibility, evidence, and CA-review queue |
+| `/portfolio/system-health` | SQLite integrity, scheduler, privacy, and redacted diagnostics |
 | `/portfolio/setup` | Accounts, LLM, goals, weekly sync, import audit |
 | `/api/portfolio/sync/status` | Weekly job health and degraded accounts (JSON) |
 | `/api/portfolio/patterns` | Chart-pattern scan (JSON) |
+| `/api/portfolio/performance/summary` | Coverage-aware XIRR/TWRR and return bridge |
 | `/docs` | Swagger (hidden if HTTP auth on) |
 
 ---
@@ -160,6 +168,14 @@ Design and Stage 6A contract: [docs/pattern-execution-overlay.md](docs/pattern-e
 | [docs/product.md](docs/product.md) | Product journey, features, roadmap |
 | [docs/user-journey.md](docs/user-journey.md) | Connect-to-ask flow and acceptance test |
 | [docs/weekly-sync-operations.md](docs/weekly-sync-operations.md) | Weekly job, CLI, schedulers, audit, and recovery |
+| [docs/reconciliation.md](docs/reconciliation.md) | Instrument identity, value provenance, reconciliation, and repair |
+| [docs/performance-ledger.md](docs/performance-ledger.md) | Transaction imports, FIFO lots, XIRR/TWRR, coverage, and audit export |
+| [docs/market-regime-mrmi.md](docs/market-regime-mrmi.md) | Transparent India market-regime methodology and advisory boundary |
+| [docs/research-workspace.md](docs/research-workspace.md) | Instrument adapters, safe screens, candidate governance, and thesis audit |
+| [docs/fund-intelligence.md](docs/fund-intelligence.md) | Scheme identity, constituent ingestion, overlap, costs, and consolidation |
+| [docs/operating-console.md](docs/operating-console.md) | Brief priorities, stress assumptions, what-if constraints, and alert policy |
+| [docs/asset-location.md](docs/asset-location.md) | Sourced tax rules, after-tax scenarios, eligibility, harvesting, and CA review |
+| [docs/security-recovery.md](docs/security-recovery.md) | Secret migration, encrypted backup/restore, incidents, privacy, and releases |
 | [code_flow_and_index.md](code_flow_and_index.md) | Folders, files, request flows |
 | [docs/api-contract-v1.md](docs/api-contract-v1.md) | Stable API for mobile clients |
 | [docs/release-checklist.md](docs/release-checklist.md) | Release steps |

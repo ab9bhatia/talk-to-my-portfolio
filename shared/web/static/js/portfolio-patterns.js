@@ -282,8 +282,9 @@
     } catch (error) {
       scanData = null;
       body.innerHTML = `<p class="patterns-error">${escapeHtml(error.message || "Pattern scan failed")}</p>`;
-    } finally {
       if (refreshBtn) refreshBtn.disabled = false;
+    } finally {
+      if (refreshBtn && scanData) refreshBtn.disabled = false;
     }
   }
 

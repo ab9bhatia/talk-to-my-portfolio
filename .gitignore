@@ -222,3 +222,7 @@ modules/portfolio/accounts.json
 modules/portfolio/data/
 run.local.md
 scripts/com.*.plist
+*.ttmpbackup
+*.pre-migrate-*.bak
+*.pre-restore-*.bak
+secrets.enc

@@ -115,6 +115,9 @@ def _normalize_groww_holding(
         last_price = ltp_map[ltp_key]
         price_source = "groww_ltp_api"
     if last_price <= 0:
+        # Preserve cost-basis continuity, but never present it as a live quote.
+        # Family reconciliation may replace this with a consensus market mark
+        # from another broker account holding the same instrument.
         last_price = avg_price
         price_source = "cost_basis_fallback"
 

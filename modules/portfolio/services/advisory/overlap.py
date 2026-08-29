@@ -20,6 +20,10 @@ _PROFILE_FIELDS = (
 )
 
 _MERGED_FIELDS = (
+    "instrument_id",
+    "canonical_symbol",
+    "canonical_exchange",
+    "canonical_display_name",
     "last_price",
     "pe_ratio",
     "trailing_pe",
@@ -206,10 +210,29 @@ def consolidate_family(family: dict[str, Any]) -> list[dict[str, Any]]:
             merged["last_price"] = current_value / quantity
 
         pnl = current_value - invested
+        reconciliation_states = [
+            str(row.get("reconciliation_state"))
+            for _, row in rows
+            if row.get("reconciliation_state")
+        ]
+        state_rank = {
+            "UNRESOLVED_IDENTITY": 5,
+            "CORPORATE_ACTION_REVIEW": 4,
+            "BLOCKING_MISMATCH": 3,
+            "WARNING": 2,
+            "RECONCILED_WITH_TIMING_DIFFERENCE": 1,
+            "RECONCILED": 0,
+        }
+        reconciliation_state = (
+            max(reconciliation_states, key=lambda value: state_rank.get(value, 2))
+            if reconciliation_states
+            else None
+        )
         consolidated.append(
             {
                 **merged,
                 "security_key": key,
+                "instrument_id": first.get("instrument_id"),
                 "symbol": str(first.get("symbol") or "").strip().upper(),
                 "exchange": first.get("exchange"),
                 "isin": first.get("isin"),
@@ -226,6 +249,22 @@ def consolidate_family(family: dict[str, Any]) -> list[dict[str, Any]]:
                 "account_profiles": account_profiles,
                 "source_data_quality_flags": source_data_quality_flags,
                 "source_rows": [row for _, row in rows],
+                "reconciliation_state": reconciliation_state,
+                "reconciliation_blocking": any(
+                    bool(row.get("reconciliation_blocking")) for _, row in rows
+                ),
+                "reconciliation_delta": round(
+                    sum(float(row.get("reconciliation_delta") or 0) for _, row in rows), 2
+                ),
+                "marked_value": round(
+                    sum(float(row.get("marked_value") or 0) for _, row in rows), 2
+                ),
+                "broker_reported_value": round(
+                    sum(float(row.get("broker_reported_value") or 0) for _, row in rows), 2
+                ),
+                "reconciliation_details": [
+                    row.get("reconciliation") for _, row in rows if row.get("reconciliation")
+                ],
             }
         )
     consolidated.sort(key=lambda item: (-item["consolidated_value"], item["symbol"]))
@@ -235,13 +274,47 @@ def consolidate_family(family: dict[str, Any]) -> list[dict[str, Any]]:
 def detect_overlap(
     holdings: list[dict[str, Any]],
 ) -> tuple[list[dict[str, Any]], dict[str, list[str]]]:
-    """Detect only explicit index/factor overlap; never infer look-through from a name."""
+    """Prefer dated constituent look-through; retain explicit mandate overlap as a warning."""
+    from modules.portfolio.services.fund_intelligence import pairwise_overlap
+
+    funds = [
+        holding
+        for holding in holdings
+        if holding.get("instrument_type") in {InstrumentType.ETF, InstrumentType.MUTUAL_FUND}
+    ]
+    report: list[dict[str, Any]] = []
+    by_security: dict[str, list[str]] = defaultdict(list)
+    lookthrough_available: set[str] = set()
+    for index, first in enumerate(funds):
+        first_id = str(first.get("instrument_id") or "")
+        if not first_id:
+            continue
+        for second in funds[index + 1 :]:
+            second_id = str(second.get("instrument_id") or "")
+            if not second_id:
+                continue
+            overlap = pairwise_overlap(first_id, second_id)
+            if overlap.get("weighted_overlap_pct") is None:
+                continue
+            lookthrough_available.update({first_id, second_id})
+            if float(overlap["weighted_overlap_pct"]) < 50:
+                continue
+            symbols = sorted({str(first.get("symbol") or ""), str(second.get("symbol") or "")})
+            report.append(
+                {
+                    "overlap_key": f"{first_id}:{second_id}",
+                    "symbols": symbols,
+                    "basis": "dated_constituent_lookthrough",
+                    "lookthrough_verified": True,
+                    **overlap,
+                }
+            )
+            by_security[first["security_key"]].append(str(second.get("symbol") or ""))
+            by_security[second["security_key"]].append(str(first.get("symbol") or ""))
+
     groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for holding in holdings:
-        if holding.get("instrument_type") not in {
-            InstrumentType.ETF,
-            InstrumentType.MUTUAL_FUND,
-        }:
+    for holding in funds:
+        if str(holding.get("instrument_id") or "") in lookthrough_available:
             continue
         label = (
             holding.get("overlap_group")
@@ -251,8 +324,6 @@ def detect_overlap(
         if label:
             groups[str(label).strip().lower()].append(holding)
 
-    report: list[dict[str, Any]] = []
-    by_security: dict[str, list[str]] = defaultdict(list)
     for label, rows in sorted(groups.items()):
         symbols = sorted({str(row.get("symbol") or "") for row in rows})
         if len(symbols) < 2:
@@ -263,6 +334,7 @@ def detect_overlap(
                 "symbols": symbols,
                 "basis": "explicit_underlying_or_factor_label",
                 "lookthrough_verified": False,
+                "data_quality_flags": ["LOOKTHROUGH_UNAVAILABLE"],
             }
         )
         for row in rows:

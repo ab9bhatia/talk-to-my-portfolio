@@ -118,6 +118,10 @@ Pass conditions:
 2. Review cash flows, tax lots, stale evidence, duplicated exposure, and positions too small to matter.
 3. Record any external broker actions in the source system, refresh all accounts, and verify that the consolidated portfolio reconciles.
 
+For a new exposure or planned sale, open Asset Location after Data Quality is clear. Complete residency, account type, repatriability, permitted instruments, domicile/share class, treaty evidence, and FIFO lots. Compare only `AVAILABLE` scenarios; route `UNKNOWN` and `TAX_REVIEW_REQUIRED` rows through the downloadable CA package before acting outside the app.
+
+Once per week, open System Health before the portfolio review. Resolve degraded SQLite integrity, stale accounts, failed/orphaned sync, or scheduler issues first. Before upgrades, create and validate an encrypted backup. Review the exact external LLM preview before sending sensitive questions; private account/tax context stays excluded by default.
+
 Growth should remain in the product, but it is a review surface—not the daily command center. Today its value-change view can mix market movement with contributions and trades. A future performance milestone should add a cash-flow ledger plus time-weighted return/XIRR before the app presents return attribution as investment skill.
 
 ## Failure recovery
@@ -144,6 +148,9 @@ source .venv/bin/activate
 PYTHONPATH=. python -m pytest -q
 node --check shared/web/static/js/nav-loader.js
 node --check shared/web/static/js/portfolio-growth.js
+node --check shared/web/static/js/portfolio-performance.js
+node --check shared/web/static/js/portfolio-market-regime.js
+node --check shared/web/static/js/portfolio-operating-console.js
 node --check shared/web/static/js/portfolio-advisor.js
 node --check shared/web/static/js/portfolio-agent.js
 node --check shared/web/static/js/portfolio-weekly-sync.js

@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+
+{% block title %}Fund Intelligence · {{ app_name }}{% endblock %}
+{% block main_class %}main-wide dash-main{% endblock %}
+
+{% block content %}
+<div class="os-page page-funds">
+  <header class="os-hero fund-hero">
+    <div><p class="dash-eyebrow">Dated constituent evidence</p><h1>See through every wrapper.<br><em>Pay only for distinct exposure.</em></h1><p>Trace ETFs and mutual funds to underlying companies, quantify overlap and TER, and keep missing or stale holdings explicit.</p></div>
+    <a class="setup-btn setup-btn-primary" href="{{ app_path('/api/portfolio/funds/audit.xlsx') }}">Export fund audit</a>
+  </header>
+
+  <section class="os-stat-grid">
+    <article><span>Mapped schemes</span><strong>{{ schemes | length }}</strong></article>
+    <article><span>Fund value</span><strong>₹{{ '{:,.0f}'.format(cost.fund_value or 0) }}</strong></article>
+    <article><span>Family weighted TER</span><strong>{{ cost.weighted_ter_pct if cost.weighted_ter_pct is not none else '—' }}%</strong></article>
+    <article><span>Annual wrapper cost</span><strong>₹{{ '{:,.0f}'.format(cost.estimated_annual_cost or 0) }}</strong></article>
+  </section>
+
+  <section class="os-panel">
+    <div class="os-panel-heading"><div><p class="dash-eyebrow">Pairwise matrix</p><h2>Constituent overlap</h2></div><span>Names and labels are not overlap evidence</span></div>
+    <div class="fund-overlap-grid">
+      {% for row in overlaps %}
+      <article><div><strong>{{ row.first_instrument_id }}</strong><span>↔</span><strong>{{ row.second_instrument_id }}</strong></div><b>{{ row.weighted_overlap_pct if row.weighted_overlap_pct is not none else '—' }}%</b><small>{{ row.status }}{% if row.confidence %} · {{ row.confidence }}% confidence{% endif %}</small></article>
+      {% else %}<div class="os-empty-state"><p>Add at least two fund schemes and dated holdings to calculate overlap. Missing constituents produce no guessed score.</p></div>{% endfor %}
+    </div>
+  </section>
+
+  <section class="os-split-grid">
+    <article class="os-panel">
+      <div class="os-panel-heading"><div><p class="dash-eyebrow">Direct + wrappers</p><h2>Stock duplication</h2></div></div>
+      {% for row in family_lookthrough.direct_stock_duplication %}<div class="os-list-row"><strong>{{ row.underlying_instrument_id }}</strong><span>₹{{ '{:,.0f}'.format(row.direct_value) }} direct</span><span>₹{{ '{:,.0f}'.format(row.through_funds_value) }} through funds</span></div>{% else %}<p class="text-muted">No dated direct-stock duplication is available.</p>{% endfor %}
+    </article>
+    <article class="os-panel">
+      <div class="os-panel-heading"><div><p class="dash-eyebrow">Execution safety</p><h2>ETF liquidity</h2></div></div>
+      {% for row in liquidity %}<div class="research-list-item"><strong>{{ row.instrument_id }}</strong><p>Spread {{ row.bid_ask_spread_pct if row.bid_ask_spread_pct is not none else '—' }}% · traded value ₹{{ '{:,.0f}'.format(row.average_traded_value or 0) }}</p><small>{{ row.execution_note }}</small>{% if row.market_order_warning %}<span class="os-state os-state-warning">Avoid market order</span>{% endif %}</div>{% else %}<p class="text-muted">No ETF liquidity evidence.</p>{% endfor %}
+    </article>
+  </section>
+
+  <section class="os-panel">
+    <div class="os-panel-heading"><div><p class="dash-eyebrow">Structure improvements</p><h2>Consolidation candidates</h2></div><span>Tax and exit-load review required</span></div>
+    {% for row in consolidation %}<div class="fund-consolidation"><div><strong>{{ row.source_instrument_id }} → {{ row.preferred_destination }}</strong><span>{{ row.weighted_overlap_pct }}% overlap · TER saving {{ row.cost_impact_ter_saving_pct }}%</span></div><p>{{ row.why }}</p><small>Tax / exit-load review: required before action</small></div>{% else %}<p class="text-muted">No evidence-backed consolidation candidate. Missing look-through is not treated as zero overlap.</p>{% endfor %}
+  </section>
+
+  <section class="os-panel">
+    <div class="os-panel-heading"><div><p class="dash-eyebrow">Scheme master</p><h2>Plan, option, cost and source freshness</h2></div></div>
+    <div class="os-table-wrap"><table class="os-table"><thead><tr><th>Scheme</th><th>Variant</th><th>Index/category</th><th>TER</th><th>Tracking</th><th>Source</th></tr></thead><tbody>
+      {% for row in schemes %}<tr><td><strong>{{ row.canonical_scheme_name }}</strong><small>{{ row.ticker or row.isin }}</small></td><td>{{ row.scheme_plan or '—' }} · {{ row.scheme_option or '—' }}</td><td>{{ row.underlying_index_category or '—' }}</td><td>{{ row.ter_pct if row.ter_pct is not none else '—' }}%</td><td>Error {{ row.tracking_error_pct if row.tracking_error_pct is not none else '—' }}%<small>Difference {{ row.tracking_difference_pct if row.tracking_difference_pct is not none else '—' }}%</small></td><td>{{ row.factsheet_source }}<small>{{ row.factsheet_as_of }}</small></td></tr>{% else %}<tr><td colspan="6">No fund schemes mapped.</td></tr>{% endfor %}
+    </tbody></table></div>
+  </section>
+</div>
+{% endblock %}

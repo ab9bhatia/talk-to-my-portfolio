@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+
+{% block title %}Today Brief · {{ app_name }}{% endblock %}
+{% block main_class %}main-wide dash-main{% endblock %}
+{% block head %}<script defer src="{{ app_path('/static/js/portfolio-operating-console.js') }}?v=20260829-10"></script>{% endblock %}
+
+{% block content %}
+<div class="os-page page-brief">
+  <header class="os-hero brief-hero" data-status="{{ brief.portfolio_status }}">
+    <div><p class="dash-eyebrow">Material changes only</p><h1>Your portfolio is<br><em>{{ brief.portfolio_status | lower }}.</em></h1><p>Reconciliation and hard risk first; unchanged holdings stay quiet. Every scenario below is read-only and execution remains disabled.</p></div>
+    <div class="brief-status"><span>Review queue</span><strong>{{ brief.review_queue | length }}</strong><small>{{ brief.blocking_data_issues }} blocking · {{ brief.actions_require_review }} actions</small></div>
+  </header>
+
+  <section class="os-stat-grid">
+    <article><span>Data reconciled</span><strong>{{ brief.data_reconciled_pct }}%</strong></article>
+    <article><span>Latest sync</span><strong>{{ brief.latest_sync }}</strong></article>
+    <article><span>30-day deadlines</span><strong>{{ brief.deadlines_30d }}</strong></article>
+    <article><span>No action</span><strong>{{ brief.no_action_count }}</strong><small>of {{ brief.holdings_count }} holdings</small></article>
+  </section>
+
+  <section class="os-panel">
+    <div class="os-panel-heading"><div><p class="dash-eyebrow">Priority order</p><h2>What deserves attention</h2></div><span>Hard risk → constraints → deadlines → actions</span></div>
+    {% for row in brief.review_queue %}<div class="brief-queue-row"><span class="brief-priority">P{{ row.priority }}</span><div><strong>{{ row.symbol or 'Portfolio' }} · {{ row.title }}</strong><small>{{ row.type | replace('_', ' ') }}{% if row.event_date %} · {{ row.event_date }}{% endif %}</small></div><span class="os-state">{{ row.action or 'REVIEW' }}</span></div>{% else %}<div class="os-empty-state"><h3>No material change.</h3><p>Continue the normal review cadence; trivial price moves are intentionally omitted.</p></div>{% endfor %}
+  </section>
+
+  <section class="os-panel">
+    <div class="os-panel-heading"><div><p class="dash-eyebrow">Deterministic shocks</p><h2>Stress scenario library</h2></div><span>Assumptions, not forecasts</span></div>
+    <div class="scenario-grid">
+      {% for name, assumptions in scenario_library.items() %}<button type="button" data-run-stress="{{ name }}"><strong>{{ name | replace('_', ' ') | title }}</strong><small>{{ assumptions | length }} assumption group{{ 's' if assumptions | length != 1 else '' }}</small></button>{% endfor %}
+    </div>
+    <div class="console-result" id="stress-result" aria-live="polite" hidden></div>
+  </section>
+
+  <section class="os-split-grid">
+    <article class="os-panel">
+      <div class="os-panel-heading"><div><p class="dash-eyebrow">Read-only builder</p><h2>What-if rebalance</h2></div></div>
+      <form class="console-form" id="what-if-form">
+        <label>Sell positions below<input type="number" name="threshold_pct" value="0.3" min="0" max="10" step="0.1"><span>% family weight</span></label>
+        <label>Max position<input type="number" name="max_position_pct" value="10" min="1" max="100" step="0.5"><span>%</span></label>
+        <label>Sector cap<input type="number" name="sector_cap_pct" value="30" min="1" max="100" step="1"><span>%</span></label>
+        <label>Cash buffer<input type="number" name="cash_buffer_pct" value="5" min="0" max="100" step="1"><span>%</span></label>
+        <button class="setup-btn setup-btn-primary" type="submit">Simulate only</button>
+      </form>
+      <div class="console-result" id="what-if-result" aria-live="polite" hidden></div>
+    </article>
+    <article class="os-panel">
+      <div class="os-panel-heading"><div><p class="dash-eyebrow">Hysteresis + cooldown</p><h2>Alert center</h2></div><span>{{ alerts | length }} recent</span></div>
+      {% for row in alerts %}<div class="research-list-item"><strong>{{ row.alert_type | replace('_', ' ') }}</strong><p>{{ row.payload.title or row.payload.key or row.alert_key }}</p><small>{{ row.priority }} · {{ row.fired_at }}</small></div>{% else %}<p class="text-muted">No material alerts. One-percent price noise is not an alert.</p>{% endfor %}
+    </article>
+  </section>
+</div>
+{% endblock %}

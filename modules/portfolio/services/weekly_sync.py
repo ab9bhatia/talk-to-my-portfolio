@@ -7,7 +7,6 @@ import html
 import json
 import logging
 import os
-import re
 import signal
 import threading
 import time
@@ -34,10 +33,6 @@ LIVE_MODE_ACCEPTED_STATUSES = frozenset(
     {"LIVE_RECONCILED", "LIVE_WITH_WARNINGS", "MANUAL_CURRENT"}
 )
 VALUATION_POLICY_VERSION = "weekly-valuation-v2"
-_SECRET_RE = re.compile(
-    r"(?i)(api[_ -]?key|api[_ -]?secret|access[_ -]?token|totp|password|authorization)"
-    r"\s*[:=]\s*[^\s,;]+"
-)
 _AUTH_WORDS = ("auth", "token", "login", "session", "credential", "permission", "401", "403")
 
 
@@ -136,9 +131,9 @@ class JobLock:
 
 def sanitize_message(value: object, *, limit: int = 600) -> str:
     """Strip common secret assignments before audit, logs, API, or digest output."""
-    text = str(value or "").replace("\n", " ").replace("\r", " ").strip()
-    text = _SECRET_RE.sub(lambda match: f"{match.group(1)}=[REDACTED]", text)
-    return text[:limit]
+    from shared.security_redaction import redact_text
+
+    return redact_text(value, limit=limit)
 
 
 def _enabled_account_specs() -> list[dict[str, str]]:
@@ -643,6 +638,31 @@ def _digest_text(
     snapshot_meta: dict[str, Any],
 ) -> str:
     summary = family.get("summary") or {}
+    from modules.portfolio.db import daily_history as daily_history_store
+    from modules.portfolio.db import market_regime
+    from modules.portfolio.db import transaction_ledger
+    from modules.portfolio.services.performance import calculate_twrr
+
+    performance_lines: list[str] = []
+    transactions = transaction_ledger.list_transactions(limit=10000)
+    for label, days in (("Weekly", 8), ("Monthly", 32)):
+        snapshots = daily_history_store.growth_series(
+            scope="family", account_id=None, days=days
+        )
+        result = calculate_twrr(snapshots, transactions, scope="family")
+        if result.get("twrr_pct") is not None and not result.get("excluded_periods"):
+            performance_lines.append(f"- {label} TWRR: {float(result['twrr_pct']):.2f}%")
+    if not performance_lines:
+        performance_lines.append(
+            "- True weekly/monthly performance: unavailable until dated cash-flow and valuation coverage is complete."
+        )
+    mood = market_regime.latest(market="INDIA", finalized_only=True)
+    mood_line = (
+        f"- Market Regime & Mood: **{mood['score']:.0f}/100 {mood['band'].replace('_', ' ')}**; "
+        f"{mood['trend'].lower()}; confidence {mood['confidence']}%; as of {mood['as_of']}."
+        if mood
+        else "- Market Regime & Mood: unavailable until a sourced daily observation is finalized."
+    )
     lines = [
         f"# Portfolio weekly digest — {iso_week}",
         "",
@@ -676,8 +696,8 @@ def _digest_text(
                 if snapshot_meta.get("comparability_reasons")
                 else ""
             ),
-            "- True performance: unavailable until Milestone 7C validates dated cash flows.",
-            "- Market Regime & Mood: unavailable until Milestone 8.",
+            *performance_lines,
+            mood_line,
             "",
             "## Recommendation changes",
             "",
@@ -768,8 +788,7 @@ def _digest_text(
     lines.extend(
         [
             "",
-            "Corporate-action, tax-lot, contribution/detractor, and full value reconciliation "
-            "sections will become authoritative in Milestones 7B and 7C.",
+            "Corporate-action, tax-lot, cash-flow, and reconciliation evidence remain local and auditable.",
             "",
             "Decision support only. No orders were placed.",
             "",

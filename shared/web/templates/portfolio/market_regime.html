@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+
+{% block title %}Market Regime & Mood · {{ app_name }}{% endblock %}
+{% block main_class %}main-wide dash-main{% endblock %}
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" defer></script>
+<script src="{{ app_path('/static/js/portfolio-market-regime.js') }}?v=20260829-8" defer></script>
+{% endblock %}
+
+{% block content %}
+<div class="os-page page-market-regime">
+  <header class="os-hero mrmi-hero">
+    <div>
+      <p class="dash-eyebrow">India · transparent execution context</p>
+      <h1>Market Regime & Mood<br><em>without pretending to forecast.</em></h1>
+      <p>MRMI changes deployment pace, tranche size, cash posture, and alert priority. It never creates or cancels a fundamental BUY or SELL.</p>
+    </div>
+    {% if observation %}
+    <div class="mrmi-score" data-band="{{ observation.band }}"><strong>{{ '%.0f'|format(observation.score) }}</strong><span>/ 100</span><small>{{ observation.band | replace('_', ' ') }}</small></div>
+    {% else %}
+    <div class="mrmi-score"><strong>—</strong><small>No sourced observation</small></div>
+    {% endif %}
+  </header>
+
+  {% if observation %}
+  <section class="os-stat-grid" aria-label="Current market regime">
+    <article><span>Regime</span><strong>{{ observation.regime | replace('_', ' ') }}</strong></article>
+    <article><span>Trend</span><strong>{{ observation.trend }}</strong></article>
+    <article><span>Confidence</span><strong>{{ observation.confidence }}%</strong></article>
+    <article><span>Evidence as of</span><strong>{{ observation.as_of }}</strong><small>{{ observation.observation_state }}</small></article>
+  </section>
+
+  <section class="os-panel">
+    <div class="os-panel-heading"><div><p class="dash-eyebrow">Component waterfall</p><h2>What moved the score</h2></div><span>{{ observation.methodology_version }}</span></div>
+    <div class="mrmi-components">
+      {% for component in observation.components %}
+      <article>
+        <div><strong>{{ component.name | replace('_', ' ') | title }}</strong><span>{{ '%.0f'|format(component.component_score) }} · {{ component.effective_weight }}%</span></div>
+        <div class="mrmi-bar"><i style="width: {{ component.component_score }}%"></i></div>
+        <small>{{ component.source }} · {{ component.source_as_of }} · {{ component.normalization_method }}</small>
+      </article>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="os-split-grid">
+    <article class="os-panel">
+      <div class="os-panel-heading"><div><p class="dash-eyebrow">Daily history</p><h2>Regime transitions</h2></div></div>
+      <div class="growth-chart-wrap"><canvas id="mrmi-history-chart" height="180" aria-label="MRMI score history"></canvas></div>
+    </article>
+    <article class="os-panel">
+      <div class="os-panel-heading"><div><p class="dash-eyebrow">Today's interpretation</p><h2>Execution context</h2></div></div>
+      <p>{{ observation.interpretation }}</p>
+      <h3>What it changes</h3><p class="text-muted">Tranche size, deployment pace, cash-buffer posture, retest discipline, and alert priority.</p>
+      <h3>What it cannot change</h3><p class="text-muted">Fundamental/governance action, reconciliation blocks, tax constraints, or trade execution.</p>
+      {% if observation.data_quality_flags %}<p class="os-quality-flags">{{ observation.data_quality_flags | join(' · ') }}</p>{% endif %}
+    </article>
+  </section>
+  {% else %}
+  <section class="os-panel os-empty-state"><h2>No market score is shown.</h2><p>Add sourced component observations through the local API. Missing provider data lowers coverage; the app never invents a live value.</p></section>
+  {% endif %}
+
+  <section class="os-panel">
+    <div class="os-panel-heading"><div><p class="dash-eyebrow">Open methodology</p><h2>{{ methodology.methodology_version }}</h2></div><span>Score is not a return forecast</span></div>
+    <div class="mrmi-method-grid">
+      {% for name, spec in methodology.components.items() %}
+      <article><strong>{{ name | replace('_', ' ') | title }}</strong><span>{{ spec.weight }}%</span><small>{{ spec.normalization }} · {{ spec.lookback_window }}</small></article>
+      {% endfor %}
+    </div>
+  </section>
+</div>
+<script id="mrmi-history-data" type="application/json">{{ history | tojson }}</script>
+{% endblock %}

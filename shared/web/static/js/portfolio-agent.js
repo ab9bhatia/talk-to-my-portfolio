@@ -419,6 +419,7 @@
           /* ignore malformed */
           continue;
         }
+        // Event-handler failures are application errors and must reach streamAsk.
         onEvent(event, parsed);
       }
     }

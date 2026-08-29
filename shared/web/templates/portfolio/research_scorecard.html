@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+
+{% block title %}{{ instrument.display_name }} scorecard · {{ app_name }}{% endblock %}
+{% block main_class %}main-wide dash-main{% endblock %}
+
+{% block content %}
+<div class="os-page page-research">
+  <header class="os-hero">
+    <div><p class="dash-eyebrow">{{ scorecard.adapter | replace('_', ' ') }} scorecard</p><h1>{{ instrument.display_name }}</h1><p>{{ instrument.canonical_symbol }} · {{ instrument.exchange }} · evidence {{ scorecard.evidence_as_of or 'unavailable' }}</p></div>
+    <div class="mrmi-score"><strong>{{ '%.0f'|format(scorecard.total_score) if scorecard.total_score is not none else '—' }}</strong><small>{{ scorecard.data_coverage_pct }}% data coverage</small></div>
+  </header>
+
+  <section class="research-dimension-grid">
+    {% for name, dimension in scorecard.dimensions.items() %}
+    <article class="os-panel">
+      <div class="research-dimension-head"><strong>{{ name | replace('_', ' ') | title }}</strong><span>{{ '%.0f'|format(dimension.score) if dimension.score is not none else '—' }}</span></div>
+      <small>{{ dimension.coverage_pct }}% evidence coverage</small>
+      <details><summary>Formula and evidence</summary>{% for input in dimension.formula_inputs %}<div class="research-formula"><code>{{ input.field }}</code><span>{{ input.value if input.value is not none else 'Missing' }}</span><small>{{ input.formula }} · {{ input.source or 'source missing' }} · {{ input.as_of or 'date missing' }}</small></div>{% endfor %}</details>
+    </article>
+    {% endfor %}
+  </section>
+
+  <section class="os-split-grid">
+    <article class="os-panel"><div class="os-panel-heading"><div><p class="dash-eyebrow">Append-only</p><h2>Thesis journal</h2></div></div>{% for row in thesis_history %}<div class="research-list-item"><strong>{{ row.decision }} · {{ row.source_as_of }}</strong><p>{{ row.thesis }}</p><small>Invalidate: {{ row.invalidation_trigger }} · {{ row.source }}</small></div>{% else %}<p class="text-muted">No thesis recorded. New entries append; earlier reasoning is never overwritten.</p>{% endfor %}</article>
+    <article class="os-panel"><div class="os-panel-heading"><div><p class="dash-eyebrow">Source drawer</p><h2>Evidence gaps</h2></div></div>{% for field in scorecard.missing_evidence %}<div class="os-list-row"><strong>{{ field }}</strong><span>Missing</span></div>{% else %}<p class="text-muted">All configured adapter inputs are covered.</p>{% endfor %}</article>
+  </section>
+</div>
+{% endblock %}

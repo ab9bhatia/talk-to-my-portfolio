@@ -43,6 +43,19 @@
     </div>
   </header>
 
+  <section class="dash-panel growth-panel" aria-labelledby="true-performance-title">
+    <div class="growth-panel-head">
+      <div>
+        <p class="dash-eyebrow">Cash-flow audited</p>
+        <h2 class="growth-panel-title" id="true-performance-title">True performance</h2>
+      </div>
+      <a class="dash-btn dash-btn-ghost" href="{{ app_path('/api/portfolio/performance/audit.xlsx') }}">Export audit workbook</a>
+    </div>
+    <p class="growth-breakdown-hint text-muted" id="performance-coverage-note">Checking dated cash-flow and valuation coverage…</p>
+    <div class="growth-change-cards" id="true-performance-cards"></div>
+    <div class="os-return-bridge" id="return-reconciliation-bridge" hidden></div>
+  </section>
+
   <section class="dash-panel growth-panel" aria-labelledby="growth-change-title">
     <p id="growth-quality-notice" class="growth-quality-notice" role="status" hidden></p>
     <div class="growth-change-cards" id="growth-change-cards">
@@ -142,4 +155,5 @@
 </div>
 
 <script src="{{ app_path('/static/js/portfolio-growth.js') }}?v=20260829-quality-aware" defer></script>
+<script src="{{ app_path('/static/js/portfolio-performance.js') }}?v=20260829-7c" defer></script>
 {% endblock %}

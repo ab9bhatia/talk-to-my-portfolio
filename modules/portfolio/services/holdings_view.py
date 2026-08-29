@@ -62,15 +62,15 @@ def account_abbrev(account_id: str | None) -> str:
 
 
 def _family_aggregate_key(holding: dict[str, Any]) -> str:
-    """Bucket key for family view — NSE+BSE same symbol merge; US/MF stay distinct."""
+    """Bucket by canonical identity; never merge a symbol across exchanges heuristically."""
     symbol = normalize_symbol(holding.get("symbol") or "")
     if not symbol:
         return ""
-    if holding.get("asset_class") == "mf":
-        return f"{symbol}:{(holding.get('exchange') or 'NSE').upper()}"
-    if is_us_exchange(holding.get("exchange")) or holding.get("broker") == "sarwa":
-        return f"{symbol}:{(holding.get('exchange') or 'US').upper()}"
-    return symbol
+    if holding.get("instrument_id"):
+        return f"ID:{holding['instrument_id']}"
+    if holding.get("isin"):
+        return f"ISIN:{str(holding['isin']).upper()}"
+    return f"SYMBOL:{(holding.get('exchange') or 'NSE').upper()}:{symbol}"
 
 
 def _holding_row_key(holding: dict[str, Any], *, aggregated: bool) -> str:
@@ -85,8 +85,12 @@ def _holding_row_key(holding: dict[str, Any], *, aggregated: bool) -> str:
 def _account_breakdown_row(part: dict[str, Any], *, symbol: str | None) -> dict[str, Any]:
     qty = float(part.get("quantity") or 0)
     invested = float(part.get("invested") or 0)
-    current = float(part.get("current_value") or 0)
-    pnl = float(part.get("pnl") if part.get("pnl") is not None else current - invested)
+    current = float(part.get("display_value") or part.get("marked_value") or part.get("current_value") or 0)
+    pnl = float(
+        part.get("display_pnl")
+        if part.get("display_pnl") is not None
+        else current - invested
+    )
     return {
         "account_id": part.get("account_id"),
         "abbrev": account_abbrev(part.get("account_id")),
@@ -115,12 +119,32 @@ def _format_account_column(parts: list[dict[str, Any]]) -> str:
 
 def _merge_holding_group(parts: list[dict[str, Any]]) -> dict[str, Any]:
     """Combine the same symbol across accounts into one family row."""
-    primary = max(parts, key=lambda p: float(p.get("current_value") or 0))
+    primary = max(
+        parts,
+        key=lambda p: float(
+            p.get("display_value") or p.get("marked_value") or p.get("current_value") or 0
+        ),
+    )
     total_qty = sum(float(p.get("quantity") or 0) for p in parts)
     total_invested = sum(float(p.get("invested") or 0) for p in parts)
-    total_current = sum(float(p.get("current_value") or 0) for p in parts)
-    total_pnl = sum(float(p.get("pnl") or 0) for p in parts)
+    total_current = sum(
+        float(p.get("display_value") or p.get("marked_value") or p.get("current_value") or 0)
+        for p in parts
+    )
+    total_pnl = total_current - total_invested
     avg_price = (total_invested / total_qty) if total_qty else 0.0
+    broker_value = sum(float(p.get("broker_reported_value") or p.get("current_value") or 0) for p in parts)
+    marked_value = total_current
+    reconciliation_delta = sum(float(p.get("reconciliation_delta") or 0) for p in parts)
+    state_rank = {
+        "UNRESOLVED_IDENTITY": 5,
+        "CORPORATE_ACTION_REVIEW": 4,
+        "BLOCKING_MISMATCH": 3,
+        "WARNING": 2,
+        "RECONCILED_WITH_TIMING_DIFFERENCE": 1,
+        "RECONCILED": 0,
+    }
+    states = [str(p.get("reconciliation_state")) for p in parts if p.get("reconciliation_state")]
 
     exchanges = sorted({(p.get("exchange") or "NSE").upper() for p in parts})
     if len(exchanges) == 1:
@@ -131,10 +155,13 @@ def _merge_holding_group(parts: list[dict[str, Any]]) -> dict[str, Any]:
         exchange_label = " · ".join(exchanges)
 
     merged = dict(primary)
+    display_price = (total_current / total_qty) if total_qty else 0.0
     merged.update(
         {
             "quantity": total_qty,
             "avg_price": round(avg_price, 2),
+            "last_price": round(display_price, 4),
+            "display_price": round(display_price, 4),
             "invested": round(total_invested, 2),
             "current_value": round(total_current, 2),
             "pnl": round(total_pnl, 2),
@@ -150,8 +177,33 @@ def _merge_holding_group(parts: list[dict[str, Any]]) -> dict[str, Any]:
             "account_codes": ",".join(
                 sorted({account_abbrev(p.get("account_id")) for p in parts})
             ),
+            "broker_reported_price": round((broker_value / total_qty) if total_qty else 0.0, 4),
+            "broker_reported_value": round(broker_value, 2),
+            "market_price": round((marked_value / total_qty) if total_qty else 0.0, 4),
+            "market_price_source": primary.get("market_price_source") or "broker_snapshot",
+            "market_price_as_of": primary.get("market_price_as_of"),
+            "marked_value": round(marked_value, 2),
+            "reconciliation_delta": round(reconciliation_delta, 2),
+            "reconciliation_state": (
+                max(states, key=lambda value: state_rank.get(value, 2)) if states else None
+            ),
+            "reconciliation_blocking": any(
+                bool(p.get("reconciliation_blocking")) for p in parts
+            ),
         }
     )
+    high_52w = merged.get("high_52w")
+    target_price = merged.get("target_price")
+    if display_price > 0 and high_52w:
+        merged["pct_from_52w_high"] = round(
+            ((display_price - float(high_52w)) / float(high_52w)) * 100,
+            2,
+        )
+    if display_price > 0 and target_price:
+        merged["upside_pct"] = round(
+            ((float(target_price) - display_price) / display_price) * 100,
+            2,
+        )
     merged["holding_key"] = _holding_row_key(merged, aggregated=True)
     return merged
 
@@ -565,6 +617,8 @@ def prepare_holdings_view(
 
 
 EXPORT_COLUMN_HEADERS: dict[str, str] = {
+    "instrument_id": "Instrument ID",
+    "isin": "ISIN",
     "symbol": "Symbol",
     "exchange": "Exchange",
     "account": "Account",
@@ -582,12 +636,25 @@ EXPORT_COLUMN_HEADERS: dict[str, str] = {
     "invested": "Invested",
     "pnl": "P&L",
     "pnl_pct": "P&L %",
+    "broker_price": "Broker price",
+    "broker_value": "Broker value",
+    "market_price": "Market price",
+    "marked_value": "Marked value",
+    "price_source": "Market price source",
+    "price_as_of": "Market price as of",
+    "session_date": "Market session",
+    "reconciliation_delta": "Reconciliation Δ",
+    "reconciliation_state": "Data-quality state",
 }
 
 EXPORT_COLUMN_ORDER: tuple[str, ...] = tuple(EXPORT_COLUMN_HEADERS.keys())
 
 
 def _export_cell(col_id: str, holding: dict[str, Any]) -> Any:
+    if col_id == "instrument_id":
+        return holding.get("instrument_id")
+    if col_id == "isin":
+        return holding.get("isin")
     if col_id == "symbol":
         return holding.get("symbol")
     if col_id == "exchange":
@@ -622,6 +689,24 @@ def _export_cell(col_id: str, holding: dict[str, Any]) -> Any:
         return holding.get("pnl")
     if col_id == "pnl_pct":
         return holding.get("pnl_pct")
+    if col_id == "broker_price":
+        return holding.get("broker_reported_price")
+    if col_id == "broker_value":
+        return holding.get("broker_reported_value")
+    if col_id == "market_price":
+        return holding.get("market_price")
+    if col_id == "marked_value":
+        return holding.get("marked_value")
+    if col_id == "price_source":
+        return (holding.get("reconciliation") or {}).get("market_price_source")
+    if col_id == "price_as_of":
+        return (holding.get("reconciliation") or {}).get("market_price_as_of")
+    if col_id == "session_date":
+        return (holding.get("reconciliation") or {}).get("market_session_date")
+    if col_id == "reconciliation_delta":
+        return holding.get("reconciliation_delta")
+    if col_id == "reconciliation_state":
+        return holding.get("reconciliation_state")
     return None
 
 

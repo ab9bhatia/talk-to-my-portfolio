@@ -57,6 +57,22 @@ async def lifespan(app: FastAPI):
 
     advisory_evidence_store.init_db()
     weekly_sync_store.init_db()
+    from modules.portfolio.db import instrument_master
+    from modules.portfolio.db import transaction_ledger
+    from modules.portfolio.db import market_regime
+    from modules.portfolio.db import research
+    from modules.portfolio.db import fund_intelligence
+    from modules.portfolio.db import operating_console
+
+    instrument_master.init_db()
+    transaction_ledger.init_db()
+    market_regime.init_db()
+    research.init_db()
+    fund_intelligence.init_db()
+    operating_console.init_db()
+    from modules.portfolio.db.schema_migrations import ensure_all_databases
+
+    ensure_all_databases()
     recovered = weekly_sync_store.recover_orphaned_runs(recovered_at=time.time())
     if recovered:
         logger.warning("Marked %s orphaned portfolio sync job(s) INTERRUPTED", recovered)

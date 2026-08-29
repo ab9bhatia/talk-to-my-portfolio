@@ -115,6 +115,24 @@ def _operational_flags(
         )
     if family_stale:
         flags.append(_flag("STALE_PORTFOLIO_SNAPSHOT", "warning", "Portfolio snapshot is stale."))
+    reconciliation_state = str(holding.get("reconciliation_state") or "")
+    if reconciliation_state == "BLOCKING_MISMATCH":
+        flags.append(
+            _flag(
+                "RECONCILIATION_BLOCKING_MISMATCH",
+                "error",
+                "Broker-reported and independently marked values differ materially.",
+                blocking=True,
+            )
+        )
+    elif reconciliation_state == "WARNING":
+        flags.append(
+            _flag(
+                "RECONCILIATION_WARNING",
+                "warning",
+                "Price/value provenance requires review but is below the blocking threshold.",
+            )
+        )
     if holding.get("governance_risk") in {"high", "broken"} and not holding.get("governance_event"):
         flags.append(
             _flag(
@@ -262,6 +280,8 @@ def _recommendation(
     confidence = decision.confidence
     if any(flag.blocking for flag in tax.flags):
         confidence = min(confidence, 60)
+    if holding.get("reconciliation_blocking"):
+        confidence = min(confidence, 40)
     add_conditions, exit_triggers = _conditions(
         holding,
         action=decision.action,
@@ -270,6 +290,11 @@ def _recommendation(
     positions = _account_positions(holding)
     return HoldingRecommendation(
         symbol=str(holding.get("symbol") or "UNKNOWN"),
+        instrument_id=holding.get("instrument_id"),
+        isin=holding.get("isin"),
+        reconciliation_state=holding.get("reconciliation_state"),
+        reconciliation_delta=holding.get("reconciliation_delta"),
+        reconciliation_blocking=bool(holding.get("reconciliation_blocking")),
         instrument_type=holding.get("instrument_type") or InstrumentType.EQUITY,
         accounts=positions,
         consolidated_qty=float(holding.get("consolidated_qty") or 0),
@@ -525,4 +550,24 @@ def build_advisory_payload(
             "blocking_items": sum(flag.blocking for flag in all_flags),
         },
     )
-    return to_primitive(payload)
+    result = to_primitive(payload)
+    from modules.portfolio.db import market_regime
+    from modules.portfolio.services.mrmi_advisory import execution_overlay
+
+    regime_observation = family.get("market_regime") or market_regime.latest(
+        market="INDIA", finalized_only=True
+    )
+    result["market_regime"] = regime_observation
+    for recommendation in result["recommendations"]:
+        overlay = execution_overlay(recommendation, regime_observation)
+        recommendation["execution_overlay"] = overlay
+        recommendation["rule_trace"].append(
+            {
+                "rule": "MRMI_EXECUTION_OVERLAY_ONLY",
+                "matched": bool(regime_observation),
+                "action_unchanged": recommendation["action"],
+                "deployment_pace": overlay["deployment_pace"],
+                "policy": "cannot_create_or_cancel_buy_sell",
+            }
+        )
+    return result

@@ -42,6 +42,19 @@ class TaxLossHarvestingMode(StrEnum):
     AGGRESSIVE_IF_WEAK = "aggressive_if_weak"
 
 
+class Repatriability(StrEnum):
+    UNKNOWN = "UNKNOWN"
+    NON_REPATRIABLE = "NON_REPATRIABLE"
+    REPATRIABLE = "REPATRIABLE"
+    CONDITIONAL = "CONDITIONAL"
+
+
+class EstateTaxReviewStatus(StrEnum):
+    UNKNOWN = "UNKNOWN"
+    REVIEW_REQUIRED = "REVIEW_REQUIRED"
+    REVIEWED = "REVIEWED"
+
+
 PROFILE_FIELDS = (
     "owner_ref",
     "country_of_residence",
@@ -60,6 +73,10 @@ PROFILE_FIELDS = (
     "gift_product_tax_verified",
     "gift_product_tax_source",
     "gift_product_tax_as_of",
+    "repatriability",
+    "estate_tax_review_status",
+    "permitted_instrument_types",
+    "family_transfers_permitted",
 )
 
 _COUNTRY_RE = re.compile(r"^[A-Z]{2}$")
@@ -111,6 +128,20 @@ def _bool_value(value: Any, field: str) -> bool:
     if value in (0, 1):
         return bool(value)
     raise ValueError(f"{field} must be true or false")
+
+
+def _instrument_types(value: Any) -> list[str]:
+    if value in (None, ""):
+        return []
+    if not isinstance(value, list):
+        raise ValueError("permitted_instrument_types must be a list")
+    result = []
+    for item in value:
+        normalized = str(item).strip().lower()
+        if not normalized or len(normalized) > 40:
+            raise ValueError("permitted_instrument_types entries must be 1-40 characters")
+        result.append(normalized)
+    return sorted(set(result))
 
 
 def _profile_input(row: dict[str, Any]) -> dict[str, Any]:
@@ -193,6 +224,24 @@ def normalize_account_profile(row: dict[str, Any], *, broker: str) -> dict[str, 
         "gift_product_tax_verified": gift_verified,
         "gift_product_tax_source": gift_source,
         "gift_product_tax_as_of": gift_as_of,
+        "repatriability": _enum_value(
+            data.get("repatriability"),
+            Repatriability,
+            "repatriability",
+            Repatriability.UNKNOWN,
+        ),
+        "estate_tax_review_status": _enum_value(
+            data.get("estate_tax_review_status"),
+            EstateTaxReviewStatus,
+            "estate_tax_review_status",
+            EstateTaxReviewStatus.UNKNOWN,
+        ),
+        "permitted_instrument_types": _instrument_types(
+            data.get("permitted_instrument_types")
+        ),
+        "family_transfers_permitted": _bool_value(
+            data.get("family_transfers_permitted"), "family_transfers_permitted"
+        ),
     }
 
 

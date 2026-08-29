@@ -46,7 +46,7 @@ flowchart LR
 | **Daily use** | Portfolio → filter, sort, expand rows, export Excel | Decisions on consolidated book |
 | **Track progress** | Growth → charts, timeline, optional sheet import | Long-term view vs benchmarks |
 | **Ask** | Agent → new chat after goal changes | Buy / trim / hold / rebalance guidance |
-| **Trust data** | Setup → Data quality after imports | Confirm mappings, fix unresolved sheet columns |
+| **Trust data** | Data Quality after refresh/import | Resolve identity, value, FX, and corporate-action blocks with sourced audit |
 | **Operate weekly** | Setup or OS scheduler → weekly sync | One audited snapshot/digest with explicit degraded accounts |
 
 ---
@@ -85,6 +85,12 @@ flowchart LR
 | Date-wise timeline | Family + per-account invested/value |
 | Weekly history | Immutable weekly snapshots for longer audits |
 | Weekly operating job | Friday India close plus Saturday global-price finalization; quality-aware local digest |
+| True performance | Dated cash-flow XIRR, flow-neutral TWRR, return bridge, coverage, and exclusions |
+| Tax-lot planning | Account-specific FIFO and corporate-action flags; never a final tax claim |
+| Market Regime & Mood | Transparent India execution context; changes pacing, never fundamentals |
+| Research workspace | Instrument-aware scorecards, safe screens, candidates, comparisons, thesis audit |
+| Fund Intelligence | Dated ETF/MF look-through, overlap, direct duplication, TER, liquidity |
+| Operating console | Material Today Brief, transparent stress, immutable what-if, quiet alerts |
 
 ### Portfolio agent
 
@@ -102,7 +108,7 @@ flowchart LR
 |---------|--------|
 | Account hub | Add, edit, reconnect, import |
 | Goals & guardrails | Personal risk frame for agent |
-| Data quality log | Post-import audit: row counts, unresolved account mappings |
+| Data Quality Center | Canonical identity, broker-vs-market value evidence, reconciliation coverage, and audited repair |
 | Weekly sync health | Durable queue, market stage/session, snapshot quality/coverage, recovery actions, local digest |
 | HTTP Basic Auth | Optional LAN protection |
 
@@ -129,8 +135,8 @@ flowchart LR
 
 | Horizon | Theme |
 |---------|--------|
-| **Now** | Consolidation + agent + growth + weekly sync + Setup trust |
-| **Next** | Reconciliation, instrument master, corporate-action groundwork |
+| **Now** | Consolidation + agent + growth + weekly sync + canonical reconciliation |
+| **Next** | Decision journal, risk lab, and proactive brief |
 | **Mobile** | Kotlin client on [api-contract-v1.md](api-contract-v1.md) |
 | **Scale** | Opt-in delivery channels and continuously running deployments |
 
@@ -141,8 +147,15 @@ flowchart LR
 | Route | Purpose |
 |-------|---------|
 | `/portfolio` | Family dashboard |
+| `/portfolio/brief` | Review queue, stress library, what-if builder, and alert center |
 | `/portfolio/agent` | Portfolio agent |
 | `/portfolio/growth` | Growth analytics |
+| `/portfolio/data-quality` | Instrument identity and reconciliation control center |
+| `/portfolio/market-regime` | MRMI score, components, source freshness, history, and interpretation |
+| `/portfolio/research` | Research home, candidates, screens, watchlist, and event calendar |
+| `/portfolio/funds` | Fund scheme, constituent overlap, cost, liquidity, and consolidation |
+| `/portfolio/asset-location` | After-tax account matrix, tax evidence, and CA-review package |
+| `/portfolio/system-health` | Integrity, provider health, scheduler, privacy, backup, and support status |
 | `/portfolio/setup` | Accounts, LLM, goals, weekly sync, data quality |
 | `/portfolio/account/{code}` | Single-account view |
 
@@ -167,4 +180,7 @@ flowchart LR
 | [security.md](security.md) | Threat model |
 | [api-contract-v1.md](api-contract-v1.md) | Building a mobile/API client |
 | [weekly-sync-operations.md](weekly-sync-operations.md) | Running, scheduling, and recovering the weekly job |
+| [reconciliation.md](reconciliation.md) | Identity, price/value provenance, reconciliation, and repair |
+| [performance-ledger.md](performance-ledger.md) | Transaction ledger, FIFO lots, true returns, and audit export |
+| [market-regime-mrmi.md](market-regime-mrmi.md) | MRMI methodology, history, research, and decision limits |
 | [release-checklist.md](release-checklist.md) | Shipping a version |

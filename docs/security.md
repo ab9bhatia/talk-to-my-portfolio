@@ -32,9 +32,16 @@ Browsers cache credentials for the session; `fetch()` to same origin includes th
 | Store | Contents |
 |-------|----------|
 | `.env` | Broker API keys, LLM keys, HTTP password |
-| `modules/portfolio/data/tokens.db` | Zerodha access tokens (plaintext) |
-| `modules/portfolio/data/groww_tokens.db` | Groww tokens (plaintext) |
+| OS keychain / encrypted fallback | Broker access tokens after explicit verified migration |
+| `modules/portfolio/data/tokens.db` | Legacy Zerodha token metadata; plaintext remains only until explicit verified migration |
+| `modules/portfolio/data/groww_tokens.db` | Legacy Groww token metadata; plaintext remains only until explicit verified migration |
 | `modules/portfolio/data/weekly_sync.db` | Durable queue/run audit, account codes/states, quality/session metadata, artifact paths |
+| `modules/portfolio/data/instrument_master.db` | Canonical instruments, aliases, corporate actions, sourced override audit |
+| `modules/portfolio/data/transaction_ledger.db` | Private transaction history, import previews, unresolved rows, and batch audit |
+| `modules/portfolio/data/market_regime.db` | Sourced daily MRMI observations and component provenance |
+| `modules/portfolio/data/research_workspace.db` | Private candidates, watchlists, notes, thesis history, screens, and events |
+| `modules/portfolio/data/fund_intelligence.db` | Sourced scheme metadata and dated constituent observations |
+| `modules/portfolio/data/operating_console.db` | Saved stress assumptions and local alert cooldown/history |
 | `modules/portfolio/data/weekly-digests/` | Local decision digests; no internal account IDs or full holdings |
 
 Recommend:
@@ -44,9 +51,17 @@ chmod 600 .env
 chmod 700 modules/portfolio/data
 ```
 
-Token encryption (SQLCipher / OS keychain) is not implemented yet — filesystem access still implies broker access.
+Use the preview/confirm migration in [security-recovery.md](security-recovery.md). It verifies OS-backed or AES-GCM fallback storage before replacing plaintext and provides rollback/revocation. Migration is intentionally not automatic.
 
 Weekly-sync errors are sanitized for common API key, secret, token, TOTP, password, and authorization assignments before logs/audit. Digest delivery is local-file only by default. Do not place the data directory in a cloud-synced folder unless that is an intentional disclosure.
+
+Reconciliation source-document fields should contain a local reference or document description, not embedded credentials. Instrument and override databases are private portfolio metadata and remain gitignored.
+
+Transaction imports can contain sensitive dates, amounts, and local account references. Preview and audit-workbook endpoints inherit the app's HTTP Basic Auth; do not expose them on an unauthenticated LAN or copy audit exports into tracked/cloud-synced folders unintentionally.
+
+Research notes and thesis history may contain sensitive personal reasoning. The screener never evaluates code or builds SQL from user fields. LLM research context removes account IDs and user notes; external facts still require source and as-of metadata.
+
+Account tax profiles, transaction lots, asset-location comparisons, and CA exports are sensitive local data. They are excluded from LLM context by default. Keep downloaded CA workbooks outside tracked or cloud-synced folders and protect LAN access before using tax endpoints.
 
 ## Trading
 
@@ -72,3 +87,6 @@ Clicking **Ask** sends holdings context and your question to the configured prov
 2. `chmod 600 .env`
 3. Keep `TRADING_ENABLED=false` unless you need in-browser orders
 4. Prefer `127.0.0.1` + VPN/tunnel over `0.0.0.0` on untrusted networks
+5. Use the built-in CSRF/origin policy and bearer token for non-browser clients
+
+For backup, restore, lost-machine response, schema recovery, privacy controls, and release hardening, see [security-recovery.md](security-recovery.md).

@@ -113,10 +113,21 @@ def select_action(
             }
         )
 
-    needs_reconcile = _has_flag(
+    governance_risk = str(holding.get("governance_risk") or "").lower()
+    governance_evidence = bool(
+        holding.get("governance_event")
+        and holding.get("governance_event_source")
+        and holding.get("governance_event_as_of")
+    )
+    hard_governance = governance_risk in {"high", "broken"} and governance_evidence
+    identity_or_value_mismatch = _has_flag(
         flags,
-        "CORPORATE_ACTION_RECONCILIATION",
         "UNRESOLVED_SYMBOL",
+        "RECONCILIATION_BLOCKING_MISMATCH",
+    )
+    corporate_reconcile = _has_flag(flags, "CORPORATE_ACTION_RECONCILIATION")
+    needs_reconcile = identity_or_value_mismatch or (
+        corporate_reconcile and not hard_governance
     )
     trace.append({"rule": "IDENTITY_AND_RECONCILIATION", "matched": needs_reconcile})
     if needs_reconcile:
@@ -147,13 +158,6 @@ def select_action(
             trace=trace,
         )
 
-    governance_risk = str(holding.get("governance_risk") or "").lower()
-    governance_evidence = bool(
-        holding.get("governance_event")
-        and holding.get("governance_event_source")
-        and holding.get("governance_event_as_of")
-    )
-    hard_governance = governance_risk in {"high", "broken"} and governance_evidence
     trace.append(
         {
             "rule": "SOURCED_GOVERNANCE_FAILURE",

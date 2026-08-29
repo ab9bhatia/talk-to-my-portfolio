@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import threading
+import time
+
 import modules.portfolio.services.chart_patterns as chart_patterns
 from fastapi.testclient import TestClient
 
@@ -156,3 +159,32 @@ def test_symbol_pattern_api_keeps_legacy_fields_and_adds_stage_6a(monkeypatch):
     payload = response.json()
     assert payload["actionable_primary"]["pattern"] == "fixture"
     assert len(payload["actionable_patterns"]) == 1
+
+
+def test_portfolio_pattern_scan_returns_background_status_immediately(monkeypatch):
+    release = threading.Event()
+    result_rows = [{"symbol": "ASYNCFIXTURE", "patterns": []}]
+
+    def slow_scan(_holdings, *, max_workers=4):
+        release.wait(timeout=2)
+        return result_rows
+
+    chart_patterns._ASYNC_SCAN_STATE.clear()
+    monkeypatch.setattr(chart_patterns, "scan_holdings", slow_scan)
+    holdings = [{"symbol": "ASYNCFIXTURE", "exchange": "NSE"}]
+
+    started = time.monotonic()
+    initial = chart_patterns.scan_holdings_async(holdings)
+    elapsed = time.monotonic() - started
+
+    assert initial["status"] == "scanning"
+    assert elapsed < 0.25
+    release.set()
+    deadline = time.monotonic() + 2
+    while time.monotonic() < deadline:
+        completed = chart_patterns.scan_holdings_async(holdings)
+        if completed["status"] == "complete":
+            break
+        time.sleep(0.01)
+    assert completed["status"] == "complete"
+    assert completed["results"] == result_rows

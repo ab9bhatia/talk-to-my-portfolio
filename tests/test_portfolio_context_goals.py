@@ -63,7 +63,11 @@ def test_context_includes_deterministic_advisory_payload(monkeypatch):
     }
     monkeypatch.setattr(ctx, "_load_user_goals", lambda: {})
     monkeypatch.setattr(ctx, "fetch_family_portfolio", lambda **_kwargs: family)
-    monkeypatch.setattr(ctx, "_batch_yahoo_profiles", lambda _holdings: {"FIXTURE": {}})
+    monkeypatch.setattr(
+        ctx,
+        "_batch_yahoo_profiles",
+        lambda _holdings: (_ for _ in ()).throw(AssertionError("agent question triggered live quote fan-out")),
+    )
     monkeypatch.setattr(ctx, "get_macro_snapshot", lambda: {"as_of": "2026-08-28"})
 
     context = ctx.build_portfolio_context()

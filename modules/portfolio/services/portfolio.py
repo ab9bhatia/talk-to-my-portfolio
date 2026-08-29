@@ -236,9 +236,18 @@ def _refresh_holdings_ltps_from_yahoo(
                 unresolved_symbols.add(f"{symbol}:{exchange}")
             updated.append(row)
             continue
+        row.setdefault("broker_reported_price", row.get("last_price"))
+        row.setdefault("broker_reported_value", row.get("current_value"))
+        row.setdefault("broker_reported_pnl", row.get("pnl"))
+        row.setdefault("broker_price_source", row.get("broker") or "durable_snapshot")
+        row.setdefault("broker_value_source", row.get("broker") or "durable_snapshot")
         qty = float(row.get("quantity") or 0)
         avg = float(row.get("avg_price") or 0)
         row["last_price"] = round(ltp, 2)
+        row["market_price"] = round(ltp, 2)
+        row["market_price_source"] = "yahoo_session_quote"
+        row["market_price_as_of"] = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+        row["quote_refreshed"] = True
         row["invested"] = round(qty * avg, 2)
         row["current_value"] = round(qty * ltp, 2)
         row["pnl"] = round(row["current_value"] - row["invested"], 2)
@@ -847,8 +856,10 @@ def _finalize_family_payload(
     payload = _merge_sarwa_into_family(payload, with_metrics=with_metrics, refresh=refresh)
     payload = _ensure_family_payload_metrics(payload, with_metrics=with_metrics)
     from modules.portfolio.services.quote_reconciliation import apply_family_quote_consensus
+    from modules.portfolio.services.reconciliation import reconcile_family
 
-    return apply_family_quote_consensus(payload)
+    payload = apply_family_quote_consensus(payload)
+    return reconcile_family(payload)
 
 
 def fetch_family_portfolio(

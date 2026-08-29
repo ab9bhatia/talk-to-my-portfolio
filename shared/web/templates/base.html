@@ -23,6 +23,11 @@
         <div class="nav-section">Portfolio</div>
         <ul class="nav-list">
           <li>
+            <a href="{{ app_path('/portfolio/brief') }}" class="nav-link {% if active_module == 'brief' %}active{% endif %}" data-loader-message="Building today brief…">
+              <span class="nav-icon" aria-hidden="true">◆</span> Today Brief
+            </a>
+          </li>
+          <li>
             <a href="{{ app_path('/portfolio') }}" class="nav-link {% if active_module == 'portfolio' %}active{% endif %}" data-loader-message="Loading portfolio…">
               <span class="nav-icon" aria-hidden="true">◆</span> Dashboard
             </a>
@@ -38,6 +43,31 @@
             </a>
           </li>
           <li>
+            <a href="{{ app_path('/portfolio/data-quality') }}" class="nav-link {% if active_module == 'data_quality' %}active{% endif %}" data-loader-message="Loading data quality…">
+              <span class="nav-icon" aria-hidden="true">✓</span> Data Quality
+            </a>
+          </li>
+          <li>
+            <a href="{{ app_path('/portfolio/market-regime') }}" class="nav-link {% if active_module == 'market_regime' %}active{% endif %}" data-loader-message="Loading market regime…">
+              <span class="nav-icon" aria-hidden="true">◐</span> Market Mood
+            </a>
+          </li>
+          <li>
+            <a href="{{ app_path('/portfolio/research') }}" class="nav-link {% if active_module == 'research' %}active{% endif %}" data-loader-message="Loading research workspace…">
+              <span class="nav-icon" aria-hidden="true">◈</span> Research
+            </a>
+          </li>
+          <li>
+            <a href="{{ app_path('/portfolio/funds') }}" class="nav-link {% if active_module == 'funds' %}active{% endif %}" data-loader-message="Loading fund intelligence…">
+              <span class="nav-icon" aria-hidden="true">◉</span> Fund Intelligence
+            </a>
+          </li>
+          <li>
+            <a href="{{ app_path('/portfolio/asset-location') }}" class="nav-link {% if active_module == 'asset_location' %}active{% endif %}" data-loader-message="Loading asset location…">
+              <span class="nav-icon" aria-hidden="true">◇</span> Asset Location
+            </a>
+          </li>
+          <li>
             <a href="{{ app_path('/portfolio/agent') }}" class="nav-link {% if active_module == 'agent' %}active{% endif %}" data-loader-message="Loading portfolio agent…">
               <span class="nav-icon" aria-hidden="true">✦</span> Portfolio Agent
             </a>
@@ -45,6 +75,11 @@
           <li>
             <a href="{{ app_path('/portfolio/setup') }}" class="nav-link {% if active_module == 'setup' %}active{% endif %}" data-loader-message="Loading setup…">
               <span class="nav-icon">◎</span> Setup & Config
+            </a>
+          </li>
+          <li>
+            <a href="{{ app_path('/portfolio/system-health') }}" class="nav-link {% if active_module == 'system_health' %}active{% endif %}" data-loader-message="Loading system health…">
+              <span class="nav-icon">▣</span> System Health
             </a>
           </li>
         </ul>

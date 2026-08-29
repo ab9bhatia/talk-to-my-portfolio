@@ -69,6 +69,28 @@ def test_agent_empty_submission_is_visible_and_accessible():
     assert 'aria-describedby="agent-hint agent-error"' in template
 
 
+def test_agent_stream_errors_and_incomplete_streams_are_visible():
+    script = _read("shared/web/static/js/portfolio-agent.js")
+    assert "onEvent(event, parsed);" in script
+    assert "Agent stream ended before a response was returned" in script
+    assert "Portfolio Agent timed out after 2 minutes" in script
+
+
+def test_chart_setup_filter_has_explicit_semantics_and_state():
+    script = _read("shared/web/static/js/holdings.js")
+    radar_script = _read("shared/web/static/js/portfolio-patterns.js")
+    template = _read("shared/web/templates/portfolio/_portfolio_filters_bar.html")
+    styles = _read("shared/web/static/css/app.css")
+    assert ">Active setups</span>" in template
+    assert "Could not load chart setups" in script
+    assert 'fetch("/api/portfolio/patterns?blocking=false")' in script
+    assert "Scanning setups…" in script
+    assert 'fetch(`/api/portfolio/patterns${query}`)' in radar_script
+    assert "Scanning in the background — keep using the dashboard." in radar_script
+    assert 'row.dataset.hasPattern !== "1"' in script
+    assert "color: var(--text-muted);" in styles
+
+
 def test_primary_layout_can_shrink_inside_the_viewport():
     styles = _read("shared/web/static/css/app.css")
     assert "grid-template-columns: var(--sidebar-width) minmax(0, 1fr);" in styles

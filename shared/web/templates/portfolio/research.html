@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{% block title %}Research · {{ app_name }}{% endblock %}
+{% block main_class %}main-wide dash-main{% endblock %}
+
+{% block content %}
+<div class="os-page page-research">
+  <header class="os-hero research-hero">
+    <div><p class="dash-eyebrow">Local evidence workspace</p><h1>Research deeply.<br><em>Keep the reasoning auditable.</em></h1><p>Instrument-specific scorecards, safe screens, comparisons, approved candidates, sourced events, and append-only thesis history.</p></div>
+    <div class="research-guardrail"><strong>Research ≠ recommendation</strong><span>Only approved candidates with sourced coverage can enter deterministic consideration.</span></div>
+  </header>
+
+  <section class="os-stat-grid" aria-label="Research workspace summary">
+    <article><span>Approved candidates</span><strong>{{ candidates | selectattr('research_status', 'equalto', 'APPROVED') | list | length }}</strong></article>
+    <article><span>In research</span><strong>{{ candidates | selectattr('research_status', 'equalto', 'RESEARCH') | list | length }}</strong></article>
+    <article><span>Saved screens</span><strong>{{ saved_screens | length }}</strong></article>
+    <article><span>Upcoming events</span><strong>{{ events | length }}</strong></article>
+  </section>
+
+  <section class="os-panel">
+    <div class="os-panel-heading"><div><p class="dash-eyebrow">Approved universe</p><h2>Candidate research queue</h2></div><span>Explicit opt-in only</span></div>
+    <div class="research-card-grid">
+      {% for candidate in candidates %}
+      <a class="research-card" href="{{ app_path('/portfolio/research/scorecard/' ~ candidate.instrument_id) }}">
+        <div><span class="os-state">{{ candidate.research_status }}</span><strong>{{ candidate.instrument_id }}</strong></div>
+        <p>{{ candidate.role }} · max {{ candidate.max_weight_pct }}%</p>
+        <small>Evidence {{ candidate.source_coverage_pct }}% · overlap {{ candidate.overlap_impact }}</small>
+      </a>
+      {% else %}<div class="os-empty-state"><p>No candidates yet. Add canonical instruments through the research API, then explicitly mark them RESEARCH or APPROVED.</p></div>{% endfor %}
+    </div>
+  </section>
+
+  <section class="os-split-grid">
+    <article class="os-panel">
+      <div class="os-panel-heading"><div><p class="dash-eyebrow">Safe query builder</p><h2>Saved screens</h2></div></div>
+      {% for screen in saved_screens %}<div class="os-list-row"><strong>{{ screen.name }}</strong><span>v{{ screen.schema_version }}</span><span>{{ screen.definition.root.op }}</span></div>{% else %}<p class="text-muted">No saved screens. Screens use typed JSON fields/operators; arbitrary code and SQL are rejected.</p>{% endfor %}
+    </article>
+    <article class="os-panel">
+      <div class="os-panel-heading"><div><p class="dash-eyebrow">Entry discipline</p><h2>Watchlist</h2></div></div>
+      {% for row in watchlist %}<div class="research-list-item"><strong>{{ row.instrument_id }} · {{ row.target_role }}</strong><p>{{ row.entry_condition }}</p><small>Invalidate: {{ row.invalidation_trigger }}</small></div>{% else %}<p class="text-muted">No watchlist entries.</p>{% endfor %}
+    </article>
+  </section>
+
+  <section class="os-panel">
+    <div class="os-panel-heading"><div><p class="dash-eyebrow">Verified calendar</p><h2>Results, corporate and ownership events</h2></div><span>Rumors never change action</span></div>
+    <div class="os-table-wrap"><table class="os-table"><thead><tr><th>Date</th><th>Event</th><th>Instrument</th><th>Source</th><th>Evidence</th></tr></thead><tbody>
+      {% for row in events %}<tr><td>{{ row.event_date }}</td><td><strong>{{ row.title }}</strong><small>{{ row.event_type }}</small></td><td>{{ row.instrument_id or 'Market' }}</td><td>{{ row.source }}<small>{{ row.source_as_of }}</small></td><td><span class="os-state">{{ 'VERIFIED' if row.verified else 'UNVERIFIED' }}</span></td></tr>{% else %}<tr><td colspan="5">No sourced events recorded.</td></tr>{% endfor %}
+    </tbody></table></div>
+  </section>
+</div>
+{% endblock %}

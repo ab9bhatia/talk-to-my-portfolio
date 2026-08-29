@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import Any
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile
@@ -14,7 +15,9 @@ import os
 from modules.portfolio.auth.groww import GrowwError, get_groww_connection_status
 from modules.portfolio.account_profile import (
     AccountType,
+    EstateTaxReviewStatus,
     IndiaResidencyStatus,
+    Repatriability,
     RiskProfile,
     TaxLossHarvestingMode,
 )
@@ -145,6 +148,211 @@ class WeeklySyncPayload(BaseModel):
     )
 
 
+class InstrumentResolvePayload(BaseModel):
+    symbol: str | None = Field(default=None, max_length=80)
+    exchange: str = Field(default="NSE", max_length=20)
+    isin: str | None = Field(default=None, max_length=32)
+    broker_instrument_id: str | None = Field(default=None, max_length=120)
+    yahoo_ticker: str | None = Field(default=None, max_length=80)
+    display_name: str | None = Field(default=None, max_length=240)
+    fund_name: str | None = Field(default=None, max_length=240)
+    asset_class: str = Field(default="equity", max_length=40)
+    quote_type: str | None = Field(default=None, max_length=40)
+    currency: str | None = Field(default=None, max_length=8)
+
+
+class ReconciliationOverridePayload(BaseModel):
+    instrument_id: str = Field(..., min_length=8, max_length=64)
+    account_code: str | None = Field(default=None, max_length=16)
+    override_type: str = Field(..., min_length=3, max_length=64)
+    value: Any = None
+    reason: str = Field(..., min_length=8, max_length=1000)
+    source_document: str = Field(..., min_length=3, max_length=1000)
+    as_of_date: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
+    approved_by: str = Field(..., min_length=2, max_length=120)
+
+
+class TransactionImportPayload(BaseModel):
+    source: str = Field(..., min_length=2, max_length=64)
+    source_document: str | None = Field(default=None, max_length=500)
+    rows: list[dict[str, Any]] = Field(..., min_length=1, max_length=10000)
+
+
+class MrmiObservationPayload(BaseModel):
+    as_of: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
+    observation_state: str = Field(
+        default="PROVISIONAL", pattern=r"^(PROVISIONAL|FINALIZED|BACKFILLED)$"
+    )
+    components: dict[str, dict[str, Any]]
+
+
+class ResearchScorecardPayload(BaseModel):
+    instrument_id: str = Field(..., min_length=8, max_length=64)
+    evidence: dict[str, Any]
+
+
+class ResearchScreenRunPayload(BaseModel):
+    definition: dict[str, Any]
+    rows: list[dict[str, Any]] = Field(..., max_length=5000)
+
+
+class SavedResearchScreenPayload(BaseModel):
+    name: str = Field(..., min_length=2, max_length=120)
+    definition: dict[str, Any]
+    screen_id: str | None = Field(default=None, max_length=64)
+    reason: str = Field(default="saved", min_length=2, max_length=240)
+
+
+class ResearchCandidatePayload(BaseModel):
+    instrument_id: str = Field(..., min_length=8, max_length=64)
+    research_status: str = Field(..., pattern=r"^(APPROVED|RESEARCH|REJECTED)$")
+    source_coverage_pct: float = Field(default=0, ge=0, le=100)
+    account_eligibility: list[str] = Field(default_factory=list, max_length=50)
+    role: str = Field(..., min_length=2, max_length=120)
+    max_weight_pct: float = Field(default=0, ge=0, le=100)
+    liquidity_threshold: float = Field(default=0, ge=0)
+    overlap_impact: str = Field(default="UNKNOWN", max_length=240)
+    source: str = Field(..., min_length=2, max_length=500)
+    source_as_of: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
+
+
+class ResearchWatchlistPayload(BaseModel):
+    watchlist_name: str = Field(default="Research", max_length=120)
+    instrument_id: str = Field(..., min_length=8, max_length=64)
+    target_role: str = Field(..., min_length=2, max_length=120)
+    entry_condition: str = Field(..., min_length=3, max_length=1000)
+    desired_weight_pct: float = Field(default=0, ge=0, le=100)
+    valuation_range: str | None = Field(default=None, max_length=240)
+    event_deadline: str | None = Field(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$")
+    invalidation_trigger: str = Field(..., min_length=3, max_length=1000)
+    source_evidence: str = Field(..., min_length=3, max_length=1000)
+    user_notes: str | None = Field(default=None, max_length=2000)
+
+
+class ResearchThesisPayload(BaseModel):
+    instrument_id: str = Field(..., min_length=8, max_length=64)
+    thesis: str = Field(..., min_length=8, max_length=4000)
+    invalidation_trigger: str = Field(..., min_length=3, max_length=2000)
+    source: str = Field(..., min_length=2, max_length=1000)
+    source_as_of: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
+    decision: str = Field(default="WATCH", max_length=40)
+    author: str = Field(default="local-user", min_length=2, max_length=120)
+
+
+class ResearchEventPayload(BaseModel):
+    instrument_id: str | None = Field(default=None, max_length=64)
+    event_type: str = Field(..., min_length=2, max_length=80)
+    event_date: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
+    title: str = Field(..., min_length=3, max_length=500)
+    source: str = Field(..., min_length=2, max_length=1000)
+    source_as_of: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
+    verified: bool = False
+    ownership_change_pct: float | None = None
+
+
+class ResearchComparePayload(BaseModel):
+    items: list[dict[str, Any]] = Field(..., min_length=2, max_length=5)
+
+
+class FundSchemePayload(BaseModel):
+    instrument_id: str = Field(..., min_length=8, max_length=64)
+    canonical_scheme_name: str = Field(..., min_length=3, max_length=300)
+    isin: str | None = Field(default=None, max_length=32)
+    ticker: str | None = Field(default=None, max_length=80)
+    amc_issuer: str | None = Field(default=None, max_length=240)
+    scheme_plan: str | None = Field(default=None, pattern=r"^(Direct|Regular)$")
+    scheme_option: str | None = Field(default=None, pattern=r"^(Growth|IDCW)$")
+    domicile: str | None = Field(default=None, max_length=8)
+    currency: str = Field(default="INR", max_length=8)
+    underlying_index_category: str | None = Field(default=None, max_length=240)
+    aum: float | None = Field(default=None, ge=0)
+    ter_pct: float | None = Field(default=None, ge=0, le=20)
+    tracking_error_pct: float | None = Field(default=None, ge=0)
+    tracking_difference_pct: float | None = None
+    inception_date: str | None = Field(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$")
+    manager: str | None = Field(default=None, max_length=240)
+    manager_tenure_years: float | None = Field(default=None, ge=0)
+    exit_load: str | None = Field(default=None, max_length=500)
+    bid_ask_spread_pct: float | None = Field(default=None, ge=0)
+    average_traded_value: float | None = Field(default=None, ge=0)
+    premium_discount_pct: float | None = None
+    rebalance_schedule: str | None = Field(default=None, max_length=240)
+    factsheet_source: str = Field(..., min_length=3, max_length=1000)
+    factsheet_as_of: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
+    instrument_type: str = Field(..., pattern=r"^(etf|mutual_fund)$")
+
+
+class FundConstituentPayload(BaseModel):
+    underlying_instrument_id: str | None = Field(default=None, max_length=64)
+    unresolved_label: str | None = Field(default=None, max_length=300)
+    weight_pct: float = Field(..., ge=0, le=100)
+    sector: str | None = Field(default=None, max_length=120)
+    market_cap: str | None = Field(default=None, max_length=40)
+    factor_style: str | None = Field(default=None, max_length=120)
+    promoter_group: str | None = Field(default=None, max_length=240)
+
+
+class FundHoldingsIngestPayload(BaseModel):
+    fund_instrument_id: str = Field(..., min_length=8, max_length=64)
+    as_of: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
+    source: str = Field(..., min_length=3, max_length=1000)
+    source_type: str = Field(..., pattern=r"^(AMC_FACTSHEET|INDEX_FILE|OFFICIAL_DOCUMENT|MANUAL)$")
+    coverage_type: str = Field(..., pattern=r"^(FULL|TOP_HOLDINGS|PARTIAL)$")
+    coverage_pct: float = Field(..., ge=0, le=100)
+    rows: list[FundConstituentPayload] = Field(..., min_length=1, max_length=10000)
+
+
+class StressScenarioPayload(BaseModel):
+    name: str = Field(..., min_length=2, max_length=120)
+    custom_assumptions: dict[str, Any] | None = None
+    save: bool = False
+
+
+class WhatIfPayload(BaseModel):
+    operations: list[dict[str, Any]] = Field(..., min_length=1, max_length=100)
+    constraints: dict[str, Any] = Field(default_factory=dict)
+
+
+class AlertEvaluationPayload(BaseModel):
+    events: list[dict[str, Any]] = Field(..., max_length=1000)
+    cooldown_seconds: int = Field(default=86400, ge=60, le=2592000)
+
+
+class AfterTaxPayload(BaseModel):
+    candidate: dict[str, Any]
+    account: dict[str, Any]
+    as_of: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
+
+
+class AssetLocationPayload(BaseModel):
+    candidate: dict[str, Any]
+    accounts: list[dict[str, Any]] = Field(..., min_length=1, max_length=100)
+    as_of: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
+
+
+class TaxHarvestPayload(BaseModel):
+    holding: dict[str, Any]
+    account: dict[str, Any]
+    lots: list[dict[str, Any]] = Field(default_factory=list, max_length=10000)
+    as_of: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
+
+
+class SecretMigrationPayload(BaseModel):
+    store: str = Field(..., pattern=r"^(zerodha|groww)$")
+    confirmed: bool = False
+
+
+class BackupPayload(BaseModel):
+    filename: str = Field(..., pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]{1,100}\.ttmpbackup$")
+    password: str = Field(..., min_length=12, max_length=500)
+
+
+class RestorePayload(BackupPayload):
+    selected: list[str] | None = Field(default=None, max_length=100)
+    dry_run: bool = True
+    confirmed: bool = False
+
+
 class AdvisoryRebalanceTarget(BaseModel):
     symbol: str = Field(..., min_length=1, max_length=32)
     target_weight_pct: float = Field(..., ge=0, le=100)
@@ -179,6 +387,859 @@ def api_portfolio_version():
         "contract_version": API_CONTRACT_VERSION,
         "app_version": os.getenv("APP_VERSION", "dev"),
     }
+
+
+@router.get("/api/portfolio/security/csrf")
+def api_security_csrf():
+    from shared.web.http_auth import csrf_token
+
+    return {"csrf_token": csrf_token(), "header": "X-Portfolio-CSRF"}
+
+
+def _secret_store_spec(store: str):
+    from modules.portfolio.db import groww_tokens, tokens
+
+    return (
+        (tokens.DB_PATH, "tokens", "zerodha")
+        if store == "zerodha"
+        else (groww_tokens.DB_PATH, "groww_tokens", "groww")
+    )
+
+
+@router.get("/api/portfolio/security/secrets/migration-preview")
+def api_secret_migration_preview(store: str = Query(..., pattern=r"^(zerodha|groww)$")):
+    from modules.portfolio.services.secret_storage import migration_preview
+
+    path, table, _namespace = _secret_store_spec(store)
+    return migration_preview(path, table=table)
+
+
+@router.post("/api/portfolio/security/secrets/migrate")
+def api_migrate_secrets(payload: SecretMigrationPayload):
+    from datetime import UTC, datetime
+
+    from modules.portfolio.services.secret_storage import migrate_plaintext_secrets
+
+    path, table, namespace = _secret_store_spec(payload.store)
+    try:
+        return migrate_plaintext_secrets(
+            path, table=table, namespace=namespace, confirmed=payload.confirmed,
+            now=datetime.now(UTC).isoformat(),
+        )
+    except (RuntimeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post("/api/portfolio/security/secrets/rollback")
+def api_rollback_secrets(payload: SecretMigrationPayload):
+    from modules.portfolio.services.secret_storage import rollback_secret_migration
+
+    path, table, _namespace = _secret_store_spec(payload.store)
+    try:
+        return rollback_secret_migration(path, table=table, confirmed=payload.confirmed)
+    except (RuntimeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.delete("/api/portfolio/security/secrets/{store}/{account_id}")
+def api_revoke_local_token(
+    store: str, account_id: str,
+):
+    if store not in {"zerodha", "groww"} or not account_id or len(account_id) > 64:
+        raise HTTPException(status_code=422, detail="Invalid token-store reference.")
+    from modules.portfolio.db import groww_tokens, tokens
+
+    if store == "zerodha":
+        tokens.delete_token(account_id)
+    else:
+        groww_tokens.delete_token(account_id)
+    return {"revoked": True, "store": store, "account_id_exposed": False}
+
+
+@router.post("/api/portfolio/security/backup")
+def api_create_backup(payload: BackupPayload):
+    from modules.portfolio.paths import DATA_DIR
+    from modules.portfolio.services.backup_restore import create_encrypted_backup
+
+    output = DATA_DIR / "backups" / payload.filename
+    return create_encrypted_backup(output, password=payload.password)
+
+
+@router.post("/api/portfolio/security/restore")
+def api_restore_backup(payload: RestorePayload):
+    from modules.portfolio.paths import DATA_DIR
+    from modules.portfolio.services.backup_restore import restore_backup
+
+    if not payload.dry_run:
+        raise HTTPException(
+            status_code=409,
+            detail="Stop the app and use scripts/portfolio_recovery.py for an applied restore.",
+        )
+    path = DATA_DIR / "backups" / payload.filename
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="Backup file not found.")
+    try:
+        return restore_backup(
+            path, password=payload.password, selected=payload.selected, dry_run=payload.dry_run
+        )
+    except (OSError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get("/api/portfolio/security/privacy")
+def api_privacy_controls():
+    from modules.portfolio.services.privacy_controls import privacy_status
+
+    return privacy_status()
+
+
+@router.get("/api/portfolio/security/llm-context-preview")
+def api_llm_context_preview():
+    from modules.portfolio.services.portfolio_agent import external_context_preview
+    from modules.portfolio.services.portfolio_context import build_portfolio_context
+
+    return external_context_preview(build_portfolio_context(refresh=False))
+
+
+@router.get("/api/portfolio/security/diagnostics")
+def api_security_diagnostics():
+    from modules.portfolio.services.diagnostics import collect_diagnostics
+
+    return collect_diagnostics()
+
+
+@router.get("/api/portfolio/security/support-bundle.zip")
+def api_support_bundle(include_raw_holdings: bool = Query(False)):
+    from modules.portfolio.services.diagnostics import build_support_bundle
+
+    family = fetch_family_portfolio(refresh=False, stale_ok=True) if include_raw_holdings else None
+    return StreamingResponse(
+        build_support_bundle(family=family, include_raw_holdings=include_raw_holdings),
+        media_type="application/zip",
+        headers={"Content-Disposition": "attachment; filename=ttmp-support-bundle.zip"},
+    )
+
+
+@router.get("/api/portfolio/instruments")
+def api_instruments(
+    query: str | None = Query(default=None, max_length=120),
+    limit: int = Query(100, ge=1, le=500),
+):
+    from modules.portfolio.db import instrument_master
+
+    return {
+        "schema_version": instrument_master.SCHEMA_VERSION,
+        "instruments": instrument_master.list_instruments(query=query, limit=limit),
+    }
+
+
+@router.post("/api/portfolio/instruments/resolve")
+def api_resolve_instrument(payload: InstrumentResolvePayload):
+    from modules.portfolio.services.instrument_master import resolve_holding
+
+    result = resolve_holding(payload.model_dump(exclude_none=True))
+    if not result["resolved"]:
+        raise HTTPException(status_code=422, detail=result["reason"])
+    return result
+
+
+def _reconciliation_payload(*, refresh: bool = False) -> dict[str, Any]:
+    family = fetch_family_portfolio(refresh=refresh, stale_ok=True)
+    return family.get("reconciliation") or {
+        "summary": {},
+        "by_account": [],
+        "by_security": [],
+        "unresolved_instruments": [],
+        "corporate_action_review": [],
+    }
+
+
+@router.get("/api/portfolio/reconciliation/summary")
+def api_reconciliation_summary(refresh: bool = Query(False)):
+    return _reconciliation_payload(refresh=refresh)
+
+
+@router.get("/api/portfolio/reconciliation/detail")
+def api_reconciliation_detail(
+    instrument_id: str | None = Query(default=None, max_length=64),
+    account_code: str | None = Query(default=None, max_length=16),
+):
+    payload = _reconciliation_payload()
+    securities = payload.get("by_security") or []
+    accounts = payload.get("by_account") or []
+    if instrument_id:
+        securities = [row for row in securities if row.get("instrument_id") == instrument_id]
+    if account_code:
+        code = account_code.strip().upper()
+        securities = [row for row in securities if code in (row.get("accounts") or [])]
+        accounts = [
+            row
+            for row in accounts
+            if str(row.get("account_code") or "").upper() == code
+        ]
+    return {"by_security": securities, "by_account": accounts}
+
+
+@router.get("/api/portfolio/reconciliation/unresolved")
+def api_reconciliation_unresolved():
+    payload = _reconciliation_payload()
+    return {"unresolved_instruments": payload.get("unresolved_instruments") or []}
+
+
+@router.get("/api/portfolio/reconciliation/corporate-actions")
+def api_corporate_action_review():
+    from modules.portfolio.db import instrument_master
+
+    return {
+        "corporate_actions": instrument_master.list_corporate_actions(pending_only=True)
+    }
+
+
+@router.post("/api/portfolio/reconciliation/overrides")
+def api_create_reconciliation_override(payload: ReconciliationOverridePayload):
+    from modules.portfolio.db import instrument_master
+
+    if instrument_master.get_instrument(payload.instrument_id) is None:
+        raise HTTPException(status_code=404, detail="Unknown instrument_id.")
+    try:
+        row = instrument_master.create_override(payload.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    invalidate_portfolio_cache(preserve_disk=True)
+    return {
+        "override": row,
+        "audit": instrument_master.override_audit(int(row["override_id"])),
+    }
+
+
+def _account_id_from_code(account_code: str | None) -> str | None:
+    if not account_code:
+        return None
+    try:
+        return resolve_account_ref(account_code)
+    except KeyError:
+        return account_code.strip()
+
+
+def _public_transaction(row: dict[str, Any]) -> dict[str, Any]:
+    item = dict(row)
+    account_id = str(item.pop("account_id", ""))
+    try:
+        item["account_code"] = get_account_code(account_id)
+    except KeyError:
+        item["account_code"] = account_id.upper() or "UNKNOWN"
+    return item
+
+
+def _public_import_batch(batch: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: batch.get(key)
+        for key in (
+            "import_batch_id", "schema_version", "source", "status", "row_count",
+            "valid_count", "unresolved_count", "committed_count", "duplicate_count",
+            "created_at", "committed_at", "rolled_back_at",
+        )
+    }
+
+
+@router.post("/api/portfolio/transactions/import/preview")
+def api_transaction_import_preview(payload: TransactionImportPayload):
+    from modules.portfolio.services.transaction_import import preview_import
+
+    rows = []
+    for raw in payload.rows:
+        row = dict(raw)
+        if not row.get("account_id") and row.get("account_code"):
+            row["account_id"] = _account_id_from_code(str(row["account_code"]))
+        rows.append(row)
+    result = preview_import(
+        source=payload.source,
+        source_document=payload.source_document,
+        rows=rows,
+    )
+    result["transactions"] = [_public_transaction(row) for row in result["transactions"]]
+    for unresolved in result["unresolved"]:
+        unresolved["row"] = _public_transaction(unresolved.get("row") or {})
+    return result
+
+
+@router.post("/api/portfolio/transactions/import/{import_batch_id}/commit")
+def api_transaction_import_commit(import_batch_id: str):
+    from modules.portfolio.services.transaction_import import commit_import
+
+    try:
+        return _public_import_batch(commit_import(import_batch_id))
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Unknown import batch.") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post("/api/portfolio/transactions/import/{import_batch_id}/rollback")
+def api_transaction_import_rollback(import_batch_id: str):
+    from modules.portfolio.services.transaction_import import rollback_import
+
+    try:
+        return _public_import_batch(rollback_import(import_batch_id))
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Unknown import batch.") from exc
+
+
+@router.get("/api/portfolio/transactions")
+def api_transactions(
+    account_code: str | None = Query(default=None, max_length=16),
+    instrument_id: str | None = Query(default=None, max_length=64),
+    limit: int = Query(1000, ge=1, le=10000),
+):
+    from modules.portfolio.db import transaction_ledger
+
+    rows = transaction_ledger.list_transactions(
+        account_id=_account_id_from_code(account_code),
+        instrument_id=instrument_id,
+        limit=limit,
+    )
+    return {"transactions": [_public_transaction(row) for row in rows]}
+
+
+@router.get("/api/portfolio/transactions/unresolved")
+def api_unresolved_transactions():
+    from modules.portfolio.db import transaction_ledger
+
+    rows = transaction_ledger.list_unresolved()
+    for row in rows:
+        row["row"] = _public_transaction(row.get("row") or {})
+    return {"unresolved_transactions": rows}
+
+
+@router.get("/api/portfolio/lots")
+def api_tax_lots(
+    account_code: str | None = Query(default=None, max_length=16),
+    instrument_id: str | None = Query(default=None, max_length=64),
+):
+    from modules.portfolio.db import transaction_ledger
+    from modules.portfolio.services.tax_lots import build_tax_lots
+
+    transactions = transaction_ledger.list_transactions(
+        account_id=_account_id_from_code(account_code), instrument_id=instrument_id, limit=10000
+    )
+    result = build_tax_lots(transactions)
+    result["lots"] = [_public_transaction(row) for row in result["lots"]]
+    result["disposals"] = [_public_transaction(row) for row in result["disposals"]]
+    return result
+
+
+def _performance_payload(
+    *, scope: str = "family", account_code: str | None = None, instrument_id: str | None = None
+) -> dict[str, Any]:
+    from modules.portfolio.services.performance import build_performance_summary
+
+    family = fetch_family_portfolio(refresh=False, stale_ok=True)
+    ending_value = float((family.get("summary") or {}).get("total_current_value") or 0)
+    account_id = _account_id_from_code(account_code)
+    if scope == "account" and account_id:
+        portfolio = next(
+            (
+                row
+                for row in family.get("portfolios") or []
+                if row.get("account_id") == account_id
+            ),
+            {},
+        )
+        account_summary = portfolio.get("summary") or {}
+        ending_value = float(
+            account_summary.get("total_current_value")
+            or account_summary.get("total_current")
+            or 0
+        )
+    elif scope == "instrument" and instrument_id:
+        ending_value = sum(
+            float(row.get("current_value") or row.get("marked_value") or 0)
+            for portfolio in family.get("portfolios") or []
+            for row in portfolio.get("holdings") or []
+            if row.get("instrument_id") == instrument_id
+        )
+    return build_performance_summary(
+        ending_value=ending_value,
+        scope=scope,
+        account_id=account_id,
+        instrument_id=instrument_id,
+    )
+
+
+@router.get("/api/portfolio/performance/summary")
+def api_performance_summary(
+    scope: str = Query("family", pattern=r"^(family|account|instrument)$"),
+    account_code: str | None = Query(default=None, max_length=16),
+    instrument_id: str | None = Query(default=None, max_length=64),
+):
+    return _performance_payload(scope=scope, account_code=account_code, instrument_id=instrument_id)
+
+
+@router.get("/api/portfolio/performance/series")
+def api_performance_series(
+    scope: str = Query("family", pattern=r"^(family|account)$"),
+    account_code: str | None = Query(default=None, max_length=16),
+    days: int = Query(365, ge=7, le=3650),
+):
+    from modules.portfolio.db import transaction_ledger
+    from modules.portfolio.services.performance import calculate_twrr
+
+    account_id = _account_id_from_code(account_code)
+    snapshots = daily_history.growth_series(scope=scope, account_id=account_id, days=days)
+    transactions = transaction_ledger.list_transactions(account_id=account_id, limit=10000)
+    return {"series": snapshots, "twrr": calculate_twrr(snapshots, transactions, scope=scope)}
+
+
+@router.get("/api/portfolio/performance/attribution")
+def api_performance_attribution():
+    from modules.portfolio.db import transaction_ledger
+    from modules.portfolio.services.performance import attribution
+
+    result = attribution(transaction_ledger.list_transactions(limit=10000))
+    result["by_account"] = [_public_transaction(row) for row in result["by_account"]]
+    return result
+
+
+@router.get("/api/portfolio/performance/coverage")
+def api_performance_coverage():
+    result = _performance_payload()
+    return {
+        key: result[key]
+        for key in (
+            "cashflow_coverage_pct", "lot_coverage_pct", "valuation_coverage_pct",
+            "xirr_status", "excluded_periods", "data_quality_flags",
+        )
+    }
+
+
+@router.get("/api/portfolio/performance/audit.xlsx")
+def api_performance_audit_workbook():
+    from modules.portfolio.db import transaction_ledger
+    from modules.portfolio.services.performance_export import build_performance_audit_workbook
+    from modules.portfolio.services.tax_lots import build_tax_lots
+
+    transactions = transaction_ledger.list_transactions(limit=10000)
+    workbook = build_performance_audit_workbook(
+        transactions=transactions,
+        lot_result=build_tax_lots(transactions),
+        performance=_performance_payload(),
+        reconciliation=_reconciliation_payload(),
+    )
+    return StreamingResponse(
+        workbook,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=portfolio-performance-audit.xlsx"},
+    )
+
+
+@router.get("/api/portfolio/market-regime/current")
+def api_market_regime_current(finalized_only: bool = Query(False)):
+    from modules.portfolio.db import market_regime
+
+    return {
+        "observation": market_regime.latest(
+            market="INDIA", finalized_only=finalized_only
+        )
+    }
+
+
+@router.get("/api/portfolio/market-regime/history")
+def api_market_regime_history(limit: int = Query(365, ge=1, le=5000)):
+    from modules.portfolio.db import market_regime
+
+    return {"history": market_regime.history(market="INDIA", limit=limit)}
+
+
+@router.get("/api/portfolio/market-regime/methodology")
+def api_market_regime_methodology():
+    from modules.portfolio.services.market_regime import methodology
+
+    return methodology()
+
+
+@router.post("/api/portfolio/market-regime/observations")
+def api_market_regime_observation(payload: MrmiObservationPayload):
+    from modules.portfolio.services.market_regime import calculate_and_store
+
+    try:
+        return calculate_and_store(
+            payload.components,
+            as_of=payload.as_of,
+            observation_state=payload.observation_state,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post("/api/portfolio/research/scorecards")
+def api_research_scorecard(payload: ResearchScorecardPayload):
+    from modules.portfolio.db import instrument_master
+    from modules.portfolio.services.research_scorecards import build_scorecard
+
+    instrument = instrument_master.get_instrument(payload.instrument_id)
+    if instrument is None:
+        raise HTTPException(status_code=404, detail="Unknown instrument_id.")
+    return build_scorecard(instrument, payload.evidence)
+
+
+@router.post("/api/portfolio/research/screens/run")
+def api_research_screen_run(payload: ResearchScreenRunPayload):
+    from modules.portfolio.services.research_screener import run_screen
+
+    safe_rows = [
+        {key: value for key, value in row.items() if key not in {"account_id", "source_document", "user_notes"}}
+        for row in payload.rows
+    ]
+    try:
+        return run_screen(safe_rows, payload.definition)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get("/api/portfolio/research/screens")
+def api_research_screens():
+    from modules.portfolio.db import research
+
+    return {"saved_screens": research.list_screens()}
+
+
+@router.post("/api/portfolio/research/screens")
+def api_save_research_screen(payload: SavedResearchScreenPayload):
+    from modules.portfolio.db import research
+    from modules.portfolio.services.research_screener import run_screen
+
+    try:
+        run_screen([], payload.definition)
+        return research.save_screen(**payload.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get("/api/portfolio/research/candidates")
+def api_research_candidates():
+    from modules.portfolio.db import research
+
+    return {"candidates": research.list_candidates()}
+
+
+@router.post("/api/portfolio/research/candidates")
+def api_save_research_candidate(payload: ResearchCandidatePayload):
+    from modules.portfolio.db import instrument_master, research
+
+    if instrument_master.get_instrument(payload.instrument_id) is None:
+        raise HTTPException(status_code=404, detail="Unknown instrument_id.")
+    return research.upsert_candidate(payload.model_dump())
+
+
+@router.get("/api/portfolio/research/watchlist")
+def api_research_watchlist():
+    from modules.portfolio.db import research
+
+    return {"watchlist": research.list_watchlist()}
+
+
+@router.post("/api/portfolio/research/watchlist")
+def api_add_research_watchlist(payload: ResearchWatchlistPayload):
+    from modules.portfolio.db import research
+
+    return research.add_watchlist_entry(payload.model_dump())
+
+
+@router.get("/api/portfolio/research/thesis/{instrument_id}")
+def api_research_thesis_history(instrument_id: str):
+    from modules.portfolio.db import research
+
+    return {"history": research.thesis_history(instrument_id)}
+
+
+@router.post("/api/portfolio/research/thesis")
+def api_append_research_thesis(payload: ResearchThesisPayload):
+    from modules.portfolio.db import research
+
+    return research.append_thesis(payload.model_dump())
+
+
+@router.get("/api/portfolio/research/events")
+def api_research_events(instrument_id: str | None = Query(default=None, max_length=64)):
+    from datetime import date
+
+    from modules.portfolio.db import research
+    from modules.portfolio.services.research_events import assess_event
+
+    return {
+        "events": [
+            assess_event(row, as_of=date.today().isoformat())
+            for row in research.list_events(instrument_id=instrument_id)
+        ]
+    }
+
+
+@router.post("/api/portfolio/research/events")
+def api_add_research_event(payload: ResearchEventPayload):
+    from modules.portfolio.db import research
+
+    return research.add_event(payload.model_dump())
+
+
+@router.post("/api/portfolio/research/compare")
+def api_research_compare(payload: ResearchComparePayload):
+    from modules.portfolio.services.research_compare import compare_instruments
+
+    try:
+        return compare_instruments(payload.items)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get("/api/portfolio/funds/schemes")
+def api_fund_schemes():
+    from modules.portfolio.db import fund_intelligence
+
+    return {"schemes": fund_intelligence.list_schemes()}
+
+
+@router.post("/api/portfolio/funds/schemes")
+def api_save_fund_scheme(payload: FundSchemePayload):
+    from modules.portfolio.db import fund_intelligence, instrument_master
+
+    if instrument_master.get_instrument(payload.instrument_id) is None:
+        raise HTTPException(status_code=404, detail="Unknown canonical fund instrument_id.")
+    try:
+        return fund_intelligence.upsert_scheme(payload.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post("/api/portfolio/funds/holdings")
+def api_ingest_fund_holdings(payload: FundHoldingsIngestPayload):
+    from modules.portfolio.db import fund_intelligence
+
+    try:
+        return fund_intelligence.save_constituents(
+            fund_instrument_id=payload.fund_instrument_id,
+            as_of=payload.as_of,
+            rows=[row.model_dump() for row in payload.rows],
+            source=payload.source,
+            source_type=payload.source_type,
+            coverage_type=payload.coverage_type,
+            coverage_pct=payload.coverage_pct,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get("/api/portfolio/funds/{instrument_id}/lookthrough")
+def api_fund_lookthrough(instrument_id: str, as_of: str | None = Query(default=None)):
+    from modules.portfolio.services.fund_intelligence import lookthrough
+
+    return lookthrough(instrument_id, as_of=as_of)
+
+
+@router.get("/api/portfolio/funds/overlap/pair")
+def api_fund_pair_overlap(
+    first_instrument_id: str = Query(..., max_length=64),
+    second_instrument_id: str = Query(..., max_length=64),
+    as_of: str | None = Query(default=None),
+):
+    from modules.portfolio.services.fund_intelligence import pairwise_overlap
+
+    return pairwise_overlap(first_instrument_id, second_instrument_id, as_of=as_of)
+
+
+def _family_fund_positions() -> list[dict[str, Any]]:
+    family = fetch_family_portfolio(refresh=False, stale_ok=True)
+    return [
+        row
+        for portfolio in family.get("portfolios") or []
+        for row in portfolio.get("holdings") or []
+    ]
+
+
+@router.get("/api/portfolio/funds/family")
+def api_family_fund_intelligence():
+    from modules.portfolio.services.fund_intelligence import family_lookthrough, weighted_ter
+
+    positions = _family_fund_positions()
+    return {"lookthrough": family_lookthrough(positions), "cost": weighted_ter(positions)}
+
+
+@router.get("/api/portfolio/funds/consolidation")
+def api_fund_consolidation_candidates():
+    from modules.portfolio.services.fund_intelligence import consolidation_candidates
+
+    return {"candidates": consolidation_candidates(_family_fund_positions())}
+
+
+@router.get("/api/portfolio/funds/audit.xlsx")
+def api_fund_intelligence_export():
+    from modules.portfolio.db import fund_intelligence
+    from modules.portfolio.services.fund_export import build_fund_workbook
+    from modules.portfolio.services.fund_intelligence import pairwise_overlap
+
+    schemes = fund_intelligence.list_schemes()
+    overlaps = [
+        pairwise_overlap(first["instrument_id"], second["instrument_id"])
+        for index, first in enumerate(schemes)
+        for second in schemes[index + 1 :]
+    ]
+    workbook = build_fund_workbook(
+        schemes=schemes,
+        constituents=fund_intelligence.all_constituents(),
+        overlaps=overlaps,
+    )
+    return StreamingResponse(
+        workbook,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=fund-intelligence-audit.xlsx"},
+    )
+
+
+def _today_brief_payload() -> dict[str, Any]:
+    from modules.portfolio.db import market_regime, research
+    from modules.portfolio.db import weekly_sync as weekly_sync_store
+    from modules.portfolio.services.advisory.service import build_advisory_payload
+    from modules.portfolio.services.today_brief import build_today_brief
+
+    family = fetch_family_portfolio(refresh=False, stale_ok=True)
+    return build_today_brief(
+        family=family,
+        advisory=build_advisory_payload(family, goals=profile_goals_store.get_goals()),
+        sync_status=weekly_sync_store.sync_status(),
+        market_regime=market_regime.latest(finalized_only=True),
+        events=research.list_events(),
+    )
+
+
+@router.get("/api/portfolio/today-brief")
+def api_today_brief():
+    return _today_brief_payload()
+
+
+@router.get("/api/portfolio/stress/scenarios")
+def api_stress_scenarios():
+    from modules.portfolio.db import operating_console
+    from modules.portfolio.services.stress_testing import SCENARIO_LIBRARY
+
+    return {"library": SCENARIO_LIBRARY, "saved": operating_console.list_scenarios()}
+
+
+@router.post("/api/portfolio/stress/run")
+def api_run_stress(payload: StressScenarioPayload):
+    from modules.portfolio.db import operating_console
+    from modules.portfolio.services.stress_testing import scenario_definition, stress_portfolio
+
+    try:
+        scenario = scenario_definition(payload.name, payload.custom_assumptions)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if payload.save:
+        saved = operating_console.save_scenario(
+            name=payload.name,
+            assumptions=scenario["assumptions"],
+        )
+        scenario["scenario_id"] = saved["scenario_id"]
+    return stress_portfolio(_family_fund_positions(), scenario=scenario)
+
+
+@router.post("/api/portfolio/what-if")
+def api_what_if(payload: WhatIfPayload):
+    from modules.portfolio.db import research
+    from modules.portfolio.services.what_if import simulate_rebalance
+
+    approved = {
+        row["instrument_id"]
+        for row in research.list_candidates()
+        if row["research_status"] == "APPROVED"
+    }
+    return simulate_rebalance(
+        _family_fund_positions(),
+        operations=payload.operations,
+        constraints=payload.constraints,
+        approved_candidates=approved,
+    )
+
+
+@router.get("/api/portfolio/alerts")
+def api_alert_history(limit: int = Query(100, ge=1, le=1000)):
+    from modules.portfolio.db import operating_console
+
+    return {"alerts": operating_console.list_alerts(limit=limit)}
+
+
+@router.post("/api/portfolio/alerts/evaluate")
+def api_evaluate_alerts(payload: AlertEvaluationPayload):
+    from modules.portfolio.services.alerts import evaluate_alerts
+
+    return evaluate_alerts(payload.events, cooldown_seconds=payload.cooldown_seconds)
+
+
+@router.get("/api/portfolio/tax/rules")
+def api_tax_rules(as_of: str | None = Query(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$")):
+    from datetime import date
+
+    from modules.portfolio.services.advisory.tax_rules import public_registry
+
+    return public_registry(as_of or date.today().isoformat())
+
+
+@router.post("/api/portfolio/tax/after-tax")
+def api_after_tax(payload: AfterTaxPayload):
+    from modules.portfolio.services.after_tax import estimate_after_tax
+
+    try:
+        return estimate_after_tax(payload.candidate, payload.account, as_of=payload.as_of)
+    except (KeyError, TypeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post("/api/portfolio/tax/asset-location")
+def api_asset_location(payload: AssetLocationPayload):
+    from modules.portfolio.services.asset_location import optimize_asset_location
+
+    try:
+        return optimize_asset_location(payload.candidate, payload.accounts, as_of=payload.as_of)
+    except (KeyError, TypeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post("/api/portfolio/tax/harvest")
+def api_tax_harvest(payload: TaxHarvestPayload):
+    from modules.portfolio.services.tax_harvesting import evaluate_harvest
+
+    try:
+        return evaluate_harvest(
+            payload.holding, payload.account, lots=payload.lots, as_of=payload.as_of
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get("/api/portfolio/tax/ca-package.xlsx")
+def api_tax_ca_package(as_of: str | None = Query(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$")):
+    from datetime import date
+
+    from modules.portfolio.db import transaction_ledger
+    from modules.portfolio.services.advisory.tax_rules import public_registry
+    from modules.portfolio.services.tax_location_export import build_ca_workbook
+    from modules.portfolio.services.tax_lots import build_tax_lots
+
+    effective_as_of = as_of or date.today().isoformat()
+    lot_result = build_tax_lots(transaction_ledger.list_transactions(limit=10000))
+    workbook = build_ca_workbook(
+        rules=public_registry(effective_as_of)["rules"],
+        assumptions=[
+            {"name": "as_of", "value": effective_as_of},
+            {"name": "tax_lot_method", "value": "FIFO planning estimate"},
+            {"name": "execution_enabled", "value": False},
+        ],
+        lots=lot_result["lots"],
+        actions=[],
+    )
+    return StreamingResponse(
+        workbook,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=asset-location-ca-review.xlsx"},
+    )
 
 
 def _normalize_view_params(sort: str, order: str, group_by: str) -> dict[str, str | None]:
@@ -396,6 +1457,222 @@ def portfolio_advisor_page(request: Request):
         "portfolio/advisor.html",
         {
             "active_module": "advisor",
+            "trading_enabled": False,
+        },
+    )
+
+
+@router.get("/portfolio/data-quality")
+def portfolio_data_quality_page(request: Request, refresh: bool = Query(False)):
+    """Canonical identity and reconciliation control center."""
+    family = fetch_family_portfolio(refresh=refresh, stale_ok=True)
+    reconciliation = family.get("reconciliation") or {}
+    return templates.TemplateResponse(
+        request,
+        "portfolio/data_quality.html",
+        {
+            "active_module": "data_quality",
+            "reconciliation": reconciliation,
+            "summary": reconciliation.get("summary") or {},
+            "security_rows": reconciliation.get("by_security") or [],
+            "account_rows": reconciliation.get("by_account") or [],
+            "corporate_actions": reconciliation.get("corporate_action_review") or [],
+            "trading_enabled": False,
+        },
+    )
+
+
+@router.get("/portfolio/market-regime")
+def portfolio_market_regime_page(request: Request):
+    """Original, transparent India Market Regime & Mood Index."""
+    from modules.portfolio.db import market_regime
+    from modules.portfolio.services.market_regime import methodology
+
+    observation = market_regime.latest(market="INDIA")
+    return templates.TemplateResponse(
+        request,
+        "portfolio/market_regime.html",
+        {
+            "active_module": "market_regime",
+            "observation": observation,
+            "history": market_regime.history(market="INDIA", limit=365),
+            "methodology": methodology(),
+            "trading_enabled": False,
+        },
+    )
+
+
+@router.get("/portfolio/research")
+def portfolio_research_page(request: Request):
+    """Local, instrument-specific research workspace."""
+    from modules.portfolio.db import research
+
+    return templates.TemplateResponse(
+        request,
+        "portfolio/research.html",
+        {
+            "active_module": "research",
+            "saved_screens": research.list_screens(),
+            "candidates": research.list_candidates(),
+            "watchlist": research.list_watchlist(),
+            "events": research.list_events(),
+            "trading_enabled": False,
+        },
+    )
+
+
+@router.get("/portfolio/research/scorecard/{instrument_id}")
+def portfolio_research_scorecard_page(request: Request, instrument_id: str):
+    from modules.portfolio.db import instrument_master, research
+    from modules.portfolio.services.research_scorecards import build_scorecard
+
+    instrument = instrument_master.get_instrument(instrument_id)
+    if instrument is None:
+        raise HTTPException(status_code=404, detail="Unknown instrument_id.")
+    family = fetch_family_portfolio(refresh=False, stale_ok=True)
+    evidence = next(
+        (
+            row
+            for portfolio in family.get("portfolios") or []
+            for row in portfolio.get("holdings") or []
+            if row.get("instrument_id") == instrument_id
+        ),
+        {},
+    )
+    evidence = {**evidence, "evidence_as_of": family.get("cached_at")}
+    return templates.TemplateResponse(
+        request,
+        "portfolio/research_scorecard.html",
+        {
+            "active_module": "research",
+            "instrument": instrument,
+            "scorecard": build_scorecard(instrument, evidence),
+            "candidate": research.get_candidate(instrument_id),
+            "thesis_history": research.thesis_history(instrument_id),
+            "events": research.list_events(instrument_id=instrument_id),
+            "trading_enabled": False,
+        },
+    )
+
+
+@router.get("/portfolio/funds")
+def portfolio_fund_intelligence_page(request: Request):
+    from modules.portfolio.db import fund_intelligence
+    from modules.portfolio.services.fund_intelligence import (
+        consolidation_candidates,
+        etf_analytics,
+        family_lookthrough,
+        pairwise_overlap,
+        weighted_ter,
+    )
+
+    schemes = fund_intelligence.list_schemes()
+    positions = _family_fund_positions()
+    overlaps = [
+        pairwise_overlap(first["instrument_id"], second["instrument_id"])
+        for index, first in enumerate(schemes)
+        for second in schemes[index + 1 :]
+    ]
+    return templates.TemplateResponse(
+        request,
+        "portfolio/fund_intelligence.html",
+        {
+            "active_module": "funds",
+            "schemes": schemes,
+            "overlaps": overlaps,
+            "family_lookthrough": family_lookthrough(positions),
+            "cost": weighted_ter(positions),
+            "liquidity": [etf_analytics(row) for row in schemes if row.get("instrument_type") == "etf"],
+            "consolidation": consolidation_candidates(positions),
+            "trading_enabled": False,
+        },
+    )
+
+
+@router.get("/portfolio/brief")
+def portfolio_today_brief_page(request: Request):
+    from modules.portfolio.db import operating_console
+    from modules.portfolio.services.stress_testing import SCENARIO_LIBRARY
+
+    return templates.TemplateResponse(
+        request,
+        "portfolio/today_brief.html",
+        {
+            "active_module": "brief",
+            "brief": _today_brief_payload(),
+            "scenario_library": SCENARIO_LIBRARY,
+            "saved_scenarios": operating_console.list_scenarios(),
+            "alerts": operating_console.list_alerts(limit=20),
+            "trading_enabled": False,
+        },
+    )
+
+
+@router.get("/portfolio/asset-location")
+def portfolio_asset_location_page(request: Request):
+    """After-tax account matrix and CA-review queue."""
+    from datetime import date
+
+    from modules.portfolio.config import get_account_profile
+    from modules.portfolio.services.advisory.tax_rules import public_registry
+
+    family = fetch_family_portfolio(refresh=False, stale_ok=True)
+    rows = []
+    for block in family.get("portfolios") or []:
+        account_id = str(block.get("account_id") or "")
+        try:
+            profile = get_account_profile(account_id)
+        except KeyError:
+            profile = {}
+        missing = [
+            label
+            for label, value in {
+                "residency": profile.get("india_residency_status"),
+                "account type": profile.get("account_type"),
+                "repatriability": profile.get("repatriability"),
+                "permitted instruments": profile.get("permitted_instrument_types"),
+            }.items()
+            if value in (None, "", "UNKNOWN", [])
+        ]
+        rows.append(
+            {
+                "account_id": account_id,
+                "code": block.get("account_code") or account_id,
+                "owner_ref": profile.get("owner_ref") or "Unspecified",
+                "account_type": profile.get("account_type") or "UNKNOWN",
+                "currency": profile.get("base_currency") or block.get("currency") or "UNKNOWN",
+                "repatriability": profile.get("repatriability") or "UNKNOWN",
+                "holding_count": len(block.get("holdings") or []),
+                "missing": missing,
+            }
+        )
+    as_of = date.today().isoformat()
+    return templates.TemplateResponse(
+        request,
+        "portfolio/asset_location.html",
+        {
+            "active_module": "asset_location",
+            "accounts": rows,
+            "review_queue": [row for row in rows if row["missing"]],
+            "tax_registry": public_registry(as_of),
+            "as_of": as_of,
+            "trading_enabled": False,
+        },
+    )
+
+
+@router.get("/portfolio/system-health")
+def portfolio_system_health_page(request: Request):
+    from modules.portfolio.services.diagnostics import collect_diagnostics
+    from modules.portfolio.services.privacy_controls import privacy_status
+
+    return templates.TemplateResponse(
+        request,
+        "portfolio/system_health.html",
+        {
+            "active_module": "system_health",
+            "diagnostics": collect_diagnostics(),
+            "privacy": privacy_status(),
             "trading_enabled": False,
         },
     )
@@ -932,7 +2209,12 @@ async def api_sarwa_import_screenshot(
 
     from shared.web.uploads import read_upload_bounded
 
-    content = await read_upload_bounded(file)
+    content = await read_upload_bounded(
+        file,
+        allowed_extensions={".png", ".jpg", ".jpeg", ".webp"},
+        allowed_content_types={"image/png", "image/jpeg", "image/webp"},
+        require_image_signature=True,
+    )
     media = file.content_type or "image/png"
     try:
         parsed = parse_sarwa_screenshot(content, media_type=media)
@@ -1589,6 +2871,10 @@ class AccountProfilePayload(BaseModel):
     gift_product_tax_verified: bool | None = None
     gift_product_tax_source: str | None = Field(default=None, max_length=500)
     gift_product_tax_as_of: str | None = Field(default=None, max_length=10)
+    repatriability: Repatriability | None = None
+    estate_tax_review_status: EstateTaxReviewStatus | None = None
+    permitted_instrument_types: list[str] | None = Field(default=None, max_length=50)
+    family_transfers_permitted: bool | None = None
 
 
 class SetupAccountPayload(AccountProfilePayload):
@@ -1672,7 +2958,15 @@ async def api_setup_import_holdings(
 
     from shared.web.uploads import read_upload_bounded
 
-    content = await read_upload_bounded(file)
+    content = await read_upload_bounded(
+        file,
+        allowed_extensions={".csv", ".xlsx", ".xls"},
+        allowed_content_types={
+            "text/csv", "application/csv", "application/vnd.ms-excel",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "application/octet-stream",
+        },
+    )
     try:
         result = import_account_upload(
             broker,

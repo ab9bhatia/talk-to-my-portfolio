@@ -7,7 +7,8 @@ originally enacted.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
+from datetime import date
 
 from modules.portfolio.services.advisory.models import TaxRuleReference
 
@@ -25,6 +26,10 @@ class TaxRule:
     source_url: str
     required_inputs: tuple[str, ...]
     planning_note: str
+    applicability: tuple[str, ...] = ()
+    calculation_method: str = "review_only"
+    confidence: str = "documented"
+    ca_review_required: bool = True
     effective_from: str = DATASET_EFFECTIVE_FROM
     effective_to: str | None = None
 
@@ -39,7 +44,23 @@ class TaxRule:
             source_url=self.source_url,
             last_reviewed=LAST_REVIEWED,
             required_inputs=list(self.required_inputs),
+            applicability=list(self.applicability),
+            calculation_method=self.calculation_method,
+            confidence=self.confidence,
+            ca_review_required=self.ca_review_required,
         )
+
+    def is_effective(self, as_of: str) -> bool:
+        day = date.fromisoformat(as_of)
+        return date.fromisoformat(self.effective_from) <= day and (
+            self.effective_to is None or day <= date.fromisoformat(self.effective_to)
+        )
+
+    def as_dict(self) -> dict:
+        payload = asdict(self)
+        payload["last_reviewed"] = LAST_REVIEWED
+        payload["effective"] = None
+        return payload
 
 
 RULES: dict[str, TaxRule] = {
@@ -60,6 +81,8 @@ RULES: dict[str, TaxRule] = {
             "Do not compute gain category, loss set-off, or harvesting benefit from broker "
             "average-price P&L alone."
         ),
+        applicability=("RESIDENT_DEMAT", "NRO_NON_PIS", "NRE_PIS", "INDIAN_SECURITY"),
+        calculation_method="FIFO lot-level gain/loss review using current effective evidence",
     ),
     "INDIA_NRI_WITHHOLDING": TaxRule(
         rule_id="INDIA_NRI_WITHHOLDING",
@@ -80,6 +103,8 @@ RULES: dict[str, TaxRule] = {
         planning_note=(
             "Treat withholding as a payment/collection mechanism, not proof of final liability."
         ),
+        applicability=("NRO_NON_PIS", "NRE_PIS", "NON_RESIDENT", "INDIAN_SECURITY"),
+        calculation_method="Separate broker withholding from estimated final liability",
     ),
     "RBI_NRI_SETTLEMENT": TaxRule(
         rule_id="RBI_NRI_SETTLEMENT",
@@ -97,6 +122,8 @@ RULES: dict[str, TaxRule] = {
             "Keep proceeds tied to the originating account until settlement and repatriation "
             "eligibility are confirmed."
         ),
+        applicability=("NRO_NON_PIS", "NRE_PIS"),
+        calculation_method="Eligibility and settlement-route validation",
     ),
     "IFSCA_PRODUCT_TAX_EVIDENCE": TaxRule(
         rule_id="IFSCA_PRODUCT_TAX_EVIDENCE",
@@ -117,6 +144,8 @@ RULES: dict[str, TaxRule] = {
         planning_note=(
             "Never infer investor-level zero tax from an IFSC or GIFT label alone."
         ),
+        applicability=("GIFT_IBU", "GIFT_PRODUCT"),
+        calculation_method="Exact product/share-class evidence review",
     ),
     "US_SITUS_ESTATE_REVIEW": TaxRule(
         rule_id="US_SITUS_ESTATE_REVIEW",
@@ -137,9 +166,28 @@ RULES: dict[str, TaxRule] = {
             "Track U.S.-situs estate exposure separately from capital gains and dividend "
             "withholding."
         ),
+        applicability=("US_BROKER", "GLOBAL_BROKER", "US_DOMICILED_SECURITY"),
+        calculation_method="U.S.-situs classification and estate-planning review",
     ),
 }
 
 
 def rule(rule_id: str) -> TaxRule:
     return RULES[rule_id]
+
+
+def rules_as_of(as_of: str) -> list[TaxRule]:
+    """Return only rules effective on the requested date."""
+    date.fromisoformat(as_of)
+    return [item for item in RULES.values() if item.is_effective(as_of)]
+
+
+def public_registry(as_of: str) -> dict:
+    return {
+        "as_of": as_of,
+        "rules": [
+            {**item.as_dict(), "effective": item.is_effective(as_of)}
+            for item in RULES.values()
+        ],
+        "disclaimer": "Planning evidence only; obtain CA/legal review before acting.",
+    }

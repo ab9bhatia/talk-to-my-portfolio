@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import json
+import os
+import time
 import urllib.error
 import urllib.request
 from collections.abc import Iterator
+from copy import deepcopy
 from typing import Any
 
 from modules.portfolio.services.agent_threads import (
@@ -26,6 +29,7 @@ from modules.portfolio.services.llm_config import (
     ollama_base_url,
 )
 from modules.portfolio.services.portfolio_context import build_portfolio_context
+from shared.security_redaction import redact_text
 
 _SYSTEM_PROMPT = """You explain a deterministic portfolio advisory payload.
 Use ONLY the JSON context provided. Be direct, concise, and answer the exact latest question.
@@ -110,6 +114,39 @@ def agent_status() -> dict[str, Any]:
         "api_configured": agent_configured(),
         "streaming": True,
     }
+
+
+_PRIVATE_CONTEXT_KEYS = {
+    "account_id", "user_id", "owner_ref", "account", "accounts", "account_profile",
+    "account_profiles", "tax_profile", "tax_note", "settlement_note", "tax_rule_refs",
+    "tax_evidence", "proceeds_by_account", "tax_lots", "lots", "api_key", "access_token",
+}
+
+
+def external_context_preview(context: dict[str, Any]) -> dict[str, Any]:
+    """Exact default-deny payload permitted to leave the machine for an external LLM."""
+    allow_account_tax = os.getenv("PORTFOLIO_ALLOW_LLM_ACCOUNT_TAX_CONTEXT", "").lower() in {
+        "1", "true", "yes", "on",
+    }
+
+    def sanitize(value: Any) -> Any:
+        if isinstance(value, dict):
+            return {
+                key: sanitize(item)
+                for key, item in value.items()
+                if allow_account_tax
+                or (key not in _PRIVATE_CONTEXT_KEYS and not key.startswith("tax_"))
+            }
+        if isinstance(value, list):
+            return [sanitize(item) for item in value]
+        return value
+
+    preview = sanitize(deepcopy(context))
+    preview["privacy"] = {
+        "account_tax_context_shared": allow_account_tax,
+        "preview_is_transmitted_context": True,
+    }
+    return preview
 
 
 def _parse_agent_json(content: str) -> dict[str, Any]:
@@ -297,7 +334,7 @@ def _chat_messages(
                 "role": "user",
                 "content": (
                     "Portfolio context for this thread:\n"
-                    f"{json.dumps(thread['context'], default=str)}\n\n"
+                    f"{json.dumps(external_context_preview(thread['context']), default=str)}\n\n"
                     "Use this context for all follow-ups."
                 ),
             },
@@ -314,7 +351,7 @@ def _chat_messages(
 
     user_parts = [
         f"User question (answer this first in the \"answer\" field; be specific):\n{q}",
-        f"Portfolio context JSON:\n{json.dumps(context, default=str)}",
+        f"Portfolio context JSON:\n{json.dumps(external_context_preview(context), default=str)}",
         "Fill the JSON schema. Tailor stance, buy/sell, and rebalance to the question — not a generic template.",
     ]
 
@@ -584,6 +621,21 @@ def stream_portfolio_agent(
         user_message = "Give portfolio-level recommendations for the next 3+ years."
 
     provider = active_provider() or "unknown"
+    started = time.perf_counter()
+
+    def record(status: str, error_code: str | None = None) -> None:
+        try:
+            from modules.portfolio.db.operating_console import record_provider_event
+
+            record_provider_event(
+                provider=provider,
+                operation="portfolio_agent",
+                duration_ms=(time.perf_counter() - started) * 1000,
+                status=status,
+                error_code=error_code,
+            )
+        except Exception:
+            pass
 
     try:
         if new_thread:
@@ -632,6 +684,7 @@ def stream_portfolio_agent(
             _assistant_history_text(recommendations, full_text),
         )
         save_thread_recommendations(active_thread_id, recommendations)
+        record("OK")
 
         yield _format_sse(
             "done",
@@ -647,10 +700,11 @@ def stream_portfolio_agent(
             },
         )
     except urllib.error.HTTPError as exc:
-        detail = exc.read().decode(errors="replace")[:500]
-        yield _format_sse("error", {"message": f"LLM API error ({exc.code}): {detail}"})
+        record("ERROR", f"HTTP_{exc.code}")
+        yield _format_sse("error", {"message": f"LLM API error ({exc.code}); provider response redacted."})
     except Exception as exc:
-        yield _format_sse("error", {"message": str(exc)})
+        record("ERROR", type(exc).__name__)
+        yield _format_sse("error", {"message": redact_text(exc, limit=300)})
 
 
 def ask_portfolio_agent(
