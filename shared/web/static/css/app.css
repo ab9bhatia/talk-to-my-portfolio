@@ -6122,6 +6122,97 @@ body.setup-modal-open {
   color: #fca5a5;
 }
 
+.page-setup .setup-card--sync {
+  display: grid;
+  gap: 1rem;
+}
+
+.page-setup .setup-sync-header,
+.page-setup .setup-sync-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.page-setup .setup-sync-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.7rem;
+}
+
+.page-setup .setup-sync-metrics > div {
+  padding: 0.75rem;
+  border: 1px solid var(--setup-border);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.page-setup .setup-sync-metrics span,
+.page-setup .setup-sync-metrics strong {
+  display: block;
+}
+
+.page-setup .setup-sync-metrics span {
+  margin-bottom: 0.2rem;
+  color: var(--setup-text-muted);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.page-setup .setup-sync-degraded {
+  padding: 0.75rem;
+  border: 1px solid rgba(245, 158, 11, 0.28);
+  border-radius: 10px;
+  color: #fcd34d;
+  background: rgba(245, 158, 11, 0.08);
+}
+
+.page-setup .setup-sync-degraded p {
+  margin: 0.2rem 0;
+  font-size: 0.82rem;
+}
+
+.page-setup .setup-sync-mode {
+  flex: 1 1 310px;
+  margin: 0;
+}
+
+.page-setup .setup-sync-mode select {
+  width: 100%;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--setup-border);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--setup-text);
+}
+
+.page-setup .setup-sync-dry-run {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: var(--setup-text-muted);
+  font-size: 0.82rem;
+}
+
+.page-setup .setup-sync-result {
+  min-height: 1.2rem;
+  margin: 0;
+  color: var(--setup-text-muted);
+  font-size: 0.82rem;
+}
+
+.page-setup .setup-sync-result.is-ok { color: #86efac; }
+.page-setup .setup-sync-result.is-error { color: #fca5a5; }
+.page-setup .setup-sync-digest { overflow-wrap: anywhere; }
+
+@media (max-width: 680px) {
+  .page-setup .setup-sync-metrics { grid-template-columns: 1fr; }
+  .page-setup .setup-sync-controls > .setup-btn { width: 100%; }
+}
+
 .page-setup .portfolio-quality-list {
   display: grid;
   gap: 0.55rem;

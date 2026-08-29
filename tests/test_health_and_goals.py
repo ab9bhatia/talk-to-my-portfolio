@@ -15,6 +15,25 @@ def test_health_endpoint():
     assert body.get("status") == "ok"
 
 
+def test_weekly_sync_health_is_additive_and_safe_before_first_run():
+    client = TestClient(app)
+    res = client.get(f"{API}/sync/status")
+    assert res.status_code == 200
+    body = res.json()
+    assert body["configured"] is True
+    assert "latest_attempt" in body
+    assert "last_successful" in body
+    assert "degraded_accounts" in body
+
+
+def test_setup_renders_weekly_sync_status_card():
+    client = TestClient(app)
+    res = client.get(f"{APP_ROOT_PATH}/portfolio/setup")
+    assert res.status_code == 200
+    assert 'id="weekly-sync-card"' in res.text
+    assert 'id="weekly-sync-run"' in res.text
+
+
 def test_goals_roundtrip():
     client = TestClient(app)
     get_res = client.get(f"{API}/profile/goals")

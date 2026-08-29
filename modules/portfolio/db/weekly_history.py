@@ -73,6 +73,15 @@ def init_db() -> None:
                 ON weekly_snapshots(scope, account_id, week_start DESC);
             """
         )
+        _cleanup_duplicate_family_weeks(conn)
+        # SQLite UNIQUE(scope, account_id, week_start) does not dedupe NULL account ids.
+        conn.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_weekly_family_week_unique
+            ON weekly_snapshots(scope, week_start)
+            WHERE account_id IS NULL
+            """
+        )
 
 
 def week_start_for(when: date | None = None) -> str:
@@ -118,7 +127,7 @@ def save_snapshot(
                 scope, account_id, week_start, captured_at, source, usd_inr,
                 holdings_count, total_invested, total_current, total_pnl, total_pnl_pct, notes
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(scope, account_id, week_start) DO UPDATE SET
+            ON CONFLICT DO UPDATE SET
                 captured_at = excluded.captured_at,
                 source = excluded.source,
                 usd_inr = COALESCE(excluded.usd_inr, weekly_snapshots.usd_inr),
@@ -483,3 +492,62 @@ def weekly_status() -> dict[str, Any]:
         "sarwa_positions": len(sarwa_detail["positions"]) if sarwa_detail else 0,
         "sarwa_value_inr": sarwa_row[0]["total_current"] if sarwa_row else None,
     }
+
+
+def _cleanup_duplicate_family_weeks(conn: sqlite3.Connection) -> None:
+    """Repair historical family/week duplicates before adding the partial unique index."""
+    duplicate_weeks = conn.execute(
+        """
+        SELECT week_start
+        FROM weekly_snapshots
+        WHERE scope = 'family' AND account_id IS NULL
+        GROUP BY week_start
+        HAVING COUNT(*) > 1
+        """
+    ).fetchall()
+    for row in duplicate_weeks:
+        week_start = row["week_start"]
+        snaps = conn.execute(
+            """
+            SELECT id, captured_at, total_current
+            FROM weekly_snapshots
+            WHERE scope = 'family' AND account_id IS NULL AND week_start = ?
+            ORDER BY captured_at DESC, id DESC
+            """,
+            (week_start,),
+        ).fetchall()
+        account_total_row = conn.execute(
+            """
+            SELECT SUM(total_current) AS total
+            FROM weekly_snapshots
+            WHERE scope = 'account' AND week_start = ?
+            """,
+            (week_start,),
+        ).fetchone()
+        account_total = float(account_total_row["total"] or 0) if account_total_row else 0.0
+        best = (
+            min(
+                snaps,
+                key=lambda snap: (
+                    abs(float(snap["total_current"] or 0) - account_total),
+                    -float(snap["captured_at"] or 0),
+                    -int(snap["id"]),
+                ),
+            )
+            if account_total > 0
+            else snaps[0]
+        )
+        drop_ids = [
+            int(snap["id"])
+            for snap in snaps
+            if int(snap["id"]) != int(best["id"])
+        ]
+        if not drop_ids:
+            continue
+        placeholders = ",".join("?" for _ in drop_ids)
+        conn.execute(
+            f"DELETE FROM weekly_positions WHERE snapshot_id IN ({placeholders})", drop_ids
+        )
+        conn.execute(
+            f"DELETE FROM weekly_snapshots WHERE id IN ({placeholders})", drop_ids
+        )

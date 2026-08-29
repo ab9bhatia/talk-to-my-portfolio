@@ -136,6 +136,11 @@ class PortfolioGoalsPayload(BaseModel):
     risk_profile: str = Field("moderate", max_length=20)
 
 
+class WeeklySyncPayload(BaseModel):
+    mode: str = Field(default="auto", pattern=r"^(auto|live|safe-fallback)$")
+    dry_run: bool = False
+
+
 class AdvisoryRebalanceTarget(BaseModel):
     symbol: str = Field(..., min_length=1, max_length=32)
     target_weight_pct: float = Field(..., ge=0, le=100)
@@ -1073,6 +1078,46 @@ def api_weekly_status():
     return weekly_history.weekly_status()
 
 
+@router.get("/api/portfolio/sync/status")
+def api_sync_status():
+    """Latest attempted/successful weekly job and explicit degraded accounts."""
+    from modules.portfolio.db import weekly_sync as weekly_sync_store
+
+    weekly_sync_store.init_db()
+    return weekly_sync_store.sync_status()
+
+
+@router.get("/api/portfolio/sync/runs")
+def api_sync_runs(limit: int = Query(20, ge=1, le=100)):
+    """Auditable weekly job history; secrets and internal account ids are excluded."""
+    from modules.portfolio.db import weekly_sync as weekly_sync_store
+
+    weekly_sync_store.init_db()
+    return {"runs": weekly_sync_store.list_runs(limit=limit)}
+
+
+@router.get("/api/portfolio/sync/runs/{run_id}")
+def api_sync_run(run_id: str):
+    from modules.portfolio.db import weekly_sync as weekly_sync_store
+
+    run = weekly_sync_store.get_run(run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Weekly sync run not found")
+    return run
+
+
+@router.post("/api/portfolio/sync/weekly")
+def api_run_weekly_sync(payload: WeeklySyncPayload):
+    """Run the same one-shot service used by the CLI and OS schedulers."""
+    from modules.portfolio.services.weekly_sync import run_weekly_sync
+
+    return run_weekly_sync(
+        mode=payload.mode,
+        dry_run=payload.dry_run,
+        requested_by="setup_ui",
+    )
+
+
 @router.get("/api/portfolio/weekly/history")
 def api_weekly_history(
     scope: str = Query("family"),
@@ -1392,6 +1437,9 @@ def portfolio_setup_page(request: Request):
     )
     from modules.portfolio.services.holdings_screenshot import vision_available
     from modules.portfolio.services.llm_config import llm_setup_status
+    from modules.portfolio.db import weekly_sync as weekly_sync_store
+
+    weekly_sync_store.init_db()
 
     return templates.TemplateResponse(
         request,
@@ -1405,6 +1453,7 @@ def portfolio_setup_page(request: Request):
             "llm_status": llm_setup_status(),
             "portfolio_goals": profile_goals_store.get_goals(),
             "import_quality_events": import_audit_store.latest(limit=12),
+            "weekly_sync_status": weekly_sync_store.sync_status(),
         },
     )
 

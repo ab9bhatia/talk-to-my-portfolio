@@ -29,6 +29,15 @@ Product scope (read-only mobile + agent): [product.md](product.md#roadmap-produc
 - `POST /api/portfolio/trade/*` (if enabled)
 - setup/update/import endpoints under `/api/portfolio/setup/*`
 
+### Additive weekly-sync operations
+
+- `GET /api/portfolio/sync/status`
+- `GET /api/portfolio/sync/runs?limit=20`
+- `GET /api/portfolio/sync/runs/{run_id}`
+- `POST /api/portfolio/sync/weekly` with `{"mode":"auto|live|safe-fallback","dry_run":false}`
+
+The sync operation records portfolio history and local audit/digest artifacts. It never submits orders. Account results expose account codes, freshness timestamps, state, and recovery action—not internal account IDs or secrets.
+
 ## Compatibility rules
 - Additive changes only within this version.
 - No field removals/renames in listed endpoints.

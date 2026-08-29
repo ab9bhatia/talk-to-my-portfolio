@@ -52,7 +52,7 @@ bash scripts/init_local_config.sh
 uvicorn main:app --reload --host 127.0.0.1 --port 9000
 ```
 
-1. **[Setup](http://127.0.0.1:9000/talktomyportfolio/portfolio/setup)** — brokers, LLM, goals & guardrails  
+1. **[Setup](http://127.0.0.1:9000/talktomyportfolio/portfolio/setup)** — brokers, LLM, goals, and weekly sync
 2. **[Portfolio](http://127.0.0.1:9000/talktomyportfolio/portfolio)** — holdings  
 3. **[Agent](http://127.0.0.1:9000/talktomyportfolio/portfolio/agent)** — ask your first question  
 
@@ -78,6 +78,19 @@ Details: **[docs/broker-api-keys.md](docs/broker-api-keys.md)**
 Configure in **Setup → Portfolio agent (LLM)** — OpenAI, Claude, Gemini, or **Ollama** (local).
 
 Goals set under **Setup → Goals & guardrails** are injected into agent context (target return, max position/sector %, risk profile). Start a **new chat** after changing goals.
+
+---
+
+## Weekly sync
+
+Run the local, idempotent weekly operating loop after Friday's Indian market close:
+
+```bash
+python -m modules.portfolio.scripts.weekly_sync --mode auto --dry-run
+python -m modules.portfolio.scripts.weekly_sync --mode auto
+```
+
+The Setup card shows the last attempt, last success, degraded accounts, and the local digest. macOS, Linux, Windows, recovery, and scheduler instructions: **[docs/weekly-sync-operations.md](docs/weekly-sync-operations.md)**.
 
 ---
 
@@ -125,7 +138,8 @@ Design and Stage 6A contract: [docs/pattern-execution-overlay.md](docs/pattern-e
 | `/portfolio` | Family dashboard (holdings + chart pattern pills) |
 | `/portfolio/agent` | Agent chat (SSE) |
 | `/portfolio/growth` | Growth & benchmarks |
-| `/portfolio/setup` | Accounts, LLM, goals, import audit |
+| `/portfolio/setup` | Accounts, LLM, goals, weekly sync, import audit |
+| `/api/portfolio/sync/status` | Weekly job health and degraded accounts (JSON) |
 | `/api/portfolio/patterns` | Chart-pattern scan (JSON) |
 | `/docs` | Swagger (hidden if HTTP auth on) |
 
@@ -145,6 +159,7 @@ Design and Stage 6A contract: [docs/pattern-execution-overlay.md](docs/pattern-e
 |----------|----------|
 | [docs/product.md](docs/product.md) | Product journey, features, roadmap |
 | [docs/user-journey.md](docs/user-journey.md) | Connect-to-ask flow and acceptance test |
+| [docs/weekly-sync-operations.md](docs/weekly-sync-operations.md) | Weekly job, CLI, schedulers, audit, and recovery |
 | [code_flow_and_index.md](code_flow_and_index.md) | Folders, files, request flows |
 | [docs/api-contract-v1.md](docs/api-contract-v1.md) | Stable API for mobile clients |
 | [docs/release-checklist.md](docs/release-checklist.md) | Release steps |

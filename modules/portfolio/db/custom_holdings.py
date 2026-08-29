@@ -143,3 +143,13 @@ def has_holdings(account_id: str) -> bool:
             (account_id,),
         ).fetchone()
     return row is not None
+
+
+def get_meta(account_id: str) -> dict[str, Any] | None:
+    """Return import provenance for freshness labels."""
+    init_db()
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM meta WHERE account_id = ?", (account_id,)
+        ).fetchone()
+    return dict(row) if row else None

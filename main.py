@@ -52,8 +52,10 @@ async def lifespan(app: FastAPI):
     import_audit_store.init_db()
     profile_goals_store.init_db()
     from modules.portfolio.db import advisory_evidence as advisory_evidence_store
+    from modules.portfolio.db import weekly_sync as weekly_sync_store
 
     advisory_evidence_store.init_db()
+    weekly_sync_store.init_db()
     from modules.portfolio.services.market_data import start_daily_yahoo_refresh_scheduler
 
     start_daily_yahoo_refresh_scheduler()

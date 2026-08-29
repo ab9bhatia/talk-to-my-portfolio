@@ -46,6 +46,7 @@ def record_positions_snapshot(
     account_id: str | None,
     positions: list[dict[str, Any]],
     source: str,
+    week_start: str | None = None,
     notes: str | None = None,
     usd_inr: float | None = None,
 ) -> dict[str, Any]:
@@ -55,13 +56,21 @@ def record_positions_snapshot(
         account_id=account_id,
         positions=positions,
         source=source,
+        week_start=week_start,
         usd_inr=usd_inr,
         notes=notes,
     )
 
 
-def record_family_from_payload(family: dict[str, Any], *, source: str = "live") -> list[dict[str, Any]]:
+def record_family_from_payload(
+    family: dict[str, Any],
+    *,
+    source: str = "live",
+    week_start: str | None = None,
+) -> list[dict[str, Any]]:
     """Save family + per-account weekly snapshots from fetch_family_portfolio result."""
+    from modules.portfolio.services.holdings_view import aggregate_holdings_across_accounts
+
     results: list[dict[str, Any]] = []
     all_holdings: list[dict[str, Any]] = []
     for portfolio in family.get("portfolios") or []:
@@ -75,15 +84,20 @@ def record_family_from_payload(family: dict[str, Any], *, source: str = "live") 
                     account_id=aid,
                     positions=holdings,
                     source=source,
+                    week_start=week_start,
                 )
             )
+    family_positions = (
+        aggregate_holdings_across_accounts(all_holdings) if all_holdings else []
+    )
     results.insert(
         0,
         record_positions_snapshot(
             scope="family",
             account_id=None,
-            positions=all_holdings,
+            positions=family_positions,
             source=source,
+            week_start=week_start,
         ),
     )
     return results

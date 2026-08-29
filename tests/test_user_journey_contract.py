@@ -73,3 +73,13 @@ def test_primary_layout_can_shrink_inside_the_viewport():
     styles = _read("shared/web/static/css/app.css")
     assert "grid-template-columns: var(--sidebar-width) minmax(0, 1fr);" in styles
     assert ".main {\n  min-width: 0;" in styles
+
+
+def test_weekly_sync_setup_flow_is_root_aware_and_explicitly_non_trading():
+    template = _read("shared/web/templates/portfolio/setup.html")
+    script = _read("shared/web/static/js/portfolio-weekly-sync.js")
+    assert 'id="weekly-sync-run"' in template
+    assert "It never places orders." in template
+    assert 'window.appUrl ? window.appUrl(path) : path' in script
+    assert 'endpoint("/api/portfolio/sync/weekly")' in script
+    assert 'dry_run: dryRunInput.checked' in script

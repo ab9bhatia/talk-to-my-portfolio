@@ -127,6 +127,83 @@
     </article>
   </section>
 
+  <section class="setup-sync-section" aria-labelledby="setup-sync-title">
+    <div class="setup-section-head">
+      <h2 id="setup-sync-title" class="setup-section-title">Weekly portfolio sync</h2>
+      <p class="setup-section-sub">
+        One auditable job refreshes every enabled account, labels fallbacks honestly, records history, and writes a local decision digest. It never places orders.
+      </p>
+    </div>
+    {% set sync_attempt = weekly_sync_status.latest_attempt %}
+    {% set sync_success = weekly_sync_status.last_successful %}
+    <article class="setup-card setup-card--sync{% if sync_attempt and sync_attempt.status in ['COMPLETED', 'COMPLETED_WITH_WARNINGS'] %} is-live{% endif %}" id="weekly-sync-card">
+      <div class="setup-sync-header">
+        <div>
+          <p class="setup-eyebrow">Automation health</p>
+          <h3 class="setup-card-name">{% if sync_attempt %}{{ sync_attempt.status | replace('_', ' ') | title }}{% else %}Not run yet{% endif %}</h3>
+          <p class="setup-card-detail" id="weekly-sync-detail">
+            {% if sync_attempt %}
+              Last attempted {{ format_cache_time(sync_attempt.started_at) }} · {{ sync_attempt.mode }}{% if sync_attempt.dry_run %} · dry run{% endif %}
+            {% else %}
+              Run once manually, then install the OS scheduler for Friday plus Saturday backup.
+            {% endif %}
+          </p>
+        </div>
+        <span class="setup-status {% if sync_attempt and sync_attempt.status == 'COMPLETED' %}setup-status--ok{% elif sync_attempt and sync_attempt.status in ['COMPLETED_WITH_WARNINGS', 'SKIPPED_DUPLICATE'] %}setup-status--warn{% else %}setup-status--muted{% endif %}" id="weekly-sync-badge">
+          <span class="setup-status-dot"></span>{% if sync_attempt %}{{ sync_attempt.status | replace('_', ' ') | title }}{% else %}Pending{% endif %}
+        </span>
+      </div>
+
+      <div class="setup-sync-metrics">
+        <div>
+          <span>Last successful</span>
+          <strong>{% if sync_success %}{{ format_cache_time(sync_success.finished_at) }}{% else %}—{% endif %}</strong>
+        </div>
+        <div>
+          <span>Degraded accounts</span>
+          <strong>{{ weekly_sync_status.degraded_accounts | length }}</strong>
+        </div>
+        <div>
+          <span>Execution</span>
+          <strong>Disabled</strong>
+        </div>
+      </div>
+
+      {% if weekly_sync_status.degraded_accounts %}
+      <div class="setup-sync-degraded" id="weekly-sync-degraded">
+        {% for account in weekly_sync_status.degraded_accounts %}
+        <p><strong>{{ account.account_code }}</strong> · {{ account.status | replace('_', ' ') | title }}{% if account.recovery_action %} — {{ account.recovery_action }}{% endif %}</p>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      <div class="setup-sync-controls">
+        <label class="setup-field setup-sync-mode">
+          <span class="setup-field-label">Run mode</span>
+          <select id="weekly-sync-mode">
+            <option value="auto">Auto — live with safe fallback</option>
+            <option value="live">Live — require all brokers</option>
+            <option value="safe-fallback">Safe fallback — cached positions + fresh prices</option>
+          </select>
+        </label>
+        <label class="setup-sync-dry-run">
+          <input type="checkbox" id="weekly-sync-dry-run">
+          <span>Dry run</span>
+        </label>
+        <button type="button" class="setup-btn setup-btn-primary" id="weekly-sync-run">Run weekly sync</button>
+      </div>
+      <p class="setup-sync-result" id="weekly-sync-result" role="status" aria-live="polite"></p>
+
+      {% if sync_success and sync_success.artifacts %}
+        {% for artifact in sync_success.artifacts %}
+          {% if artifact.kind == 'digest_markdown' and artifact.path %}
+          <p class="setup-card-detail setup-sync-digest">Latest digest: <code class="setup-inline-code">{{ artifact.path }}</code></p>
+          {% endif %}
+        {% endfor %}
+      {% endif %}
+    </article>
+  </section>
+
   <section class="setup-quality-section" aria-labelledby="setup-quality-title">
     <div class="setup-section-head">
       <h2 id="setup-quality-title" class="setup-section-title">Data quality</h2>
@@ -339,4 +416,5 @@
 <script src="{{ app_path('/static/js/portfolio-setup.js') }}"></script>
 <script src="{{ app_path('/static/js/portfolio-setup-llm.js') }}"></script>
 <script src="{{ app_path('/static/js/portfolio-goals.js') }}"></script>
+<script src="{{ app_path('/static/js/portfolio-weekly-sync.js') }}"></script>
 {% endblock %}

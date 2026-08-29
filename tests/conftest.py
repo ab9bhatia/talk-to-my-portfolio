@@ -27,6 +27,7 @@ def initialize_isolated_databases():
         sector_llm_cache,
         tokens,
         weekly_history,
+        weekly_sync,
     )
 
     for store in (
@@ -36,6 +37,7 @@ def initialize_isolated_databases():
         portfolio_cache,
         daily_history,
         weekly_history,
+        weekly_sync,
         sector_llm_cache,
         buy_thesis_cache,
         custom_holdings,

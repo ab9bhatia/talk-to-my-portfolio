@@ -21,7 +21,8 @@ This is the acceptance flow for a portfolio owner who wants to connect every acc
 3. Use the account-specific recovery action for missing or expired credentials.
 4. Configure the LLM provider only if Portfolio Agent is required.
 5. Set risk, target-return, position, sector, and cash guardrails.
-6. Return to the dashboard.
+6. Run **Weekly portfolio sync** once in dry-run mode and resolve any account-specific warning.
+7. Install the OS scheduler after a successful real run, then return to the dashboard.
 
 Pass conditions:
 
@@ -29,6 +30,8 @@ Pass conditions:
 - Secrets are never displayed after save.
 - Saving one account does not overwrite another account's credentials.
 - Dashboard navigation respects `APP_ROOT_PATH`.
+- Dry run records an audit but never creates portfolio snapshots or digest files.
+- Every weekly run distinguishes position freshness from price freshness.
 
 ### 2. Dashboard — understand
 
@@ -102,9 +105,11 @@ Pass conditions:
 
 ### Weekly — 20 minutes
 
-1. Review Growth for portfolio trend, drawdown, benchmark gap, account attribution, and allocation drift.
-2. Review Action Center changes since the prior week and inspect evidence dates before making a broker-side trade.
-3. Use Portfolio Agent for one focused question, such as concentration risk or why two signals conflict.
+1. Confirm the Friday weekly sync completed; use the Setup recovery action for any degraded account.
+2. Open the local weekly digest and review its maximum five suggested actions plus no-action count.
+3. Review Growth for portfolio trend, drawdown, benchmark gap, account attribution, and allocation drift.
+4. Review Action Center changes since the prior week and inspect evidence dates before making a broker-side trade.
+5. Use Portfolio Agent for one focused question, such as concentration risk or why two signals conflict.
 
 ### Monthly — 45 minutes
 
@@ -120,6 +125,9 @@ Growth should remain in the product, but it is a review surface—not the daily 
 |---|---|
 | Broker login expired | Continue with a labelled snapshot and provide the account-specific login action |
 | Account refresh fails | Keep the last safe snapshot, name the affected account, and avoid claiming all accounts are current |
+| Weekly job already running | Report `LOCKED`; do not start a second writer |
+| Friday and Saturday jobs both run | Audit Saturday as `SKIPPED_DUPLICATE`; keep one weekly snapshot |
+| Manual account is out of date | Report `IMPORT_REQUIRED` or cached-position freshness with the position and price dates separated |
 | Yahoo pattern scan is slow or unavailable | Keep deterministic decisions usable and show pattern timing as pending/unavailable |
 | Only one growth snapshot exists | Explain that two snapshots are required for a best-day calculation |
 | LLM is unavailable | Keep Dashboard, Growth, and Action Center functional; direct the user to Setup & Config |
@@ -135,6 +143,7 @@ node --check shared/web/static/js/nav-loader.js
 node --check shared/web/static/js/portfolio-growth.js
 node --check shared/web/static/js/portfolio-advisor.js
 node --check shared/web/static/js/portfolio-agent.js
+node --check shared/web/static/js/portfolio-weekly-sync.js
 uvicorn main:app --reload --host 127.0.0.1 --port 9000
 ```
 

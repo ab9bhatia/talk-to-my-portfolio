@@ -481,10 +481,15 @@ def _fetch_sarwa_portfolio_live(
     enrich: bool = False,
 ) -> dict:
     """Latest Sarwa weekly import as a synthetic portfolio."""
-    from modules.portfolio.services.market_data import apply_holdings_metric_overrides, enrich_holdings
+    from modules.portfolio.db import weekly_history
+    from modules.portfolio.services.market_data import (
+        apply_holdings_metric_overrides,
+        enrich_holdings,
+    )
     from modules.portfolio.services.weekly_recorder import sarwa_holdings_for_dashboard
 
     account = get_sarwa_account(account_id)
+    snapshot = weekly_history.latest_snapshot(scope="account", account_id=account_id)
     holdings = sarwa_holdings_for_dashboard(account_id)
     if with_metrics and holdings:
         if enrich:
@@ -498,6 +503,8 @@ def _fetch_sarwa_portfolio_live(
         "account_label": account["code"],
         "user_id": "sarwa",
         "broker": "sarwa",
+        "cached_at": snapshot.get("captured_at") if snapshot else None,
+        "position_as_of": snapshot.get("captured_at") if snapshot else None,
         "summary": summary,
         "holdings": holdings,
     }
@@ -539,7 +546,7 @@ def _after_family_live_fetch(payload: dict) -> None:
         logger.warning("History snapshot skipped: %s", exc)
 
 
-def _fetch_family_live(*, with_metrics: bool = True) -> dict:
+def _fetch_family_live(*, with_metrics: bool = True, persist_history: bool = True) -> dict:
     from modules.portfolio.config import get_enabled_custom_accounts
     from modules.portfolio.db import custom_holdings as custom_holdings_store
     from modules.portfolio.services.custom_portfolio import fetch_custom_portfolio_live
@@ -635,7 +642,8 @@ def _fetch_family_live(*, with_metrics: bool = True) -> dict:
     }
     if any(e.get("using_snapshot") for e in errors):
         payload["auth_degraded"] = True
-    _after_family_live_fetch(payload)
+    if persist_history:
+        _after_family_live_fetch(payload)
     return payload
 
 
@@ -646,6 +654,8 @@ def _merge_sarwa_into_family(
     refresh: bool = False,
 ) -> dict:
     """Always attach latest Sarwa weekly import (even when serving stale broker cache)."""
+    from modules.portfolio.config import get_enabled_custom_accounts
+
     sarwa_accounts = get_enabled_sarwa_accounts()
     if not sarwa_accounts:
         return payload
@@ -654,8 +664,19 @@ def _merge_sarwa_into_family(
     for account_id in sarwa_accounts:
         try:
             block = _fetch_sarwa_portfolio_live(
-                account_id, with_metrics=with_metrics, enrich=refresh
+                account_id,
+                with_metrics=with_metrics,
+                enrich=False,
             )
+            if refresh and block.get("holdings"):
+                holdings = _refresh_holdings_ltps_from_yahoo(block["holdings"])
+                holdings = _ensure_block_metrics(holdings, with_metrics=with_metrics)
+                block = {
+                    **block,
+                    "holdings": holdings,
+                    "summary": summarize_holdings(holdings),
+                    "ltp_refreshed_offline": True,
+                }
             if block.get("holdings"):
                 portfolios.append(block)
         except Exception as exc:
@@ -670,6 +691,7 @@ def _merge_sarwa_into_family(
             len(get_enabled_accounts())
             + len(get_enabled_groww_accounts())
             + len(sarwa_accounts)
+            + len(get_enabled_custom_accounts())
         ),
         "accounts_loaded": len(portfolios),
     }
@@ -709,17 +731,24 @@ def fetch_family_portfolio(
     with_metrics: bool = True,
     refresh: bool = False,
     stale_ok: bool = True,
+    persist_history: bool = True,
 ) -> dict:
     """
     Return portfolio data for all enabled accounts.
 
     Stale-first: serves SQLite snapshot when in-memory TTL expired, then
     revalidates Zerodha + Yahoo in the background.
+
+    `persist_history=False` lets the weekly orchestrator validate all account
+    states before its single idempotent snapshot-write step.
     """
     key = _cache_key(None, with_metrics)
 
     if refresh:
-        live = _fetch_family_live(with_metrics=with_metrics)
+        live = _fetch_family_live(
+            with_metrics=with_metrics,
+            persist_history=persist_history,
+        )
         live = _ensure_family_payload_metrics(live, with_metrics=with_metrics)
         if live.get("portfolios"):
             return _finalize_family_payload(
@@ -754,7 +783,10 @@ def fetch_family_portfolio(
             schedule_family_revalidate(with_metrics=with_metrics)
         return _finalize_family_payload(merged_disk, with_metrics=with_metrics, refresh=False)
 
-    live = _fetch_family_live(with_metrics=with_metrics)
+    live = _fetch_family_live(
+        with_metrics=with_metrics,
+        persist_history=persist_history,
+    )
     live = _ensure_family_payload_metrics(live, with_metrics=with_metrics)
     if live.get("portfolios"):
         return _finalize_family_payload(
@@ -773,3 +805,34 @@ def fetch_family_portfolio(
         with_metrics=with_metrics,
         refresh=False,
     )
+
+
+def fetch_cached_family_portfolio(
+    *,
+    with_metrics: bool = True,
+) -> dict:
+    """
+    Return only the last trusted durable family snapshot.
+
+    This is the canonical safe-fallback entry point for unattended weekly sync:
+    quantities remain from the durable cache and Yahoo quote refreshes are
+    labelled explicitly. It never calls a broker or writes portfolio history.
+    """
+    cached = _load_stale_family_portfolio(with_metrics=with_metrics)
+    if cached is None:
+        return {
+            "accounts_requested": 0,
+            "accounts_loaded": 0,
+            "summary": summarize_holdings([]),
+            "portfolios": [],
+            "errors": [
+                {
+                    "account": "FAMILY",
+                    "broker": "local_cache",
+                    "error": "No durable family snapshot is available for safe fallback.",
+                    "using_snapshot": False,
+                }
+            ],
+            "stale": True,
+        }
+    return _finalize_family_payload(cached, with_metrics=with_metrics, refresh=True)

@@ -34,6 +34,8 @@ Browsers cache credentials for the session; `fetch()` to same origin includes th
 | `.env` | Broker API keys, LLM keys, HTTP password |
 | `modules/portfolio/data/tokens.db` | Zerodha access tokens (plaintext) |
 | `modules/portfolio/data/groww_tokens.db` | Groww tokens (plaintext) |
+| `modules/portfolio/data/weekly_sync.db` | Weekly run audit, account codes/states, artifact paths |
+| `modules/portfolio/data/weekly-digests/` | Local decision digests; no internal account IDs or full holdings |
 
 Recommend:
 
@@ -43,6 +45,8 @@ chmod 700 modules/portfolio/data
 ```
 
 Token encryption (SQLCipher / OS keychain) is not implemented yet — filesystem access still implies broker access.
+
+Weekly-sync errors are sanitized for common API key, secret, token, TOTP, password, and authorization assignments before logs/audit. Digest delivery is local-file only by default. Do not place the data directory in a cloud-synced folder unless that is an intentional disclosure.
 
 ## Trading
 

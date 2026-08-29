@@ -33,6 +33,8 @@ flowchart LR
   C --> H[Import / refresh data]
   H --> I[Data quality check]
   I --> D
+  B --> J[Schedule weekly sync]
+  J --> E
 ```
 
 | Stage | User action | Outcome |
@@ -45,6 +47,7 @@ flowchart LR
 | **Track progress** | Growth → charts, timeline, optional sheet import | Long-term view vs benchmarks |
 | **Ask** | Agent → new chat after goal changes | Buy / trim / hold / rebalance guidance |
 | **Trust data** | Setup → Data quality after imports | Confirm mappings, fix unresolved sheet columns |
+| **Operate weekly** | Setup or OS scheduler → weekly sync | One audited snapshot/digest with explicit degraded accounts |
 
 ---
 
@@ -81,6 +84,7 @@ flowchart LR
 | Benchmark overlay | Portfolio vs NIFTY50 / S&amp;P500 (indexed) |
 | Date-wise timeline | Family + per-account invested/value |
 | Weekly history | Immutable weekly snapshots for longer audits |
+| Weekly operating job | Friday sync plus idempotent Saturday backup; local decision digest |
 
 ### Portfolio agent
 
@@ -99,6 +103,7 @@ flowchart LR
 | Account hub | Add, edit, reconnect, import |
 | Goals & guardrails | Personal risk frame for agent |
 | Data quality log | Post-import audit: row counts, unresolved account mappings |
+| Weekly sync health | Last attempt/success, account freshness states, recovery actions, local digest |
 | HTTP Basic Auth | Optional LAN protection |
 
 ### Platform (engineering)
@@ -124,10 +129,10 @@ flowchart LR
 
 | Horizon | Theme |
 |---------|--------|
-| **Now** | Consolidation + agent + growth + Setup trust (goals, data quality) |
-| **Next** | Dashboard breach chips (position/sector vs guardrails), alert center, rebalance planner |
+| **Now** | Consolidation + agent + growth + weekly sync + Setup trust |
+| **Next** | Reconciliation, instrument master, corporate-action groundwork |
 | **Mobile** | Kotlin client on [api-contract-v1.md](api-contract-v1.md) |
-| **Scale** | Scheduled digests / alerts (future) |
+| **Scale** | Opt-in delivery channels and continuously running deployments |
 
 ---
 
@@ -138,7 +143,7 @@ flowchart LR
 | `/portfolio` | Family dashboard |
 | `/portfolio/agent` | Portfolio agent |
 | `/portfolio/growth` | Growth analytics |
-| `/portfolio/setup` | Accounts, LLM, goals, data quality |
+| `/portfolio/setup` | Accounts, LLM, goals, weekly sync, data quality |
 | `/portfolio/account/{code}` | Single-account view |
 
 ---
@@ -161,4 +166,5 @@ flowchart LR
 | [broker-api-keys.md](broker-api-keys.md) | Broker credentials |
 | [security.md](security.md) | Threat model |
 | [api-contract-v1.md](api-contract-v1.md) | Building a mobile/API client |
+| [weekly-sync-operations.md](weekly-sync-operations.md) | Running, scheduling, and recovering the weekly job |
 | [release-checklist.md](release-checklist.md) | Shipping a version |

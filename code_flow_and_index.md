@@ -96,6 +96,7 @@ flowchart TB
 | `portfolio_cache.py` | `portfolio_cache.db` | Family/account snapshots, agent threads |
 | `daily_history.py` | `portfolio_history.db` (daily tables) | Daily value snapshots |
 | `weekly_history.py` | `portfolio_history.db` | Weekly immutable snapshots |
+| `weekly_sync.py` | `weekly_sync.db` | Weekly run, step, account-state, artifact, and notification audit |
 | `custom_holdings.py` | `custom_holdings.db` | CSV/custom positions |
 | `profile_goals.py` | `portfolio_profile.db` | User goals & guardrails (Setup) |
 | `import_audit.py` | `portfolio_profile.db` | Import quality audit log |
@@ -118,6 +119,7 @@ flowchart TB
 | **`custom_portfolio.py`** | Custom CSV/Excel import |
 | **`sarwa_screenshot.py`** | Sarwa image parse (vision) |
 | **`weekly_recorder.py`** | Weekly snapshots, Sarwa import |
+| **`weekly_sync.py`** | One-shot orchestration, lock, idempotency, degraded states, advisory summary, local digest |
 | **`daily_recorder.py`** | Seed today’s daily snapshot on refresh |
 | **`daily_analytics.py`** | Growth dashboard JSON, benchmarks, timeline |
 | **`daily_sheet_import.py`** | Google Sheet historical import |
@@ -139,6 +141,7 @@ flowchart TB
 |--------|------|
 | `record_daily_snapshots.py` | Cron-friendly daily record |
 | `record_weekly_snapshots.py` | Weekly snapshot backfill |
+| `weekly_sync.py` | Auditable weekly operating job used by CLI and schedulers |
 | `refresh_snapshot_ltps.py` | Refresh current week LTPs |
 | `classify_sectors.py` | Batch sector classification |
 
@@ -168,6 +171,7 @@ flowchart TB
 | `portfolio-setup.js` | Setup | Account modal, imports |
 | `portfolio-setup-llm.js` | Setup | LLM provider modal |
 | `portfolio-goals.js` | Setup | Save goals & guardrails |
+| `portfolio-weekly-sync.js` | Setup | Run the one-shot sync and present its audited result |
 
 ### `docs/`
 
@@ -184,6 +188,9 @@ flowchart TB
 |--------|---------|
 | `init_local_config.sh` | Copy `.env` + `accounts.json` templates |
 | `install_groww_reminder.sh` | macOS launchd reminder (optional) |
+| `install_weekly_sync_macos.sh` | Install/uninstall the Friday + Saturday launchd job |
+| `install_weekly_sync_linux.sh` | Install/uninstall the systemd user timer |
+| `Install-WeeklySyncWindows.ps1` | Install/uninstall Windows scheduled tasks |
 
 ---
 
@@ -220,6 +227,15 @@ flowchart TB
 6. Persist thread in `portfolio_cache.db`
 
 **Important:** Changing goals applies to **new** agent threads; existing threads keep the context snapshot from thread start.
+
+### 4A. Weekly operating job — CLI, Setup, or OS scheduler
+
+1. Every entry point calls `services.weekly_sync.run_weekly_sync`; scheduling contains no portfolio logic.
+2. The job audits its run, acquires `weekly-sync.lock`, and checks ISO-week/mode/account-set idempotency.
+3. `auto` calls the canonical family fetch with history side effects disabled; `safe-fallback` uses the canonical durable-cache helper and refreshed quotes.
+4. Each enabled account receives a position timestamp, price timestamp, explicit state, and recovery action.
+5. Only validated non-empty runs write aggregated daily/weekly snapshots and recompute deterministic advisory output.
+6. Markdown/HTML digest delivery remains local and no execution API is called.
 
 ### 5. Growth — `GET /portfolio/growth` + `GET /api/portfolio/daily/dashboard`
 
@@ -296,6 +312,9 @@ Full mobile contract: [docs/api-contract-v1.md](docs/api-contract-v1.md).
 | GET/PUT | `/api/portfolio/profile/goals` | Goals & guardrails |
 | GET | `/api/portfolio/data-quality` | Import audit |
 | GET | `/api/portfolio/daily/dashboard` | Growth JSON |
+| GET | `/api/portfolio/sync/status` | Weekly job health + degraded accounts |
+| GET | `/api/portfolio/sync/runs/{run_id}` | Structured run/step/account audit |
+| POST | `/api/portfolio/sync/weekly` | Run the same one-shot job as CLI/scheduler |
 | POST | `/api/portfolio/agent/ask/stream` | Agent SSE |
 | GET | `/api/portfolio/version` | API contract version |
 

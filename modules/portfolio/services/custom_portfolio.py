@@ -137,6 +137,7 @@ def fetch_custom_portfolio_live(account_id: str, *, with_metrics: bool = True) -
 
     account = get_custom_account(account_id)
     holdings = custom_db.list_holdings(account_id)
+    import_meta = custom_db.get_meta(account_id) or {}
     if with_metrics and holdings:
         holdings = enrich_holdings(holdings)
         apply_holdings_metric_overrides(holdings)
@@ -146,6 +147,8 @@ def fetch_custom_portfolio_live(account_id: str, *, with_metrics: bool = True) -
         "account_label": account.get("label") or account["code"],
         "user_id": "custom",
         "broker": "custom",
+        "cached_at": import_meta.get("updated_at"),
+        "position_as_of": import_meta.get("updated_at"),
         "summary": summarize_holdings(holdings),
         "holdings": holdings,
     }
