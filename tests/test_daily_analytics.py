@@ -4,6 +4,7 @@ from modules.portfolio.services.daily_analytics import (
     _account_matrix_for_days,
     _carry_forward_amount,
     _forward_fill_growth_series,
+    build_growth_dashboard,
 )
 
 
@@ -93,3 +94,81 @@ def test_account_matrix_carries_missing_account_day():
         with daily_history.connect() as conn:
             conn.execute("DELETE FROM daily_positions")
             conn.execute("DELETE FROM daily_snapshots")
+
+
+def test_growth_suppresses_return_claims_when_account_coverage_changes(monkeypatch):
+    from modules.portfolio.db import daily_history
+    import modules.portfolio.services.daily_analytics as mod
+
+    monkeypatch.setattr(mod, "_benchmark_series_for_days", lambda _series: {})
+    with daily_history.connect() as conn:
+        conn.execute("DELETE FROM daily_positions")
+        conn.execute("DELETE FROM daily_snapshots")
+
+    position = {
+        "symbol": "QUALITY",
+        "exchange": "NSE",
+        "quantity": 1,
+        "avg_price": 100,
+        "last_price": 100,
+        "invested": 100,
+        "current_value": 100,
+        "pnl": 0,
+        "pnl_pct": 0,
+    }
+    daily_history.save_snapshot(
+        scope="family",
+        account_id=None,
+        positions=[position],
+        source="test",
+        day_date="2035-01-04",
+        metadata={
+            "snapshot_quality": "COMPLETE_LIVE",
+            "accounts_expected": 5,
+            "accounts_included": 5,
+            "coverage_pct": 100,
+            "comparable_to_previous": False,
+            "comparability_reasons": ["NO_PREVIOUS_SNAPSHOT"],
+        },
+    )
+    daily_history.save_snapshot(
+        scope="family",
+        account_id=None,
+        positions=[{**position, "last_price": 120, "current_value": 120, "pnl": 20}],
+        source="test",
+        day_date="2035-01-05",
+        metadata={
+            "snapshot_quality": "PARTIAL",
+            "accounts_expected": 5,
+            "accounts_included": 4,
+            "coverage_pct": 80,
+            "comparable_to_previous": False,
+            "comparability_reasons": ["INCLUDED_ACCOUNT_COVERAGE_CHANGED"],
+        },
+    )
+
+    dashboard = build_growth_dashboard(days=30)
+    assert dashboard["day_change"]["change"] is None
+    assert dashboard["day_change"]["comparable"] is False
+    assert dashboard["breakdown"]["by_account"] == []
+    assert dashboard["performance_quality"]["claims_allowed"] is False
+    assert dashboard["performance_quality"]["non_comparable_points"][0]["day_date"] == "2035-01-05"
+
+
+def test_benchmark_close_series_handles_yfinance_multiindex(monkeypatch):
+    import pandas as pd
+    import modules.portfolio.services.daily_analytics as mod
+
+    frame = pd.DataFrame(
+        [[24_500.25]],
+        index=pd.to_datetime(["2026-08-28"]),
+        columns=pd.MultiIndex.from_tuples([("Close", "^NSEI")]),
+    )
+    monkeypatch.setattr(mod.yf, "download", lambda *args, **kwargs: frame)
+    mod._benchmark_close_series.cache_clear()
+    try:
+        assert mod._benchmark_close_series("^NSEI", "2026-08-28", "2026-08-29") == [
+            ("2026-08-28", 24_500.25)
+        ]
+    finally:
+        mod._benchmark_close_series.cache_clear()

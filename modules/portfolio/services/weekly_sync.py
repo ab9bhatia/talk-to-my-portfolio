@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import html
+import json
 import logging
 import os
 import re
@@ -13,7 +14,8 @@ import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+from enum import StrEnum
 from pathlib import Path
 from typing import Any, Callable
 from zoneinfo import ZoneInfo
@@ -21,12 +23,17 @@ from zoneinfo import ZoneInfo
 from modules.portfolio import config as portfolio_config
 from modules.portfolio.db import profile_goals, weekly_history, weekly_sync as sync_store
 from modules.portfolio.paths import DATA_DIR
+from modules.portfolio.services.snapshot_quality import snapshot_metadata
 
 logger = logging.getLogger(__name__)
 
 VALID_MODES = frozenset({"auto", "live", "safe-fallback"})
 SUCCESS_STATUSES = frozenset({"COMPLETED", "COMPLETED_WITH_WARNINGS"})
 LIVE_ACCOUNT_STATUSES = frozenset({"LIVE_RECONCILED", "LIVE_WITH_WARNINGS"})
+LIVE_MODE_ACCEPTED_STATUSES = frozenset(
+    {"LIVE_RECONCILED", "LIVE_WITH_WARNINGS", "MANUAL_CURRENT"}
+)
+VALUATION_POLICY_VERSION = "weekly-valuation-v2"
 _SECRET_RE = re.compile(
     r"(?i)(api[_ -]?key|api[_ -]?secret|access[_ -]?token|totp|password|authorization)"
     r"\s*[:=]\s*[^\s,;]+"
@@ -44,6 +51,35 @@ class WeeklySyncLocked(WeeklySyncError):
 
 class WeeklySyncCancelled(WeeklySyncError):
     """The current run was cancelled between safe step boundaries."""
+
+
+class WeeklySyncStepTimeout(WeeklySyncError):
+    """A step exceeded its deadline and was serialized until its worker exited."""
+
+
+class SyncStage(StrEnum):
+    INDIA_CLOSE = "INDIA_CLOSE"
+    GLOBAL_CLOSE_FINALIZATION = "GLOBAL_CLOSE_FINALIZATION"
+    MANUAL_RERUN = "MANUAL_RERUN"
+
+
+def infer_sync_stage(now: datetime) -> SyncStage:
+    local = now.astimezone(ZoneInfo("Asia/Kolkata"))
+    if local.weekday() == 4:
+        return SyncStage.INDIA_CLOSE
+    if local.weekday() == 5:
+        return SyncStage.GLOBAL_CLOSE_FINALIZATION
+    return SyncStage.MANUAL_RERUN
+
+
+def market_session_date_for(stage: SyncStage, now: datetime) -> str:
+    """Return the equity valuation date; Saturday finalizes Friday, never Saturday."""
+    local_date = now.astimezone(ZoneInfo("Asia/Kolkata")).date()
+    if stage is SyncStage.GLOBAL_CLOSE_FINALIZATION:
+        local_date -= timedelta(days=1)
+    while local_date.weekday() >= 5:
+        local_date -= timedelta(days=1)
+    return local_date.isoformat()
 
 
 @dataclass
@@ -138,12 +174,29 @@ def _time_text(value: object, *, fallback: str | None = None) -> str | None:
     return str(value)
 
 
+def _parse_time(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        try:
+            parsed = datetime.fromtimestamp(float(value), tz=UTC)
+        except (TypeError, ValueError, OSError):
+            return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=ZoneInfo("Asia/Kolkata"))
+    return parsed.astimezone(UTC)
+
+
 def classify_accounts(
     family: dict[str, Any],
     *,
     mode: str,
     account_specs: list[dict[str, str]],
     price_as_of: str,
+    now: datetime | None = None,
+    manual_current_hours: float | None = None,
 ) -> list[dict[str, Any]]:
     """Map every enabled account to an explicit, honest Milestone 7A state."""
     blocks = {
@@ -156,6 +209,14 @@ def classify_accounts(
     }
     prices_refreshed = bool(family.get("ltp_refreshed_offline"))
     fallback_position_as_of = _time_text(family.get("cached_at"))
+    current = (now or datetime.now(tz=UTC)).astimezone(UTC)
+    if manual_current_hours is None:
+        try:
+            manual_current_hours = float(
+                os.getenv("PORTFOLIO_MANUAL_CURRENT_HOURS", "168")
+            )
+        except ValueError:
+            manual_current_hours = 168.0
     results: list[dict[str, Any]] = []
 
     for spec in account_specs:
@@ -171,9 +232,37 @@ def classify_accounts(
 
         if block is not None:
             position_as_of = _time_text(block.get("cached_at"), fallback=position_as_of)
+            if broker in {"sarwa", "custom"}:
+                imported_at = _parse_time(position_as_of)
+                age_hours = (
+                    (current - imported_at).total_seconds() / 3600
+                    if imported_at is not None
+                    else None
+                )
+                refreshed = bool(prices_refreshed or block.get("ltp_refreshed_offline"))
+                account_price_as_of = price_as_of if refreshed else position_as_of
+                if (
+                    age_hours is not None
+                    and 0 <= age_hours <= manual_current_hours
+                ):
+                    status = "MANUAL_CURRENT"
+                    recovery = None
+                else:
+                    status = "MANUAL_STALE"
+                    recovery = "Import current holdings before relying on quantity changes."
+                results.append(
+                    {
+                        **spec,
+                        "status": status,
+                        "position_as_of": position_as_of,
+                        "price_as_of": account_price_as_of,
+                        "recovery_action": recovery,
+                        "warnings": warnings,
+                    }
+                )
+                continue
             cached = bool(
                 mode == "safe-fallback"
-                or broker in {"sarwa", "custom"}
                 or block.get("stale")
                 or block.get("from_cache")
                 or block.get("auth_degraded")
@@ -231,16 +320,29 @@ def classify_accounts(
     return results
 
 
-def _call_with_timeout(fn: Callable[[], Any], timeout_seconds: float) -> Any:
+def _call_with_timeout(
+    fn: Callable[[], Any],
+    timeout_seconds: float,
+    *,
+    on_timeout: Callable[[], None],
+) -> Any:
     executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="weekly-sync-step")
     future = executor.submit(fn)
     try:
         return future.result(timeout=timeout_seconds)
     except FutureTimeoutError as exc:
-        future.cancel()
-        raise WeeklySyncError(f"Step timed out after {timeout_seconds:g} seconds.") from exc
+        on_timeout()
+        # A running Python thread cannot be killed. Wait until it exits before the
+        # caller is allowed to retry, so two broker/cache mutations never overlap.
+        try:
+            future.result()
+        except Exception:
+            pass
+        raise WeeklySyncStepTimeout(
+            f"Step timed out after {timeout_seconds:g} seconds; its worker exited before retry."
+        ) from exc
     finally:
-        executor.shutdown(wait=False, cancel_futures=True)
+        executor.shutdown(wait=True, cancel_futures=True)
 
 
 def _run_step(
@@ -267,7 +369,19 @@ def _run_step(
             started_at=started_at,
         )
         try:
-            result = _call_with_timeout(fn, timeout_seconds)
+            result = _call_with_timeout(
+                fn,
+                timeout_seconds,
+                on_timeout=lambda: sync_store.upsert_step(
+                    run_id,
+                    step_name=name,
+                    sequence=sequence,
+                    status="TIMED_OUT_BUT_STILL_RUNNING",
+                    attempts=attempt,
+                    started_at=started_at,
+                    details={"retry_blocked_until_worker_exit": True},
+                ),
+            )
             sync_store.upsert_step(
                 run_id,
                 step_name=name,
@@ -298,19 +412,40 @@ def _run_step(
             sleeper(min(2 ** (attempt - 1), 8))
 
 
-def _fetch_family(mode: str) -> dict[str, Any]:
+def _fetch_family(mode: str, stage: SyncStage) -> dict[str, Any]:
     from modules.portfolio.services.portfolio import (
         fetch_cached_family_portfolio,
         fetch_family_portfolio,
     )
 
-    if mode == "safe-fallback":
+    if mode == "safe-fallback" or stage is SyncStage.GLOBAL_CLOSE_FINALIZATION:
+        # Global finalization refreshes market prices over the last durable
+        # quantities. It must never replace quantities from a late broker read.
         return fetch_cached_family_portfolio(with_metrics=True)
     return fetch_family_portfolio(
         with_metrics=True,
         refresh=True,
         stale_ok=mode == "auto",
         persist_history=False,
+    )
+
+
+def _previous_history_snapshot(
+    *,
+    cadence: str,
+    current_period: str,
+) -> dict[str, Any] | None:
+    if cadence == "weekly":
+        rows = weekly_history.list_snapshots(scope="family", account_id=None, limit=104)
+        period_key = "week_start"
+    else:
+        from modules.portfolio.db import daily_history
+
+        rows = daily_history.list_snapshots(scope="family", account_id=None, limit=365)
+        period_key = "day_date"
+    return next(
+        (row for row in rows if str(row.get(period_key) or "") < current_period),
+        None,
     )
 
 
@@ -335,14 +470,84 @@ def _advisory_summary(family: dict[str, Any], generated_at: str) -> dict[str, An
         "STRONG_ADD": 4,
         "ADD": 5,
     }
-    suggested = sorted(
-        (item for item in recommendations if item.get("action") in priority),
+    material: dict[str, dict[str, Any]] = {}
+    urgent: list[dict[str, Any]] = []
+    execution_ready: list[dict[str, Any]] = []
+    research: list[dict[str, Any]] = []
+    tax_review: list[dict[str, Any]] = []
+
+    for item in recommendations:
+        symbol = str(item.get("symbol") or "UNKNOWN")
+        identity = str(
+            item.get("instrument_id")
+            or item.get("isin")
+            or item.get("security_key")
+            or symbol
+        )
+        flags = item.get("data_quality_flags") or []
+        flag_codes = {
+            str(flag.get("code") or "DATA_QUALITY_WARNING") for flag in flags
+        }
+        blocking = [
+            str(flag.get("code") or "BLOCKING_DATA_QUALITY")
+            for flag in flags
+            if flag.get("blocking")
+        ]
+        expected = item.get("expected_3y_irr") or {}
+        pattern = item.get("chart_pattern") or {}
+        review_trigger = {
+            "hold_until": item.get("hold_until") or {},
+            "add_conditions": item.get("add_conditions") or [],
+            "exit_triggers": item.get("exit_triggers") or [],
+        }
+        row = {
+            "identity": identity,
+            "symbol": symbol,
+            "action": item.get("action"),
+            "sell_type": item.get("sell_type"),
+            "sell_pct": item.get("sell_pct"),
+            "target_weight_pct": item.get("target_weight_pct"),
+            "bear_pct": expected.get("bear_pct"),
+            "base_pct": expected.get("base_pct"),
+            "bull_pct": expected.get("bull_pct"),
+            "confidence": item.get("action_confidence"),
+            "evidence_state": item.get("evidence_state"),
+            "blocking_flags": sorted(blocking),
+            "requires_ca_review": bool(item.get("requires_ca_review")),
+            "chart_pattern_lifecycle": pattern.get("lifecycle_state"),
+            "review_trigger": review_trigger,
+        }
+        material[identity] = row
+
+        action = str(item.get("action") or "WATCH")
+        execution_blocked = bool(
+            blocking
+            or item.get("requires_ca_review")
+            or item.get("evidence_state") == "NEEDS_DATA"
+            or bool(
+                flag_codes.intersection(
+                    {"STALE_EXTERNAL_EVIDENCE", "STALE_PORTFOLIO_SNAPSHOT"}
+                )
+            )
+            or action == "RECONCILE"
+        )
+        if blocking or action == "RECONCILE":
+            urgent.append({**row, "reason": ", ".join(blocking) or "RECONCILE"})
+        if item.get("requires_ca_review"):
+            tax_review.append(row)
+        if action in priority and not execution_blocked:
+            execution_ready.append(row)
+        else:
+            research.append(row)
+
+    execution_ready.sort(
         key=lambda item: (
-            priority[str(item.get("action"))],
-            -float(item.get("action_confidence") or 0),
+            priority.get(str(item.get("action")), 99),
+            -float(item.get("confidence") or 0),
             str(item.get("symbol") or ""),
-        ),
-    )[:5]
+        )
+    )
+    suggested = execution_ready[:5]
     no_action = sum(
         action_counts.get(action, 0) for action in ("HOLD", "HOLD_NO_ADD", "WATCH")
     )
@@ -355,11 +560,16 @@ def _advisory_summary(family: dict[str, Any], generated_at: str) -> dict[str, An
             {
                 "symbol": item.get("symbol"),
                 "action": item.get("action"),
-                "confidence": item.get("action_confidence"),
+                "confidence": item.get("confidence"),
                 "review_trigger": item.get("review_trigger"),
             }
             for item in suggested
         ],
+        "urgent_data_risk_issues": urgent,
+        "execution_ready_actions": execution_ready,
+        "research_watch_actions": research,
+        "tax_ca_review_actions": tax_review,
+        "by_security": material,
         "by_symbol": {
             str(item.get("symbol")): str(item.get("action")) for item in recommendations
         },
@@ -369,13 +579,53 @@ def _advisory_summary(family: dict[str, Any], generated_at: str) -> dict[str, An
 
 def _recommendation_changes(
     current: dict[str, Any], previous: dict[str, Any] | None
-) -> list[dict[str, str]]:
-    prior = (previous or {}).get("by_symbol") or {}
-    changes = []
-    for symbol, action in sorted((current.get("by_symbol") or {}).items()):
-        old = prior.get(symbol)
-        if old != action:
-            changes.append({"symbol": symbol, "from": old or "NEW", "to": action})
+) -> list[dict[str, Any]]:
+    prior = (previous or {}).get("by_security") or {}
+    changes: list[dict[str, Any]] = []
+    fields = (
+        "action",
+        "sell_type",
+        "sell_pct",
+        "target_weight_pct",
+        "bear_pct",
+        "base_pct",
+        "bull_pct",
+        "confidence",
+        "evidence_state",
+        "blocking_flags",
+        "requires_ca_review",
+        "chart_pattern_lifecycle",
+        "review_trigger",
+    )
+    for identity, current_row in sorted((current.get("by_security") or {}).items()):
+        old_row = prior.get(identity)
+        if old_row is None:
+            changes.append(
+                {
+                    "identity": identity,
+                    "symbol": current_row.get("symbol"),
+                    "changed_fields": ["NEW"],
+                    "from": "NEW",
+                    "to": current_row.get("action"),
+                }
+            )
+            continue
+        changed = [
+            field
+            for field in fields
+            if json.dumps(old_row.get(field), sort_keys=True, default=str)
+            != json.dumps(current_row.get(field), sort_keys=True, default=str)
+        ]
+        if changed:
+            changes.append(
+                {
+                    "identity": identity,
+                    "symbol": current_row.get("symbol"),
+                    "changed_fields": changed,
+                    "from": old_row.get("action"),
+                    "to": current_row.get("action"),
+                }
+            )
     return changes
 
 
@@ -387,13 +637,17 @@ def _digest_text(
     family: dict[str, Any],
     accounts: list[dict[str, Any]],
     advisory: dict[str, Any],
-    changes: list[dict[str, str]],
+    changes: list[dict[str, Any]],
+    stage: str,
+    market_session_date: str,
+    snapshot_meta: dict[str, Any],
 ) -> str:
     summary = family.get("summary") or {}
     lines = [
         f"# Portfolio weekly digest — {iso_week}",
         "",
-        f"Run: `{run_id}` · Status: **{run_status}**",
+        f"Run: `{run_id}` · Status: **{run_status}** · Stage: **{stage}**",
+        f"Market session: **{market_session_date}** · Captured separately in the run audit",
         "",
         "## Data freshness",
         "",
@@ -414,6 +668,14 @@ def _digest_text(
             f"- Current value: INR {float(summary.get('total_current_value') or 0):,.2f}",
             f"- Invested value: INR {float(summary.get('total_invested') or 0):,.2f}",
             f"- Holdings: {int(summary.get('holdings_count') or 0)}",
+            f"- Snapshot quality: **{snapshot_meta.get('snapshot_quality')}**; "
+            f"coverage {float(snapshot_meta.get('coverage_pct') or 0):.1f}%",
+            f"- Comparable to prior period: **{snapshot_meta.get('comparable_to_previous')}**"
+            + (
+                f" — {', '.join(snapshot_meta.get('comparability_reasons') or [])}"
+                if snapshot_meta.get("comparability_reasons")
+                else ""
+            ),
             "- True performance: unavailable until Milestone 7C validates dated cash flows.",
             "- Market Regime & Mood: unavailable until Milestone 8.",
             "",
@@ -423,36 +685,86 @@ def _digest_text(
     )
     if changes:
         lines.extend(
-            f"- {item['symbol']}: {item['from']} → {item['to']}" for item in changes[:10]
+            f"- {item['symbol']}: {item['from']} → {item['to']} "
+            f"({', '.join(item.get('changed_fields') or [])})"
+            for item in changes[:10]
         )
     else:
         lines.append("- No deterministic action changes versus the prior successful weekly run.")
-    lines.extend(["", "## Review queue", ""])
-    actions = advisory.get("suggested_actions") or []
-    if actions:
-        for item in actions:
+    lines.extend(["", "## Urgent data / risk issues", ""])
+    urgent = advisory.get("urgent_data_risk_issues") or []
+    degraded = [
+        item for item in accounts if item["status"] not in LIVE_MODE_ACCEPTED_STATUSES
+    ]
+    if degraded:
+        lines.extend(
+            f"- {item['account_code']}: {item['status']} — "
+            f"{item.get('recovery_action') or 'review'}"
+            for item in degraded
+        )
+    if urgent:
+        lines.extend(
+            f"- {item['symbol']}: {item.get('reason') or 'blocking review required'}"
+            for item in urgent[:5]
+        )
+    if not degraded and not urgent:
+        lines.append("- No urgent data or deterministic risk issues.")
+
+    lines.extend(["", "## Execution-ready actions", ""])
+    execution = advisory.get("execution_ready_actions") or []
+    if execution:
+        for item in execution[:5]:
             lines.append(
                 f"- {item['symbol']}: **{item['action']}** "
                 f"(confidence {float(item.get('confidence') or 0):.0f}%)"
             )
     else:
-        lines.append("- No suggested actions.")
+        lines.append("- None. Blocking flags, missing evidence, and CA review are excluded.")
+
+    remaining = max(0, 5 - len(execution[:5]))
+    lines.extend(["", "## Research / watch actions", ""])
+    research = advisory.get("research_watch_actions") or []
+    if research and remaining:
+        lines.extend(
+            f"- {item['symbol']}: **{item.get('action') or 'WATCH'}** — "
+            f"{item.get('evidence_state') or 'review evidence'}"
+            for item in research[:remaining]
+        )
+    else:
+        lines.append("- No additional research/watch items in the five-action digest budget.")
+
+    lines.extend(["", "## Tax / CA-review-required actions", ""])
+    tax_review = advisory.get("tax_ca_review_actions") or []
+    if tax_review:
+        lines.extend(
+            f"- {item['symbol']}: {item.get('action') or 'REVIEW'} — CA review required; "
+            "not execution-ready."
+            for item in tax_review[:5]
+        )
+    else:
+        lines.append("- None.")
     lines.extend(
         [
+            "",
+            "## No-action count",
+            "",
             f"- No-action holdings: {int(advisory.get('no_action_count') or 0)}",
             "",
-            "## Data issues",
+            "## Quote refresh coverage",
             "",
         ]
     )
-    degraded = [item for item in accounts if item["status"] not in LIVE_ACCOUNT_STATUSES]
-    if degraded:
-        lines.extend(
-            f"- {item['account_code']}: {item['status']} — {item.get('recovery_action') or 'review'}"
-            for item in degraded
-        )
-    else:
-        lines.append("- No degraded account states were recorded.")
+    quote = family.get("quote_refresh") or {}
+    lines.extend(
+        [
+            f"- Requested/resolved: {int(quote.get('requested_securities') or 0)} / "
+            f"{int(quote.get('resolved_securities') or 0)}",
+            f"- Count coverage: {float(quote.get('count_coverage_pct') or 0):.1f}%",
+            f"- Value-weighted coverage: {float(quote.get('value_weighted_coverage_pct') or 0):.1f}%",
+            f"- Stale prices retained: {', '.join(quote.get('stale_symbols') or []) or 'none'}",
+            f"- Unresolved: {', '.join(quote.get('unresolved_symbols') or []) or 'none'}",
+        ]
+    )
     lines.extend(
         [
             "",
@@ -474,9 +786,12 @@ def _write_digest(
     family: dict[str, Any],
     accounts: list[dict[str, Any]],
     advisory: dict[str, Any],
-    changes: list[dict[str, str]],
+    changes: list[dict[str, Any]],
     output_dir: Path,
     created_at: float,
+    stage: str,
+    market_session_date: str,
+    snapshot_meta: dict[str, Any],
 ) -> dict[str, Any]:
     output_dir.mkdir(parents=True, exist_ok=True)
     markdown = _digest_text(
@@ -487,6 +802,9 @@ def _write_digest(
         accounts=accounts,
         advisory=advisory,
         changes=changes,
+        stage=stage,
+        market_session_date=market_session_date,
+        snapshot_meta=snapshot_meta,
     )
     stem = f"portfolio-weekly-{iso_week}-{run_id[:8]}"
     md_path = output_dir / f"{stem}.md"
@@ -516,6 +834,7 @@ def run_weekly_sync(
     dry_run: bool = False,
     requested_by: str = "cli",
     force: bool = False,
+    stage: str | SyncStage | None = None,
     now: datetime | None = None,
     cancel_event: threading.Event | None = None,
     account_specs: list[dict[str, str]] | None = None,
@@ -537,6 +856,8 @@ def run_weekly_sync(
     if now.tzinfo is None:
         now = now.replace(tzinfo=ZoneInfo("Asia/Kolkata"))
     now_utc = now.astimezone(UTC)
+    sync_stage = SyncStage(stage) if stage is not None else infer_sync_stage(now)
+    market_session_date = market_session_date_for(sync_stage, now)
     started_at = now_utc.timestamp()
     generated_at = now_utc.isoformat().replace("+00:00", "Z")
     iso_week = weekly_history.week_start_for(
@@ -544,24 +865,44 @@ def run_weekly_sync(
     )
     specs = account_specs if account_specs is not None else _enabled_account_specs()
     account_hash = _account_set_hash(specs)
-    idempotency_key = f"{iso_week}:{mode}:{account_hash}"
+    idempotency_key = (
+        f"{iso_week}:{sync_stage.value}:{mode}:{account_hash}:"
+        f"{VALUATION_POLICY_VERSION}"
+    )
     run_id = run_id or uuid.uuid4().hex
+    queued_run = sync_store.get_run(run_id)
 
     if not dry_run and not force:
         prior = sync_store.find_completed_run(idempotency_key)
         if prior:
-            sync_store.create_run(
-                run_id=run_id,
-                idempotency_key=idempotency_key,
-                iso_week=iso_week,
-                mode=mode,
-                dry_run=False,
-                requested_by=requested_by,
-                account_set_hash=account_hash,
-                started_at=started_at,
-                status="SKIPPED_DUPLICATE",
-                duplicate_of=prior["run_id"],
-            )
+            if queued_run and queued_run.get("status") == "QUEUED":
+                sync_store.start_queued_run(
+                    run_id,
+                    idempotency_key=idempotency_key,
+                    iso_week=iso_week,
+                    account_set_hash=account_hash,
+                    started_at=started_at,
+                    stage=sync_stage.value,
+                    market_session_date=market_session_date,
+                    valuation_policy_version=VALUATION_POLICY_VERSION,
+                    duplicate_of=prior["run_id"],
+                )
+            else:
+                sync_store.create_run(
+                    run_id=run_id,
+                    idempotency_key=idempotency_key,
+                    iso_week=iso_week,
+                    mode=mode,
+                    dry_run=False,
+                    requested_by=requested_by,
+                    account_set_hash=account_hash,
+                    started_at=started_at,
+                    status="RUNNING",
+                    duplicate_of=prior["run_id"],
+                    stage=sync_stage.value,
+                    market_session_date=market_session_date,
+                    valuation_policy_version=VALUATION_POLICY_VERSION,
+                )
             sync_store.copy_account_results(
                 source_run_id=prior["run_id"], target_run_id=run_id
             )
@@ -569,6 +910,8 @@ def run_weekly_sync(
                 **(prior.get("summary") or {}),
                 "message": "This mode and account set already completed for the ISO week.",
                 "duplicate_of": prior["run_id"],
+                "stage": sync_stage.value,
+                "market_session_date": market_session_date,
             }
             sync_store.finish_run(
                 run_id, status="SKIPPED_DUPLICATE", finished_at=time.time(), summary=summary
@@ -578,16 +921,31 @@ def run_weekly_sync(
                 "status": "SKIPPED_DUPLICATE",
             }
 
-    sync_store.create_run(
-        run_id=run_id,
-        idempotency_key=idempotency_key,
-        iso_week=iso_week,
-        mode=mode,
-        dry_run=dry_run,
-        requested_by=requested_by,
-        account_set_hash=account_hash,
-        started_at=started_at,
-    )
+    if queued_run and queued_run.get("status") == "QUEUED":
+        sync_store.start_queued_run(
+            run_id,
+            idempotency_key=idempotency_key,
+            iso_week=iso_week,
+            account_set_hash=account_hash,
+            started_at=started_at,
+            stage=sync_stage.value,
+            market_session_date=market_session_date,
+            valuation_policy_version=VALUATION_POLICY_VERSION,
+        )
+    else:
+        sync_store.create_run(
+            run_id=run_id,
+            idempotency_key=idempotency_key,
+            iso_week=iso_week,
+            mode=mode,
+            dry_run=dry_run,
+            requested_by=requested_by,
+            account_set_hash=account_hash,
+            started_at=started_at,
+            stage=sync_stage.value,
+            market_session_date=market_session_date,
+            valuation_policy_version=VALUATION_POLICY_VERSION,
+        )
     cancellation = cancel_event or threading.Event()
     lock = JobLock(lock_path or DATA_DIR / "weekly-sync.lock")
 
@@ -595,12 +953,15 @@ def run_weekly_sync(
         with lock:
             if not specs:
                 raise WeeklySyncError("No enabled accounts are configured.")
-            fetch = family_fetcher or _fetch_family
             family = _run_step(
                 run_id,
                 sequence=1,
                 name="fetch_family_portfolio",
-                fn=lambda: fetch(mode),
+                fn=(
+                    (lambda: family_fetcher(mode))
+                    if family_fetcher is not None
+                    else (lambda: _fetch_family(mode, sync_stage))
+                ),
                 timeout_seconds=step_timeout_seconds,
                 retries=fetch_retries,
                 cancel_event=cancellation,
@@ -611,6 +972,7 @@ def run_weekly_sync(
                 mode=mode,
                 account_specs=specs,
                 price_as_of=generated_at,
+                now=now_utc,
             )
             for account in accounts:
                 sync_store.upsert_account_result(run_id, account)
@@ -623,16 +985,51 @@ def run_weekly_sync(
                     "No trusted holdings were available; no snapshots were written."
                 )
             if mode == "live" and any(
-                account["status"] not in LIVE_ACCOUNT_STATUSES for account in accounts
+                account["status"] not in LIVE_MODE_ACCEPTED_STATUSES
+                for account in accounts
             ):
                 raise WeeklySyncError(
                     "Live mode requires every enabled account to be live; no snapshots were written."
                 )
 
             degraded = [
-                account for account in accounts if account["status"] not in LIVE_ACCOUNT_STATUSES
+                account
+                for account in accounts
+                if account["status"] not in LIVE_MODE_ACCEPTED_STATUSES
             ]
             run_status = "COMPLETED_WITH_WARNINGS" if degraded else "COMPLETED"
+            weekly_meta = snapshot_metadata(
+                run_id=run_id,
+                stage=sync_stage.value,
+                market_session_date=market_session_date,
+                accounts=accounts,
+                previous=_previous_history_snapshot(
+                    cadence="weekly", current_period=iso_week
+                ),
+            )
+            daily_meta = snapshot_metadata(
+                run_id=run_id,
+                stage=sync_stage.value,
+                market_session_date=market_session_date,
+                accounts=accounts,
+                previous=_previous_history_snapshot(
+                    cadence="daily", current_period=market_session_date
+                ),
+            )
+            sync_store.update_run_quality(
+                run_id,
+                snapshot_quality=weekly_meta["snapshot_quality"],
+                comparability={
+                    "weekly": {
+                        "comparable_to_previous": weekly_meta["comparable_to_previous"],
+                        "reasons": weekly_meta["comparability_reasons"],
+                    },
+                    "daily": {
+                        "comparable_to_previous": daily_meta["comparable_to_previous"],
+                        "reasons": daily_meta["comparability_reasons"],
+                    },
+                },
+            )
             advisory_fn = advisory_builder or _advisory_summary
             advisory = _run_step(
                 run_id,
@@ -692,12 +1089,16 @@ def run_weekly_sync(
                     name="persist_snapshots",
                     fn=lambda: {
                         "weekly": weekly_writer(
-                            family, source=f"weekly_sync:{mode}", week_start=iso_week
+                            family,
+                            source=f"weekly_sync:{mode}:{sync_stage.value}",
+                            week_start=iso_week,
+                            snapshot_metadata=weekly_meta,
                         ),
                         "daily": daily_writer(
                             family,
-                            source=f"weekly_sync:{mode}",
-                            day_date=now.astimezone(ZoneInfo("Asia/Kolkata")).date().isoformat(),
+                            source=f"weekly_sync:{mode}:{sync_stage.value}",
+                            day_date=market_session_date,
+                            snapshot_metadata=daily_meta,
                         ),
                     },
                     timeout_seconds=step_timeout_seconds,
@@ -719,6 +1120,9 @@ def run_weekly_sync(
                         changes=changes,
                         output_dir=digest_dir or DATA_DIR / "weekly-digests",
                         created_at=time.time(),
+                        stage=sync_stage.value,
+                        market_session_date=market_session_date,
+                        snapshot_meta=weekly_meta,
                     ),
                     timeout_seconds=step_timeout_seconds,
                     retries=0,
@@ -756,6 +1160,13 @@ def run_weekly_sync(
                 else len(snapshot_results.get("weekly") or [])
                 + len(snapshot_results.get("daily") or []),
                 "execution_enabled": False,
+                "stage": sync_stage.value,
+                "market_session_date": market_session_date,
+                "snapshot_quality": weekly_meta["snapshot_quality"],
+                "coverage_pct": weekly_meta["coverage_pct"],
+                "comparable_to_previous": weekly_meta["comparable_to_previous"],
+                "comparability_reasons": weekly_meta["comparability_reasons"],
+                "quote_refresh": family.get("quote_refresh") or {},
             }
             sync_store.finish_run(
                 run_id,

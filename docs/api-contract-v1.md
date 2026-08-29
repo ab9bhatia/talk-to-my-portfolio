@@ -34,12 +34,14 @@ Product scope (read-only mobile + agent): [product.md](product.md#roadmap-produc
 - `GET /api/portfolio/sync/status`
 - `GET /api/portfolio/sync/runs?limit=20`
 - `GET /api/portfolio/sync/runs/{run_id}`
-- `POST /api/portfolio/sync/weekly` with `{"mode":"auto|live|safe-fallback","dry_run":false}`
+- `POST /api/portfolio/sync/weekly` with `{"mode":"auto|live|safe-fallback","dry_run":false,"stage":null|"INDIA_CLOSE"|"GLOBAL_CLOSE_FINALIZATION"|"MANUAL_RERUN"}`
 - `POST /api/portfolio/sync/weekly/async` returns `202` plus a stable `run_id`
 - `GET /api/portfolio/sync/jobs/{run_id}` polls queued/running/terminal progress
 
 The sync operation records portfolio history and local audit/digest artifacts. It never submits orders. Account results expose account codes, freshness timestamps, state, and recovery action—not internal account IDs or secrets.
 Zerodha OAuth completion queues one forced refresh so an earlier same-week run cannot hide a newly reconnected account; scheduled and ordinary manual runs retain weekly idempotency.
+
+Sync responses add `stage`, `durable_queue_status`, `market_session_date`, `snapshot_quality`, `comparability`, `rerun_required`, and `followup_run_id`. Existing fields remain unchanged. Snapshot history rows add coverage/quality metadata and machine-readable comparability reasons.
 
 ## Compatibility rules
 - Additive changes only within this version.

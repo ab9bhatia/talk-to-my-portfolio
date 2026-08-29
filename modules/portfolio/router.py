@@ -139,6 +139,10 @@ class PortfolioGoalsPayload(BaseModel):
 class WeeklySyncPayload(BaseModel):
     mode: str = Field(default="auto", pattern=r"^(auto|live|safe-fallback)$")
     dry_run: bool = False
+    stage: str | None = Field(
+        default=None,
+        pattern=r"^(INDIA_CLOSE|GLOBAL_CLOSE_FINALIZATION|MANUAL_RERUN)$",
+    )
 
 
 class AdvisoryRebalanceTarget(BaseModel):
@@ -1133,6 +1137,7 @@ def api_run_weekly_sync(payload: WeeklySyncPayload):
         mode=payload.mode,
         dry_run=payload.dry_run,
         requested_by="setup_ui",
+        stage=payload.stage,
     )
 
 
@@ -1145,6 +1150,7 @@ def api_queue_weekly_sync(payload: WeeklySyncPayload):
         mode=payload.mode,
         dry_run=payload.dry_run,
         requested_by="setup_ui",
+        stage=payload.stage,
     )
     return {
         **job,

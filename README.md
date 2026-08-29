@@ -83,14 +83,14 @@ Goals set under **Setup → Goals & guardrails** are injected into agent context
 
 ## Weekly sync
 
-Run the local, idempotent weekly operating loop after Friday's Indian market close:
+Run the local, idempotent two-stage operating loop after Friday's Indian close and again Saturday after the U.S. Friday close:
 
 ```bash
 python -m modules.portfolio.scripts.weekly_sync --mode auto --dry-run
 python -m modules.portfolio.scripts.weekly_sync --mode auto
 ```
 
-The Setup card shows the last attempt, last success, degraded accounts, and the local digest. macOS, Linux, Windows, recovery, and scheduler instructions: **[docs/weekly-sync-operations.md](docs/weekly-sync-operations.md)**.
+Friday records `INDIA_CLOSE`; Saturday records `GLOBAL_CLOSE_FINALIZATION` against Friday's market-session date. Repeating either stage is skipped independently. The Setup card shows queue state, stage, quality, coverage, last success, degraded accounts, and the local digest. macOS, Linux, Windows, recovery, and scheduler instructions: **[docs/weekly-sync-operations.md](docs/weekly-sync-operations.md)**.
 
 ---
 

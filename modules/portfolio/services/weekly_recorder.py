@@ -49,6 +49,7 @@ def record_positions_snapshot(
     week_start: str | None = None,
     notes: str | None = None,
     usd_inr: float | None = None,
+    metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Persist one weekly snapshot (replaces same week if exists)."""
     return weekly_history.save_snapshot(
@@ -59,6 +60,7 @@ def record_positions_snapshot(
         week_start=week_start,
         usd_inr=usd_inr,
         notes=notes,
+        metadata=metadata,
     )
 
 
@@ -67,6 +69,7 @@ def record_family_from_payload(
     *,
     source: str = "live",
     week_start: str | None = None,
+    snapshot_metadata: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Save family + per-account weekly snapshots from fetch_family_portfolio result."""
     from modules.portfolio.services.holdings_view import aggregate_holdings_across_accounts
@@ -85,6 +88,7 @@ def record_family_from_payload(
                     positions=holdings,
                     source=source,
                     week_start=week_start,
+                    metadata=snapshot_metadata,
                 )
             )
     family_positions = (
@@ -98,6 +102,7 @@ def record_family_from_payload(
             positions=family_positions,
             source=source,
             week_start=week_start,
+            metadata=snapshot_metadata,
         ),
     )
     return results
@@ -202,10 +207,12 @@ def sync_family_weekly_snapshot(*, source: str = "merged") -> dict[str, Any] | N
     all_holdings = [h for p in family.get("portfolios") or [] for h in p.get("holdings") or []]
     if not all_holdings:
         return None
+    from modules.portfolio.services.holdings_view import aggregate_holdings_across_accounts
+
     snap = record_positions_snapshot(
         scope="family",
         account_id=None,
-        positions=all_holdings,
+        positions=aggregate_holdings_across_accounts(all_holdings),
         source=source,
     )
     try:

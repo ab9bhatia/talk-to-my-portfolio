@@ -5894,6 +5894,36 @@ body.setup-modal-open {
 }
 
 /* Growth dashboard (daily history) */
+.growth-quality-notice {
+  margin: 0 0 1rem;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  border-radius: 0.75rem;
+  color: #fbbf24;
+  background: rgba(245, 158, 11, 0.08);
+}
+
+.growth-quality-badge {
+  display: inline-flex;
+  max-width: 12rem;
+  padding: 0.2rem 0.45rem;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 999px;
+  font-size: 0.7rem;
+  line-height: 1.2;
+  white-space: normal;
+}
+
+.growth-quality-complete_live,
+.growth-quality-complete_mixed {
+  color: #86efac;
+}
+
+.growth-quality-partial,
+.growth-quality-stale,
+.growth-quality-unknown {
+  color: #fbbf24;
+}
 .page-growth .growth-status-pill {
   display: flex;
   flex-wrap: wrap;

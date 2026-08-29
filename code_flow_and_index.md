@@ -231,15 +231,17 @@ flowchart TB
 ### 4A. Weekly operating job — CLI, Setup, or OS scheduler
 
 1. Every entry point calls `services.weekly_sync.run_weekly_sync`; scheduling contains no portfolio logic.
-2. The job audits its run, acquires `weekly-sync.lock`, and checks ISO-week/mode/account-set idempotency.
-3. `auto` calls the canonical family fetch with history side effects disabled; `safe-fallback` uses the canonical durable-cache helper and refreshed quotes.
-4. Each enabled account receives a position timestamp, price timestamp, explicit state, and recovery action.
-5. Only validated non-empty runs write aggregated daily/weekly snapshots and recompute deterministic advisory output.
-6. Markdown/HTML digest delivery remains local and no execution API is called.
+2. Async acceptance writes durable `QUEUED` truth before the one-worker executor starts; startup recovers orphaned jobs as `INTERRUPTED`.
+3. The job audits its run, acquires `weekly-sync.lock`, and checks ISO-week/stage/mode/account-set/policy idempotency.
+4. Friday `INDIA_CLOSE` may use live quantities; Saturday `GLOBAL_CLOSE_FINALIZATION` retains durable quantities while refreshing late global prices against Friday's market-session date.
+5. Each enabled account receives separate position/price timestamps and a live, cached, manual-current/stale, auth, import, or failed state.
+6. Only validated non-empty runs write canonically aggregated daily/weekly snapshots with quality, coverage, and comparability metadata.
+7. Recommendation history diffs material fields; the digest separates urgent, execution-ready, research/watch, and CA-review items.
+8. Markdown/HTML delivery remains local and no execution API is called.
 
 ### 5. Growth — `GET /portfolio/growth` + `GET /api/portfolio/daily/dashboard`
 
-1. `daily_analytics.build_growth_dashboard` — series, day-over-day, benchmarks (Yahoo indices), account timeline
+1. `daily_analytics.build_growth_dashboard` — quality-aware series, comparable day-over-day observations, benchmarks (Yahoo indices), account timeline
 2. Optional sheet backfill via `POST /api/portfolio/daily/import-sheet`
 
 ### 5A. Pattern radar and Action Center
@@ -315,6 +317,8 @@ Full mobile contract: [docs/api-contract-v1.md](docs/api-contract-v1.md).
 | GET | `/api/portfolio/sync/status` | Weekly job health + degraded accounts |
 | GET | `/api/portfolio/sync/runs/{run_id}` | Structured run/step/account audit |
 | POST | `/api/portfolio/sync/weekly` | Run the same one-shot job as CLI/scheduler |
+| POST | `/api/portfolio/sync/weekly/async` | Persist and queue the one-worker background job |
+| GET | `/api/portfolio/sync/jobs/{run_id}` | Poll durable queued/running/terminal truth |
 | POST | `/api/portfolio/agent/ask/stream` | Agent SSE |
 | GET | `/api/portfolio/version` | API contract version |
 

@@ -19,6 +19,7 @@ def record_positions_snapshot(
     day_date: str | None = None,
     notes: str | None = None,
     usd_inr: float | None = None,
+    metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return daily_history.save_snapshot(
         scope=scope,
@@ -28,6 +29,7 @@ def record_positions_snapshot(
         day_date=day_date,
         usd_inr=usd_inr,
         notes=notes,
+        metadata=metadata,
     )
 
 
@@ -36,6 +38,7 @@ def record_family_from_payload(
     *,
     source: str = "live",
     day_date: str | None = None,
+    snapshot_metadata: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Save family + per-account daily snapshots (upserts today)."""
     from modules.portfolio.services.holdings_view import aggregate_holdings_across_accounts
@@ -54,6 +57,7 @@ def record_family_from_payload(
                     positions=holdings,
                     source=source,
                     day_date=day_date,
+                    metadata=snapshot_metadata,
                 )
             )
     family_positions = (
@@ -67,6 +71,7 @@ def record_family_from_payload(
             positions=family_positions,
             source=source,
             day_date=day_date,
+            metadata=snapshot_metadata,
         ),
     )
     return results

@@ -8,6 +8,9 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      PYTHONPATH: .
+      PYTHONDONTWRITEBYTECODE: "1"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -22,11 +25,38 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt -r requirements-dev.txt
 
-      - name: Syntax checks
+      - name: Python compilation
         run: |
-          python -m py_compile main.py
-          python -m py_compile modules/portfolio/router.py
-          python -m py_compile modules/portfolio/services/daily_analytics.py
+          python -m compileall -q main.py modules
+
+      - name: Static analysis
+        run: ruff check .
+
+      - name: JavaScript syntax checks
+        run: |
+          for file in $(git ls-files 'shared/web/static/js/*.js'); do
+            node --check "$file"
+          done
+
+      - name: Scheduler syntax checks
+        shell: bash
+        run: |
+          bash -n scripts/install_weekly_sync_macos.sh
+          bash -n scripts/install_weekly_sync_linux.sh
+
+      - name: PowerShell parser check
+        shell: pwsh
+        run: |
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            "scripts/Install-WeeklySyncWindows.ps1",
+            [ref]$null,
+            [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Error $_ }
+            exit 1
+          }
 
       - name: Run tests
-        run: pytest -q
+        run: python -m pytest -q

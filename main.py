@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -56,6 +57,9 @@ async def lifespan(app: FastAPI):
 
     advisory_evidence_store.init_db()
     weekly_sync_store.init_db()
+    recovered = weekly_sync_store.recover_orphaned_runs(recovered_at=time.time())
+    if recovered:
+        logger.warning("Marked %s orphaned portfolio sync job(s) INTERRUPTED", recovered)
     from modules.portfolio.services.market_data import start_daily_yahoo_refresh_scheduler
 
     start_daily_yahoo_refresh_scheduler()

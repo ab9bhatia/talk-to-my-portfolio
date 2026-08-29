@@ -134,14 +134,22 @@ def build_growth_dashboard(*, days: int = 90) -> dict[str, Any]:
         prev = series[-2]
         v_cur = float(cur["total_current"])
         v_prev = float(prev["total_current"])
+        comparable = bool(cur.get("comparable_to_previous"))
+        reasons = list(cur.get("comparability_reasons") or [])
         day_change = {
             "latest_day": cur["day_date"],
             "previous_day": prev["day_date"],
             "value": v_cur,
             "prev_value": v_prev,
-            "change": round(v_cur - v_prev, 2),
-            "change_pct": _pct_change(v_cur, v_prev),
-            "invested_change": round(float(cur["total_invested"]) - float(prev["total_invested"]), 2),
+            "change": round(v_cur - v_prev, 2) if comparable else None,
+            "change_pct": _pct_change(v_cur, v_prev) if comparable else None,
+            "invested_change": (
+                round(float(cur["total_invested"]) - float(prev["total_invested"]), 2)
+                if comparable
+                else None
+            ),
+            "comparable": comparable,
+            "comparability_reasons": reasons,
         }
     elif len(series) == 1:
         cur = series[0]
@@ -153,6 +161,8 @@ def build_growth_dashboard(*, days: int = 90) -> dict[str, Any]:
             "change": None,
             "change_pct": None,
             "invested_change": None,
+            "comparable": False,
+            "comparability_reasons": ["NO_PREVIOUS_SNAPSHOT"],
         }
 
     breakdown: dict[str, list[dict[str, Any]]] = {
@@ -165,7 +175,7 @@ def build_growth_dashboard(*, days: int = 90) -> dict[str, Any]:
     timeline_table: list[dict[str, Any]] = []
     benchmark_series: dict[str, list[dict[str, Any]]] = {}
 
-    if latest_day and previous_day:
+    if latest_day and previous_day and bool(series[-1].get("comparable_to_previous")):
         cur_family = daily_history.snapshot_for_day(
             scope="family", account_id=None, day_date=latest_day
         )
@@ -223,6 +233,35 @@ def build_growth_dashboard(*, days: int = 90) -> dict[str, Any]:
         account_series, timeline_table = _account_matrix_for_days(series)
         benchmark_series = _benchmark_series_for_days(series)
 
+    non_comparable = [
+        {
+            "day_date": row.get("day_date"),
+            "snapshot_quality": row.get("snapshot_quality") or "UNKNOWN",
+            "reasons": row.get("comparability_reasons") or [],
+        }
+        for row in series[1:]
+        if not row.get("comparable_to_previous")
+    ]
+    degraded = [
+        {
+            "day_date": row.get("day_date"),
+            "snapshot_quality": row.get("snapshot_quality") or "UNKNOWN",
+            "coverage_pct": row.get("coverage_pct"),
+        }
+        for row in series
+        if (row.get("snapshot_quality") or "UNKNOWN") not in {"COMPLETE_LIVE", "COMPLETE_MIXED"}
+    ]
+    performance_quality = {
+        "claims_allowed": len(series) >= 2 and not non_comparable,
+        "non_comparable_points": non_comparable,
+        "degraded_points": degraded,
+        "explanation": (
+            "Best/worst-period and return claims are suppressed because account coverage changed or quality metadata is unavailable."
+            if non_comparable
+            else None
+        ),
+    }
+
     return {
         "status": status,
         "days": days,
@@ -232,6 +271,7 @@ def build_growth_dashboard(*, days: int = 90) -> dict[str, Any]:
         "account_series": account_series,
         "timeline_table": timeline_table,
         "benchmark_series": benchmark_series,
+        "performance_quality": performance_quality,
     }
 
 
@@ -355,6 +395,10 @@ def _account_matrix_for_days(
                 "family_pnl_pct": fam.get("total_pnl_pct"),
                 "source": fam.get("source"),
                 "carried_forward": bool(fam.get("carried_forward")),
+                "snapshot_quality": fam.get("snapshot_quality") or "UNKNOWN",
+                "coverage_pct": fam.get("coverage_pct"),
+                "comparable_to_previous": bool(fam.get("comparable_to_previous")),
+                "comparability_reasons": fam.get("comparability_reasons") or [],
                 "accounts": {
                     account_meta[aid]["code"]: filled_by_day[day].get(
                         aid, {"value": None, "invested": None}
@@ -381,6 +425,12 @@ def _benchmark_close_series(symbol: str, start: str, end: str) -> list[tuple[str
         val = row.get(close_col)
         if val is None:
             continue
+        # Newer yfinance releases return a one-item Series here when the
+        # download has MultiIndex columns, even for a single ticker.
+        if hasattr(val, "iloc"):
+            if val.empty:
+                continue
+            val = val.iloc[0]
         out.append((idx.date().isoformat(), float(val)))
     return out
 

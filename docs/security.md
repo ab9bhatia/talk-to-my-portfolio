@@ -34,7 +34,7 @@ Browsers cache credentials for the session; `fetch()` to same origin includes th
 | `.env` | Broker API keys, LLM keys, HTTP password |
 | `modules/portfolio/data/tokens.db` | Zerodha access tokens (plaintext) |
 | `modules/portfolio/data/groww_tokens.db` | Groww tokens (plaintext) |
-| `modules/portfolio/data/weekly_sync.db` | Weekly run audit, account codes/states, artifact paths |
+| `modules/portfolio/data/weekly_sync.db` | Durable queue/run audit, account codes/states, quality/session metadata, artifact paths |
 | `modules/portfolio/data/weekly-digests/` | Local decision digests; no internal account IDs or full holdings |
 
 Recommend:

@@ -6,6 +6,15 @@ The format is inspired by Keep a Changelog and semantic versioning.
 
 ## [Unreleased]
 
+### Milestone 7A.1 — weekly-sync stabilization
+
+- Split Friday India close and Saturday global finalization into typed, independently idempotent market-session stages.
+- Persisted async `QUEUED` truth before executor submission, startup orphan recovery, and one coalesced forced post-OAuth rerun.
+- Added snapshot quality, account coverage, market-session date, and comparability metadata to daily/weekly history.
+- Made Growth suppress performance claims across degraded or coverage-changed observations.
+- Serialized timed-out workers until exit, canonically aggregated every family snapshot path, and added bounded deduplicated quote coverage reporting.
+- Expanded the conservative weekly digest, CI quality gates, API/UI status, deterministic regression suite, and operating documentation.
+
 ### Milestone 6A — pattern semantics and experience
 - Added lifecycle-aware pattern results (`BUILDING`, `NEAR_BREAKOUT`, `CONFIRMED`,
   `TARGET_ACHIEVED`, `TARGET_OVERSHOT`, and `EXPIRED`) plus explicit target state.

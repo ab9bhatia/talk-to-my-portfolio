@@ -39,6 +39,20 @@ def init_db() -> None:
                 total_pnl       REAL NOT NULL DEFAULT 0,
                 total_pnl_pct   REAL NOT NULL DEFAULT 0,
                 notes           TEXT,
+                sync_run_id     TEXT,
+                sync_stage      TEXT,
+                snapshot_quality TEXT NOT NULL DEFAULT 'UNKNOWN',
+                accounts_expected INTEGER,
+                accounts_included INTEGER,
+                live_accounts   INTEGER,
+                cached_accounts INTEGER,
+                manual_current_accounts INTEGER,
+                coverage_pct    REAL,
+                position_as_of_min TEXT,
+                price_as_of_min TEXT,
+                market_session_date TEXT,
+                comparable_to_previous INTEGER NOT NULL DEFAULT 0,
+                comparability_reasons_json TEXT NOT NULL DEFAULT '[]',
                 UNIQUE(scope, account_id, week_start)
             );
 
@@ -73,6 +87,7 @@ def init_db() -> None:
                 ON weekly_snapshots(scope, account_id, week_start DESC);
             """
         )
+        _add_snapshot_metadata_columns(conn)
         _cleanup_duplicate_family_weeks(conn)
         # SQLite UNIQUE(scope, account_id, week_start) does not dedupe NULL account ids.
         conn.execute(
@@ -114,19 +129,43 @@ def save_snapshot(
     captured_at: float | None = None,
     usd_inr: float | None = None,
     notes: str | None = None,
+    metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Insert or replace one weekly snapshot and its positions."""
+    if scope == "family":
+        from modules.portfolio.services.holdings_view import (
+            aggregate_holdings_across_accounts,
+        )
+
+        positions = aggregate_holdings_across_accounts(positions)
     week_start = week_start or week_start_for()
     captured_at = captured_at if captured_at is not None else time.time()
     summary = _summarize_positions(positions)
+    meta = dict(metadata or {})
 
     with connect() as conn:
+        existing = conn.execute(
+            """
+            SELECT * FROM weekly_snapshots
+            WHERE scope = ? AND account_id IS ? AND week_start = ?
+            ORDER BY captured_at DESC, id DESC
+            LIMIT 1
+            """,
+            (scope, account_id, week_start),
+        ).fetchone()
+        if existing is not None:
+            previous_meta = _metadata_from_mapping(_decode_snapshot_row(existing))
+            meta = {**previous_meta, **meta}
         conn.execute(
             """
             INSERT INTO weekly_snapshots (
                 scope, account_id, week_start, captured_at, source, usd_inr,
-                holdings_count, total_invested, total_current, total_pnl, total_pnl_pct, notes
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                holdings_count, total_invested, total_current, total_pnl, total_pnl_pct, notes,
+                sync_run_id, sync_stage, snapshot_quality, accounts_expected,
+                accounts_included, live_accounts, cached_accounts, manual_current_accounts,
+                coverage_pct, position_as_of_min, price_as_of_min, market_session_date,
+                comparable_to_previous, comparability_reasons_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT DO UPDATE SET
                 captured_at = excluded.captured_at,
                 source = excluded.source,
@@ -136,7 +175,21 @@ def save_snapshot(
                 total_current = excluded.total_current,
                 total_pnl = excluded.total_pnl,
                 total_pnl_pct = excluded.total_pnl_pct,
-                notes = COALESCE(excluded.notes, weekly_snapshots.notes)
+                notes = COALESCE(excluded.notes, weekly_snapshots.notes),
+                sync_run_id = COALESCE(excluded.sync_run_id, weekly_snapshots.sync_run_id),
+                sync_stage = COALESCE(excluded.sync_stage, weekly_snapshots.sync_stage),
+                snapshot_quality = excluded.snapshot_quality,
+                accounts_expected = excluded.accounts_expected,
+                accounts_included = excluded.accounts_included,
+                live_accounts = excluded.live_accounts,
+                cached_accounts = excluded.cached_accounts,
+                manual_current_accounts = excluded.manual_current_accounts,
+                coverage_pct = excluded.coverage_pct,
+                position_as_of_min = excluded.position_as_of_min,
+                price_as_of_min = excluded.price_as_of_min,
+                market_session_date = excluded.market_session_date,
+                comparable_to_previous = excluded.comparable_to_previous,
+                comparability_reasons_json = excluded.comparability_reasons_json
             """,
             (
                 scope,
@@ -151,6 +204,20 @@ def save_snapshot(
                 summary["total_pnl"],
                 summary["total_pnl_pct"],
                 notes,
+                meta.get("sync_run_id"),
+                meta.get("sync_stage"),
+                meta.get("snapshot_quality") or "UNKNOWN",
+                meta.get("accounts_expected"),
+                meta.get("accounts_included"),
+                meta.get("live_accounts"),
+                meta.get("cached_accounts"),
+                meta.get("manual_current_accounts"),
+                meta.get("coverage_pct"),
+                meta.get("position_as_of_min"),
+                meta.get("price_as_of_min"),
+                meta.get("market_session_date"),
+                int(bool(meta.get("comparable_to_previous"))),
+                json.dumps(meta.get("comparability_reasons") or []),
             ),
         )
         row = conn.execute(
@@ -223,6 +290,7 @@ def save_snapshot(
         "week_start": week_start,
         "captured_at": captured_at,
         "source": source,
+        **_metadata_from_mapping({**meta, "snapshot_quality": meta.get("snapshot_quality") or "UNKNOWN"}),
         **summary,
     }
 
@@ -257,7 +325,7 @@ def list_snapshots(
             """,
             (scope, account_id, limit),
         ).fetchall()
-    return [dict(r) for r in rows]
+    return [_decode_snapshot_row(r) for r in rows]
 
 
 def growth_series(
@@ -278,6 +346,16 @@ def growth_series(
             "total_pnl_pct": r["total_pnl_pct"],
             "holdings_count": r["holdings_count"],
             "source": r["source"],
+            "captured_at": r["captured_at"],
+            "sync_run_id": r.get("sync_run_id"),
+            "sync_stage": r.get("sync_stage"),
+            "snapshot_quality": r.get("snapshot_quality") or "UNKNOWN",
+            "accounts_expected": r.get("accounts_expected"),
+            "accounts_included": r.get("accounts_included"),
+            "coverage_pct": r.get("coverage_pct"),
+            "market_session_date": r.get("market_session_date"),
+            "comparable_to_previous": bool(r.get("comparable_to_previous")),
+            "comparability_reasons": r.get("comparability_reasons") or [],
         }
         for r in rows
     ]
@@ -452,7 +530,7 @@ def refresh_current_week_ltps(
 
 
 def _row_to_snapshot(snap: sqlite3.Row, positions: list[sqlite3.Row]) -> dict[str, Any]:
-    out = dict(snap)
+    out = _decode_snapshot_row(snap)
     out["positions"] = []
     for row in positions:
         pos = dict(row)
@@ -463,6 +541,64 @@ def _row_to_snapshot(snap: sqlite3.Row, positions: list[sqlite3.Row]) -> dict[st
                 pos["extra"] = {}
         out["positions"].append(pos)
     return out
+
+
+def _decode_snapshot_row(row: sqlite3.Row) -> dict[str, Any]:
+    out = dict(row)
+    out["comparable_to_previous"] = bool(out.get("comparable_to_previous"))
+    raw = out.pop("comparability_reasons_json", None)
+    try:
+        out["comparability_reasons"] = json.loads(raw) if raw else []
+    except json.JSONDecodeError:
+        out["comparability_reasons"] = []
+    return out
+
+
+def _metadata_from_mapping(meta: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: meta.get(key)
+        for key in (
+            "sync_run_id",
+            "sync_stage",
+            "snapshot_quality",
+            "accounts_expected",
+            "accounts_included",
+            "live_accounts",
+            "cached_accounts",
+            "manual_current_accounts",
+            "coverage_pct",
+            "position_as_of_min",
+            "price_as_of_min",
+            "market_session_date",
+            "comparable_to_previous",
+            "comparability_reasons",
+        )
+    }
+
+
+def _add_snapshot_metadata_columns(conn: sqlite3.Connection) -> None:
+    existing = {
+        str(row["name"]) for row in conn.execute("PRAGMA table_info(weekly_snapshots)")
+    }
+    definitions = {
+        "sync_run_id": "TEXT",
+        "sync_stage": "TEXT",
+        "snapshot_quality": "TEXT NOT NULL DEFAULT 'UNKNOWN'",
+        "accounts_expected": "INTEGER",
+        "accounts_included": "INTEGER",
+        "live_accounts": "INTEGER",
+        "cached_accounts": "INTEGER",
+        "manual_current_accounts": "INTEGER",
+        "coverage_pct": "REAL",
+        "position_as_of_min": "TEXT",
+        "price_as_of_min": "TEXT",
+        "market_session_date": "TEXT",
+        "comparable_to_previous": "INTEGER NOT NULL DEFAULT 0",
+        "comparability_reasons_json": "TEXT NOT NULL DEFAULT '[]'",
+    }
+    for name, definition in definitions.items():
+        if name not in existing:
+            conn.execute(f"ALTER TABLE weekly_snapshots ADD COLUMN {name} {definition}")
 
 
 def latest_snapshot(

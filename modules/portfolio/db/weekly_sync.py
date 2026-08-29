@@ -39,6 +39,16 @@ def init_db() -> None:
                 duplicate_of        TEXT,
                 summary_json        TEXT,
                 error               TEXT,
+                stage               TEXT NOT NULL DEFAULT 'MANUAL_RERUN',
+                market_session_date TEXT,
+                valuation_policy_version TEXT NOT NULL DEFAULT 'weekly-valuation-v2',
+                queued_at           REAL,
+                rerun_required      INTEGER NOT NULL DEFAULT 0,
+                rerun_reason        TEXT,
+                followup_run_id     TEXT,
+                parent_run_id       TEXT,
+                snapshot_quality    TEXT,
+                comparability_json  TEXT,
                 FOREIGN KEY (duplicate_of) REFERENCES sync_runs(run_id)
             );
 
@@ -101,6 +111,7 @@ def init_db() -> None:
                 ON sync_artifacts(kind, created_at DESC);
             """
         )
+        _add_run_columns(conn)
 
 
 def create_run(
@@ -115,6 +126,11 @@ def create_run(
     started_at: float,
     status: str = "RUNNING",
     duplicate_of: str | None = None,
+    stage: str = "MANUAL_RERUN",
+    market_session_date: str | None = None,
+    valuation_policy_version: str = "weekly-valuation-v2",
+    queued_at: float | None = None,
+    parent_run_id: str | None = None,
 ) -> None:
     with connect() as conn:
         conn.execute(
@@ -122,7 +138,9 @@ def create_run(
             INSERT INTO sync_runs (
                 run_id, idempotency_key, iso_week, mode, status, dry_run,
                 requested_by, account_set_hash, started_at, duplicate_of
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                , stage, market_session_date, valuation_policy_version, queued_at,
+                parent_run_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 run_id,
@@ -135,8 +153,83 @@ def create_run(
                 account_set_hash,
                 started_at,
                 duplicate_of,
+                stage,
+                market_session_date,
+                valuation_policy_version,
+                queued_at,
+                parent_run_id,
             ),
         )
+
+
+def create_queued_run(
+    *,
+    run_id: str,
+    mode: str,
+    dry_run: bool,
+    requested_by: str,
+    queued_at: float,
+    stage: str,
+    parent_run_id: str | None = None,
+) -> None:
+    """Persist acceptance before an executor can begin or the process can restart."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from modules.portfolio.db import weekly_history
+
+    local = datetime.fromtimestamp(queued_at, tz=ZoneInfo("Asia/Kolkata"))
+    create_run(
+        run_id=run_id,
+        idempotency_key=f"queued:{run_id}",
+        iso_week=weekly_history.week_start_for(local.date()),
+        mode=mode,
+        dry_run=dry_run,
+        requested_by=requested_by,
+        account_set_hash="pending",
+        started_at=queued_at,
+        status="QUEUED",
+        stage=stage,
+        queued_at=queued_at,
+        parent_run_id=parent_run_id,
+    )
+
+
+def start_queued_run(
+    run_id: str,
+    *,
+    idempotency_key: str,
+    iso_week: str,
+    account_set_hash: str,
+    started_at: float,
+    stage: str,
+    market_session_date: str,
+    valuation_policy_version: str,
+    duplicate_of: str | None = None,
+) -> bool:
+    with connect() as conn:
+        cursor = conn.execute(
+            """
+            UPDATE sync_runs
+            SET status = 'RUNNING', idempotency_key = ?, iso_week = ?,
+                account_set_hash = ?, started_at = ?, stage = ?,
+                market_session_date = ?, valuation_policy_version = ?,
+                duplicate_of = COALESCE(?, duplicate_of)
+            WHERE run_id = ? AND status = 'QUEUED'
+            """,
+            (
+                idempotency_key,
+                iso_week,
+                account_set_hash,
+                started_at,
+                stage,
+                market_session_date,
+                valuation_policy_version,
+                duplicate_of,
+                run_id,
+            ),
+        )
+    return cursor.rowcount == 1
 
 
 def finish_run(
@@ -162,6 +255,94 @@ def finish_run(
                 run_id,
             ),
         )
+
+
+def update_run_quality(
+    run_id: str,
+    *,
+    snapshot_quality: str,
+    comparability: dict[str, Any],
+) -> None:
+    with connect() as conn:
+        conn.execute(
+            """
+            UPDATE sync_runs
+            SET snapshot_quality = ?, comparability_json = ?
+            WHERE run_id = ?
+            """,
+            (snapshot_quality, json.dumps(comparability, default=str), run_id),
+        )
+
+
+def mark_rerun_required(run_id: str, *, reason: str) -> None:
+    with connect() as conn:
+        conn.execute(
+            """
+            UPDATE sync_runs
+            SET rerun_required = 1,
+                rerun_reason = CASE
+                    WHEN rerun_reason IS NULL OR rerun_reason = '' THEN ?
+                    WHEN instr(rerun_reason, ?) > 0 THEN rerun_reason
+                    ELSE rerun_reason || ',' || ?
+                END
+            WHERE run_id = ?
+            """,
+            (reason, reason, reason, run_id),
+        )
+
+
+def claim_rerun(run_id: str) -> str | None:
+    """Atomically consume the coalesced follow-up request exactly once."""
+    with connect() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute(
+            "SELECT rerun_required, rerun_reason FROM sync_runs WHERE run_id = ?",
+            (run_id,),
+        ).fetchone()
+        if not row or not row["rerun_required"]:
+            return None
+        reason = str(row["rerun_reason"] or "manual_request")
+        conn.execute(
+            "UPDATE sync_runs SET rerun_required = 0 WHERE run_id = ?", (run_id,)
+        )
+    return reason
+
+
+def set_followup_run(run_id: str, followup_run_id: str) -> None:
+    with connect() as conn:
+        conn.execute(
+            "UPDATE sync_runs SET followup_run_id = ? WHERE run_id = ?",
+            (followup_run_id, run_id),
+        )
+
+
+def recover_orphaned_runs(*, recovered_at: float) -> int:
+    """Mark jobs that cannot survive a web-process restart explicitly interrupted."""
+    with connect() as conn:
+        cursor = conn.execute(
+            """
+            UPDATE sync_runs
+            SET status = 'INTERRUPTED', finished_at = ?,
+                error = 'Web process restarted before this local queued job completed.'
+            WHERE status IN ('QUEUED', 'RUNNING')
+            """,
+            (recovered_at,),
+        )
+    return cursor.rowcount
+
+
+def find_active_run() -> dict[str, Any] | None:
+    """Return the durable queued/running job, independent of process memory."""
+    with connect() as conn:
+        row = conn.execute(
+            """
+            SELECT run_id FROM sync_runs
+            WHERE status IN ('QUEUED', 'RUNNING')
+            ORDER BY COALESCE(queued_at, started_at) ASC, run_id ASC
+            LIMIT 1
+            """
+        ).fetchone()
+    return get_run(str(row["run_id"])) if row else None
 
 
 def upsert_step(
@@ -408,7 +589,8 @@ def sync_status() -> dict[str, Any]:
         degraded = [
             account
             for account in latest.get("accounts") or []
-            if account["status"] not in {"LIVE_RECONCILED", "LIVE_WITH_WARNINGS"}
+            if account["status"]
+            not in {"LIVE_RECONCILED", "LIVE_WITH_WARNINGS", "MANUAL_CURRENT"}
         ]
     return {
         "db_path": str(DB_PATH),
@@ -423,6 +605,9 @@ def _decode_run(row: sqlite3.Row) -> dict[str, Any]:
     out = dict(row)
     out["dry_run"] = bool(out.get("dry_run"))
     out["summary"] = _json(out.pop("summary_json", None), {})
+    out["rerun_required"] = bool(out.get("rerun_required"))
+    out["comparability"] = _json(out.pop("comparability_json", None), {})
+    out["durable_queue_status"] = out.get("status")
     return out
 
 
@@ -453,3 +638,22 @@ def _json(raw: str | None, fallback: Any) -> Any:
         return json.loads(raw)
     except json.JSONDecodeError:
         return fallback
+
+
+def _add_run_columns(conn: sqlite3.Connection) -> None:
+    existing = {str(row["name"]) for row in conn.execute("PRAGMA table_info(sync_runs)")}
+    definitions = {
+        "stage": "TEXT NOT NULL DEFAULT 'MANUAL_RERUN'",
+        "market_session_date": "TEXT",
+        "valuation_policy_version": "TEXT NOT NULL DEFAULT 'weekly-valuation-v2'",
+        "queued_at": "REAL",
+        "rerun_required": "INTEGER NOT NULL DEFAULT 0",
+        "rerun_reason": "TEXT",
+        "followup_run_id": "TEXT",
+        "parent_run_id": "TEXT",
+        "snapshot_quality": "TEXT",
+        "comparability_json": "TEXT",
+    }
+    for name, definition in definitions.items():
+        if name not in existing:
+            conn.execute(f"ALTER TABLE sync_runs ADD COLUMN {name} {definition}")

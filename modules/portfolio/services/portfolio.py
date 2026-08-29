@@ -7,7 +7,12 @@ import logging
 import hashlib
 import json
 import os
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import UTC, datetime, timedelta
+from typing import Any
+from zoneinfo import ZoneInfo
 
 from kiteconnect.exceptions import KiteException
 
@@ -32,6 +37,8 @@ logger = logging.getLogger(__name__)
 _PORTFOLIO_CACHE: dict[str, tuple[float, dict]] = {}
 CACHE_TTL_SECONDS = int(os.getenv("PORTFOLIO_CACHE_TTL_SECONDS", "300"))
 _STALE_MAX_SECONDS = int(os.getenv("PORTFOLIO_STALE_MAX_SECONDS", str(7 * 24 * 3600)))
+_QUOTE_SESSION_CACHE: dict[tuple[str, str, str], float | None] = {}
+_QUOTE_SESSION_LOCK = threading.Lock()
 
 
 def _cache_key(account_id: str | None, with_metrics: bool) -> str:
@@ -138,19 +145,95 @@ def _payload_without_cache_meta(data: dict) -> dict:
     return {k: v for k, v in data.items() if k not in ("stale", "from_cache", "cached_at")}
 
 
-def _refresh_holdings_ltps_from_yahoo(holdings: list[dict]) -> list[dict]:
-    """Refresh LTP and P&L from Yahoo; keep quantity and avg_price from snapshot."""
+def _quote_session_date(holding: dict[str, Any]) -> str:
+    exchange = str(holding.get("exchange") or "NSE").upper()
+    asset_class = str(holding.get("asset_class") or "equity").lower()
+    if asset_class == "crypto":
+        return datetime.now(UTC).date().isoformat()
+    zone = ZoneInfo("America/New_York") if exchange in {"US", "NYSE", "NASDAQ"} else ZoneInfo("Asia/Kolkata")
+    session = datetime.now(zone).date()
+    while session.weekday() >= 5:
+        session -= timedelta(days=1)
+    return session.isoformat()
+
+
+def _refresh_holdings_ltps_from_yahoo(
+    holdings: list[dict],
+    *,
+    include_report: bool = False,
+) -> list[dict] | tuple[list[dict], dict[str, Any]]:
+    """Deduplicate and refresh quotes with bounded concurrency and session caching."""
     from modules.portfolio.services.weekly_recorder import _yahoo_ltp_inr
 
+    unique: dict[tuple[str, str, str], dict[str, Any]] = {}
+    values: dict[tuple[str, str, str], float] = {}
+    for holding in holdings:
+        symbol = str(holding.get("symbol") or "").upper()
+        if not symbol:
+            continue
+        exchange = str(holding.get("exchange") or "NSE").upper()
+        key = (_quote_session_date(holding), symbol, exchange)
+        unique.setdefault(key, holding)
+        values[key] = values.get(key, 0.0) + float(
+            holding.get("current_value") or holding.get("invested") or 0
+        )
+
+    resolved: dict[tuple[str, str, str], float | None] = {}
+    missing: list[tuple[tuple[str, str, str], dict[str, Any]]] = []
+    with _QUOTE_SESSION_LOCK:
+        for key, holding in unique.items():
+            if key in _QUOTE_SESSION_CACHE:
+                resolved[key] = _QUOTE_SESSION_CACHE[key]
+            else:
+                missing.append((key, holding))
+
+    max_workers = max(1, min(int(os.getenv("PORTFOLIO_QUOTE_WORKERS", "6")), 12))
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        futures = {
+            pool.submit(
+                _yahoo_ltp_inr,
+                key[1],
+                (
+                    "US"
+                    if str(holding.get("asset_class") or "").lower() == "crypto"
+                    or str(holding.get("currency") or "").upper() == "USD"
+                    else key[2]
+                ),
+            ): key
+            for key, holding in missing
+        }
+        for future in as_completed(futures):
+            key = futures[future]
+            try:
+                price = future.result()
+            except Exception:
+                price = None
+            resolved[key] = float(price) if price is not None and price > 0 else None
+    if missing:
+        with _QUOTE_SESSION_LOCK:
+            for key, _holding in missing:
+                # Cache successful session quotes only. A transient provider
+                # failure must remain retryable during the same market session.
+                if resolved.get(key) is not None:
+                    _QUOTE_SESSION_CACHE[key] = resolved[key]
+
     updated: list[dict] = []
+    stale_symbols: set[str] = set()
+    unresolved_symbols: set[str] = set()
     for holding in holdings:
         row = dict(holding)
-        symbol = row.get("symbol")
+        symbol = str(row.get("symbol") or "").upper()
         if not symbol:
             updated.append(row)
             continue
-        ltp = _yahoo_ltp_inr(symbol, row.get("exchange"))
+        exchange = str(row.get("exchange") or "NSE").upper()
+        key = (_quote_session_date(row), symbol, exchange)
+        ltp = resolved.get(key)
         if ltp is None or ltp <= 0:
+            if float(row.get("last_price") or 0) > 0:
+                stale_symbols.add(f"{symbol}:{exchange}")
+            else:
+                unresolved_symbols.add(f"{symbol}:{exchange}")
             updated.append(row)
             continue
         qty = float(row.get("quantity") or 0)
@@ -161,7 +244,23 @@ def _refresh_holdings_ltps_from_yahoo(holdings: list[dict]) -> list[dict]:
         row["pnl"] = round(row["current_value"] - row["invested"], 2)
         row["pnl_pct"] = round((row["pnl"] / row["invested"] * 100) if row["invested"] else 0.0, 2)
         updated.append(row)
-    return updated
+    requested = len(unique)
+    resolved_keys = {key for key, price in resolved.items() if price is not None}
+    total_value = sum(values.values())
+    resolved_value = sum(values.get(key, 0.0) for key in resolved_keys)
+    report = {
+        "requested_securities": requested,
+        "resolved_securities": len(resolved_keys),
+        "count_coverage_pct": round(
+            (len(resolved_keys) / requested * 100) if requested else 100.0, 2
+        ),
+        "value_weighted_coverage_pct": round(
+            (resolved_value / total_value * 100) if total_value else 100.0, 2
+        ),
+        "stale_symbols": sorted(stale_symbols),
+        "unresolved_symbols": sorted(unresolved_symbols),
+    }
+    return (updated, report) if include_report else updated
 
 
 def _ensure_block_metrics(holdings: list[dict], *, with_metrics: bool) -> list[dict]:
@@ -185,9 +284,20 @@ def _ensure_block_metrics(holdings: list[dict], *, with_metrics: bool) -> list[d
 def _refresh_stale_payload_prices(payload: dict, *, with_metrics: bool) -> dict:
     """Recompute summary after Yahoo LTP refresh on a cached portfolio payload."""
     if payload.get("portfolios"):
+        all_original = [
+            holding
+            for block in payload["portfolios"]
+            for holding in block.get("holdings") or []
+        ]
+        all_updated, quote_report = _refresh_holdings_ltps_from_yahoo(
+            all_original, include_report=True
+        )
+        cursor = 0
         portfolios = []
         for block in payload["portfolios"]:
-            holdings = _refresh_holdings_ltps_from_yahoo(block.get("holdings") or [])
+            count = len(block.get("holdings") or [])
+            holdings = all_updated[cursor : cursor + count]
+            cursor += count
             holdings = _ensure_block_metrics(holdings, with_metrics=with_metrics)
             summary = summarize_holdings(holdings)
             portfolios.append({**block, "holdings": holdings, "summary": summary})
@@ -197,15 +307,19 @@ def _refresh_stale_payload_prices(payload: dict, *, with_metrics: bool) -> dict:
             "portfolios": portfolios,
             "summary": summarize_holdings(all_holdings),
             "ltp_refreshed_offline": True,
+            "quote_refresh": quote_report,
         }
 
-    holdings = _refresh_holdings_ltps_from_yahoo(payload.get("holdings") or [])
+    holdings, quote_report = _refresh_holdings_ltps_from_yahoo(
+        payload.get("holdings") or [], include_report=True
+    )
     holdings = _ensure_block_metrics(holdings, with_metrics=with_metrics)
     return {
         **payload,
         "holdings": holdings,
         "summary": summarize_holdings(holdings),
         "ltp_refreshed_offline": True,
+        "quote_refresh": quote_report,
     }
 
 

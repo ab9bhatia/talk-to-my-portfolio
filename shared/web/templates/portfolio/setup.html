@@ -143,9 +143,9 @@
           <h3 class="setup-card-name">{% if sync_attempt %}{{ sync_attempt.status | replace('_', ' ') | title }}{% else %}Not run yet{% endif %}</h3>
           <p class="setup-card-detail" id="weekly-sync-detail">
             {% if sync_attempt %}
-              Last attempted {{ format_cache_time(sync_attempt.started_at) }} · {{ sync_attempt.mode }}{% if sync_attempt.dry_run %} · dry run{% endif %}
+              Last attempted {{ format_cache_time(sync_attempt.started_at) }} · {{ sync_attempt.mode }} · {{ sync_attempt.stage | default('MANUAL_RERUN') | replace('_', ' ') | title }}{% if sync_attempt.market_session_date %} · session {{ sync_attempt.market_session_date }}{% endif %}{% if sync_attempt.dry_run %} · dry run{% endif %}
             {% else %}
-              Run once manually, then install the OS scheduler for Friday plus Saturday backup.
+              Run once manually, then schedule Friday's India close and Saturday's global close finalization.
             {% endif %}
           </p>
         </div>
@@ -162,6 +162,18 @@
         <div>
           <span>Degraded accounts</span>
           <strong>{{ weekly_sync_status.degraded_accounts | length }}</strong>
+        </div>
+        <div>
+          <span>Snapshot quality</span>
+          <strong>{% if sync_attempt and sync_attempt.snapshot_quality %}{{ sync_attempt.snapshot_quality | replace('_', ' ') | title }}{% else %}—{% endif %}</strong>
+        </div>
+        <div>
+          <span>Coverage</span>
+          <strong>{% if sync_attempt and sync_attempt.summary.coverage_pct is defined %}{{ sync_attempt.summary.coverage_pct }}%{% else %}—{% endif %}</strong>
+        </div>
+        <div>
+          <span>Forced rerun</span>
+          <strong>{% if sync_attempt and sync_attempt.rerun_required %}Pending{% elif sync_attempt and sync_attempt.followup_run_id %}Queued{% else %}None{% endif %}</strong>
         </div>
         <div>
           <span>Execution</span>
@@ -184,6 +196,15 @@
             <option value="auto">Auto — live with safe fallback</option>
             <option value="live">Live — require all brokers</option>
             <option value="safe-fallback">Safe fallback — cached positions + fresh prices</option>
+          </select>
+        </label>
+        <label class="setup-field setup-sync-mode">
+          <span class="setup-field-label">Market stage</span>
+          <select id="weekly-sync-stage">
+            <option value="">Automatic — Friday / Saturday / manual</option>
+            <option value="INDIA_CLOSE">India close</option>
+            <option value="GLOBAL_CLOSE_FINALIZATION">Global close finalization</option>
+            <option value="MANUAL_RERUN">Manual rerun</option>
           </select>
         </label>
         <label class="setup-sync-dry-run">
@@ -416,5 +437,5 @@
 <script src="{{ app_path('/static/js/portfolio-setup.js') }}"></script>
 <script src="{{ app_path('/static/js/portfolio-setup-llm.js') }}"></script>
 <script src="{{ app_path('/static/js/portfolio-goals.js') }}"></script>
-<script src="{{ app_path('/static/js/portfolio-weekly-sync.js') }}?v=20260829-async-sync"></script>
+<script src="{{ app_path('/static/js/portfolio-weekly-sync.js') }}?v=20260829-market-stage"></script>
 {% endblock %}

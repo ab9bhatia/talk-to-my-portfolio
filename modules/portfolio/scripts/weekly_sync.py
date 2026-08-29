@@ -17,6 +17,7 @@ if str(ROOT) not in sys.path:
 from modules.portfolio.services.weekly_sync import (
     SUCCESS_STATUSES,
     VALID_MODES,
+    SyncStage,
     install_signal_cancellation,
     run_weekly_sync,
 )
@@ -34,6 +35,12 @@ def main() -> int:
             "auto=live with safe fallback; live=all accounts live; "
             "safe-fallback=durable quantities"
         ),
+    )
+    parser.add_argument(
+        "--stage",
+        choices=[stage.value for stage in SyncStage],
+        default=None,
+        help="Override the inferred Friday/Saturday/manual market-session stage.",
     )
     parser.add_argument(
         "--dry-run",
@@ -57,6 +64,7 @@ def main() -> int:
             dry_run=args.dry_run,
             requested_by="cli",
             cancel_event=cancel_event,
+            stage=args.stage,
         )
     finally:
         restore_signals()

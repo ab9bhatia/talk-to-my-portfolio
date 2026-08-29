@@ -31,7 +31,7 @@ Pass conditions:
 - Saving one account does not overwrite another account's credentials.
 - Dashboard navigation respects `APP_ROOT_PATH`.
 - Dry run records an audit but never creates portfolio snapshots or digest files.
-- Every weekly run distinguishes position freshness from price freshness.
+- Every weekly run distinguishes position freshness from price freshness, captured time from market-session date, and current from stale manual imports.
 
 ### 2. Dashboard — understand
 
@@ -59,6 +59,7 @@ Pass conditions:
 
 - One recorded day shows `Need two daily snapshots` for best-day analysis, never an infinite value.
 - One recorded day replaces the empty one-point chart with the next useful recording milestones.
+- Partial, stale, or coverage-changed points remain visible but suppress performance claims and explain why.
 - Missing history explains how to create the first snapshot.
 - Tables remain usable on desktop and mobile without page-level horizontal overflow.
 
@@ -126,8 +127,10 @@ Growth should remain in the product, but it is a review surface—not the daily 
 | Broker login expired | Continue with a labelled snapshot and provide the account-specific login action |
 | Account refresh fails | Keep the last safe snapshot, name the affected account, and avoid claiming all accounts are current |
 | Weekly job already running | Report `LOCKED`; do not start a second writer |
-| Friday and Saturday jobs both run | Audit Saturday as `SKIPPED_DUPLICATE`; keep one weekly snapshot |
-| Manual account is out of date | Report `IMPORT_REQUIRED` or cached-position freshness with the position and price dates separated |
+| Friday and Saturday jobs both run | Execute `INDIA_CLOSE` and `GLOBAL_CLOSE_FINALIZATION` once each; both use Friday's equity session date |
+| Manual account is out of date | Report `MANUAL_STALE`; a recent import is `MANUAL_CURRENT`, with position and price dates separated |
+| Browser/app restarts during accepted sync | Poll durable SQLite truth; startup marks the orphaned job `INTERRUPTED`, never temporary 404 |
+| OAuth reconnect occurs during active sync | Coalesce exactly one forced `MANUAL_RERUN` after the current job finishes |
 | Yahoo pattern scan is slow or unavailable | Keep deterministic decisions usable and show pattern timing as pending/unavailable |
 | Only one growth snapshot exists | Explain that two snapshots are required for a best-day calculation |
 | LLM is unavailable | Keep Dashboard, Growth, and Action Center functional; direct the user to Setup & Config |

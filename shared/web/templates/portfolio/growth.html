@@ -44,6 +44,7 @@
   </header>
 
   <section class="dash-panel growth-panel" aria-labelledby="growth-change-title">
+    <p id="growth-quality-notice" class="growth-quality-notice" role="status" hidden></p>
     <div class="growth-change-cards" id="growth-change-cards">
       <p class="growth-loading text-muted">Loading day-over-day summary…</p>
     </div>
@@ -140,5 +141,5 @@
   </section>
 </div>
 
-<script src="{{ app_path('/static/js/portfolio-growth.js') }}?v=20260828-guided-growth" defer></script>
+<script src="{{ app_path('/static/js/portfolio-growth.js') }}?v=20260829-quality-aware" defer></script>
 {% endblock %}

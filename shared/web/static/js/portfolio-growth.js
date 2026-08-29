@@ -14,6 +14,7 @@
   const daysSelect = document.getElementById("growth-days-select");
   const insightsPanel = document.getElementById("growth-insights-panel");
   const comparisonPanel = document.getElementById("growth-comparison-panel");
+  const qualityNotice = document.getElementById("growth-quality-notice");
   const tabs = document.querySelectorAll(".growth-tab[data-breakdown]");
 
   let growthChart = null;
@@ -51,12 +52,17 @@
         '<p class="text-muted">Record at least two days (refresh portfolio on consecutive days) to see day-over-day movement.</p>';
       return;
     }
-    const firstDay = dc.change == null;
+    const nonComparable = Boolean(dc.previous_day && dc.comparable === false);
+    const firstDay = !dc.previous_day;
     const changeHtml = firstDay
       ? '<span class="growth-stat-guidance">1 more market close</span>'
+      : nonComparable
+      ? '<span class="growth-stat-guidance">Not comparable</span>'
       : `<span class="${changeClass(dc.change)}">${formatInr(dc.change)} (${formatPct(dc.change_pct)})</span>`;
     const investedHtml = firstDay
       ? '<span class="growth-stat-guidance">5 sessions</span>'
+      : nonComparable
+      ? '<span class="growth-stat-guidance">Coverage changed</span>'
       : `<span class="${changeClass(dc.invested_change)}">${dc.invested_change != null ? formatInr(dc.invested_change) : "—"}</span>`;
     cardsEl.innerHTML = `
       <article class="growth-stat-card">
@@ -64,11 +70,11 @@
         <p class="growth-stat-value">${formatInr(dc.value)}</p>
       </article>
       <article class="growth-stat-card">
-        <p class="growth-stat-label">${firstDay ? "Trend unlock" : `vs ${dc.previous_day || "prior day"}`}</p>
+        <p class="growth-stat-label">${firstDay ? "Trend unlock" : nonComparable ? "Comparison suppressed" : `vs ${dc.previous_day || "prior day"}`}</p>
         <p class="growth-stat-value">${changeHtml}</p>
       </article>
       <article class="growth-stat-card">
-        <p class="growth-stat-label">${firstDay ? "Useful baseline" : "Invested change"}</p>
+        <p class="growth-stat-label">${firstDay ? "Useful baseline" : nonComparable ? "Data quality" : "Invested change"}</p>
         <p class="growth-stat-value">${investedHtml}</p>
       </article>
     `;
@@ -113,6 +119,11 @@
             fill: true,
             tension: 0.25,
             pointRadius: series.length > 30 ? 0 : 3,
+            pointBackgroundColor: series.map((point) =>
+              point.snapshot_quality === "PARTIAL" || point.snapshot_quality === "STALE"
+                ? "#f59e0b"
+                : "#38bdf8"
+            ),
           },
           {
             label: "Invested (₹)",
@@ -147,7 +158,7 @@
     return source || "—";
   }
 
-  function renderInsights(series) {
+  function renderInsights(series, performanceQuality) {
     if (!insightsCards) return;
     if (!series || !series.length) {
       insightsCards.innerHTML = '<p class="text-muted">No timeline data yet.</p>';
@@ -155,6 +166,7 @@
     }
     const first = series[0];
     const last = series[series.length - 1];
+    const claimsAllowed = Boolean(performanceQuality?.claims_allowed);
     const absGain = (last.total_current || 0) - (first.total_current || 0);
     const pctGain = first.total_current ? (absGain / first.total_current) * 100 : null;
 
@@ -181,15 +193,15 @@
     insightsCards.innerHTML = `
       <article class="growth-stat-card">
         <p class="growth-stat-label">Period return</p>
-        <p class="growth-stat-value ${changeClass(absGain)}">${formatInr(absGain)} (${formatPct(pctGain)})</p>
+        <p class="growth-stat-value ${claimsAllowed ? changeClass(absGain) : ""}">${claimsAllowed ? `${formatInr(absGain)} (${formatPct(pctGain)})` : "Suppressed · coverage changed"}</p>
       </article>
       <article class="growth-stat-card">
         <p class="growth-stat-label">Max drawdown</p>
-        <p class="growth-stat-value ${changeClass(maxDrawdown)}">${formatPct(maxDrawdown)}</p>
+        <p class="growth-stat-value ${claimsAllowed ? changeClass(maxDrawdown) : ""}">${claimsAllowed ? formatPct(maxDrawdown) : "Suppressed"}</p>
       </article>
       <article class="growth-stat-card">
         <p class="growth-stat-label">Best recorded day</p>
-        <p class="growth-stat-value ${bestMove ? changeClass(bestMove.pct) : ""}">${bestMove ? `${bestMove.date} · ${formatPct(bestMove.pct)}` : "Need two daily snapshots"}</p>
+        <p class="growth-stat-value ${claimsAllowed && bestMove ? changeClass(bestMove.pct) : ""}">${claimsAllowed && bestMove ? `${bestMove.date} · ${formatPct(bestMove.pct)}` : claimsAllowed ? "Need two daily snapshots" : "Suppressed"}</p>
       </article>
       <article class="growth-stat-card">
         <p class="growth-stat-label">Latest source</p>
@@ -343,6 +355,7 @@
         <th class="text-right">Family invested</th>
         <th class="text-right">Family value</th>
         <th class="text-right">Family P&L %</th>
+        <th>Quality</th>
         ${accountHeaders}
       </tr>
     `;
@@ -365,6 +378,7 @@
             <td class="text-right${familyCf}"${familyTip}>${formatInr(r.family_invested)}</td>
             <td class="text-right${familyCf}"${familyTip}>${formatInr(r.family_value)}</td>
             <td class="text-right ${changeClass(r.family_pnl_pct)}${familyCf}"${familyTip}>${formatPct(r.family_pnl_pct)}</td>
+            <td><span class="growth-quality-badge growth-quality-${escapeHtml(String(r.snapshot_quality || "UNKNOWN").toLowerCase())}">${escapeHtml(r.snapshot_quality || "UNKNOWN")}</span></td>
             ${accountCols}
           </tr>
         `;
@@ -377,7 +391,9 @@
     const rows = (dashboardData.breakdown || {})[activeBreakdown] || [];
     const dc = dashboardData.day_change;
     if (breakdownHint && dc?.latest_day && dc?.previous_day) {
-      breakdownHint.textContent = `Comparing ${dc.latest_day} vs ${dc.previous_day} (market movement + any buys/sells).`;
+      breakdownHint.textContent = dc.comparable === false
+        ? `Comparison suppressed: ${(dc.comparability_reasons || []).join(", ") || "coverage changed"}.`
+        : `Comparing ${dc.latest_day} vs ${dc.previous_day} (market movement + any buys/sells).`;
     } else if (breakdownHint) {
       breakdownHint.textContent = "";
     }
@@ -408,13 +424,19 @@
 
   async function loadDashboard() {
     const days = daysSelect ? parseInt(daysSelect.value, 10) || 90 : 90;
-    const res = await fetch(`/api/portfolio/daily/dashboard?days=${days}`);
+    const path = `/api/portfolio/daily/dashboard?days=${days}`;
+    const res = await fetch(window.appUrl ? window.appUrl(path) : path);
     if (!res.ok) return;
     dashboardData = await res.json();
     renderChangeCards(dashboardData.day_change);
     const series = dashboardData.series || [];
     renderChart(series);
-    renderInsights(series);
+    renderInsights(series, dashboardData.performance_quality || {});
+    if (qualityNotice) {
+      const quality = dashboardData.performance_quality || {};
+      qualityNotice.hidden = !quality.explanation;
+      qualityNotice.textContent = quality.explanation || "";
+    }
     renderPerformanceChart(series);
     renderAccountMixChart(dashboardData.account_series || []);
     renderBenchmarkChart(series, dashboardData.benchmark_series || {});

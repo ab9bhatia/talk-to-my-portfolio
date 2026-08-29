@@ -84,7 +84,7 @@ flowchart LR
 | Benchmark overlay | Portfolio vs NIFTY50 / S&amp;P500 (indexed) |
 | Date-wise timeline | Family + per-account invested/value |
 | Weekly history | Immutable weekly snapshots for longer audits |
-| Weekly operating job | Friday sync plus idempotent Saturday backup; local decision digest |
+| Weekly operating job | Friday India close plus Saturday global-price finalization; quality-aware local digest |
 
 ### Portfolio agent
 
@@ -103,7 +103,7 @@ flowchart LR
 | Account hub | Add, edit, reconnect, import |
 | Goals & guardrails | Personal risk frame for agent |
 | Data quality log | Post-import audit: row counts, unresolved account mappings |
-| Weekly sync health | Last attempt/success, account freshness states, recovery actions, local digest |
+| Weekly sync health | Durable queue, market stage/session, snapshot quality/coverage, recovery actions, local digest |
 | HTTP Basic Auth | Optional LAN protection |
 
 ### Platform (engineering)

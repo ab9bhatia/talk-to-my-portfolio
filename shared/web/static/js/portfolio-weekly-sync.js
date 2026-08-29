@@ -2,6 +2,7 @@
   const runButton = document.getElementById("weekly-sync-run");
   const modeInput = document.getElementById("weekly-sync-mode");
   const dryRunInput = document.getElementById("weekly-sync-dry-run");
+  const stageInput = document.getElementById("weekly-sync-stage");
   const result = document.getElementById("weekly-sync-result");
   if (!runButton || !modeInput || !dryRunInput || !result) return;
 
@@ -16,8 +17,9 @@
     "LOCKED",
     "CANCELLED",
     "SKIPPED_DUPLICATE",
+    "INTERRUPTED",
   ]);
-  const FAILURE_STATUSES = new Set(["FAILED", "LOCKED", "CANCELLED"]);
+  const FAILURE_STATUSES = new Set(["FAILED", "LOCKED", "CANCELLED", "INTERRUPTED"]);
   let activeRunId = null;
   let pollTimer = null;
 
@@ -63,6 +65,12 @@
         return;
       }
 
+      if (data.followup_run_id) {
+        result.textContent = `${statusLabel(status)} · following required rerun ${data.followup_run_id.slice(0, 8)}…`;
+        await pollRun(data.followup_run_id);
+        return;
+      }
+
       const failed = FAILURE_STATUSES.has(status);
       result.classList.add(failed ? "is-error" : "is-ok");
       result.textContent = failed
@@ -91,6 +99,7 @@
         body: JSON.stringify({
           mode: modeInput.value,
           dry_run: dryRunInput.checked,
+          stage: stageInput?.value || null,
         }),
       });
       const data = await response.json().catch(function () { return {}; });
