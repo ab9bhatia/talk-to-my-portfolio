@@ -614,6 +614,10 @@ def stream_portfolio_agent(
             yield _format_sse("token", {"delta": delta})
 
         full_text = "".join(parts)
+        if not full_text.strip():
+            raise RuntimeError(
+                f"{provider} returned an empty response. Check the configured model and API access."
+            )
         try:
             recommendations = _validate_agent_response(
                 _parse_agent_json(full_text),

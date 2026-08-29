@@ -150,6 +150,20 @@ def _batch_yahoo_profiles(holdings: list[dict[str, Any]]) -> dict[str, dict[str,
     return out
 
 
+def _embedded_profiles(holdings: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """Use normalized evidence; an agent question must not fan out into live profile calls."""
+    return {
+        str(row["symbol"]): {
+            "debt_to_equity": row.get("debt_to_equity"),
+            "yahoo_sector": row.get("yahoo_sector") or row.get("sector"),
+            "yahoo_industry": row.get("yahoo_industry") or row.get("industry"),
+            "business_summary": row.get("business_summary"),
+        }
+        for row in holdings
+        if row.get("symbol")
+    }
+
+
 def _enrich_holding_flags(
     holding: dict[str, Any],
     total_value: float,
@@ -231,7 +245,7 @@ def build_portfolio_context(*, refresh: bool = False) -> dict[str, Any]:
     summary = family["summary"]
     total_value = float(summary.get("total_current_value") or 0)
 
-    profiles = _batch_yahoo_profiles(holdings)
+    profiles = _embedded_profiles(holdings)
     enriched = [
         _enrich_holding_flags(
             h,

@@ -845,7 +845,10 @@ def _finalize_family_payload(
     refresh: bool = False,
 ) -> dict:
     payload = _merge_sarwa_into_family(payload, with_metrics=with_metrics, refresh=refresh)
-    return _ensure_family_payload_metrics(payload, with_metrics=with_metrics)
+    payload = _ensure_family_payload_metrics(payload, with_metrics=with_metrics)
+    from modules.portfolio.services.quote_reconciliation import apply_family_quote_consensus
+
+    return apply_family_quote_consensus(payload)
 
 
 def fetch_family_portfolio(

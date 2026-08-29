@@ -83,7 +83,6 @@ def _normalize_groww_holding(
     *,
     ltp_map: dict[str, float] | None = None,
 ) -> dict[str, Any] | None:
-    account = get_groww_account(account_id)
     symbol = (
         raw.get("trading_symbol")
         or raw.get("tradingsymbol")
@@ -104,16 +103,20 @@ def _normalize_groww_holding(
     avg_price = _safe_float(
         raw.get("average_price") or raw.get("avg_price") or raw.get("average_buy_price")
     )
-    last_price = _safe_float(
+    holdings_price = _safe_float(
         raw.get("last_price")
         or raw.get("ltp")
         or raw.get("close")
         or raw.get("current_price")
     )
+    last_price = holdings_price
+    price_source = "groww_holdings"
     if ltp_map and ltp_key in ltp_map:
         last_price = ltp_map[ltp_key]
+        price_source = "groww_ltp_api"
     if last_price <= 0:
         last_price = avg_price
+        price_source = "cost_basis_fallback"
 
     invested = quantity * avg_price
     current_value = quantity * last_price
@@ -126,6 +129,11 @@ def _normalize_groww_holding(
         "quantity": quantity,
         "avg_price": round(avg_price, 2),
         "last_price": round(last_price, 2),
+        "broker_reported_price": round(last_price, 2),
+        "broker_price_source": price_source,
+        "market_price": None if price_source == "cost_basis_fallback" else round(last_price, 2),
+        "market_price_source": None if price_source == "cost_basis_fallback" else price_source,
+        "market_price_unavailable": price_source == "cost_basis_fallback",
         "invested": round(invested, 2),
         "current_value": round(current_value, 2),
         "pnl": round(pnl, 2),

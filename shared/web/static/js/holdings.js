@@ -1967,26 +1967,54 @@
       if (expander && expander.getAttribute("aria-expanded") !== "true") {
         toggleRow(expander);
       }
-      row.querySelector(".holding-row")?.scrollIntoView?.({ block: "nearest" });
+      row.scrollIntoView?.({ block: "nearest" });
     });
   }
 
-  function applyPatternToggleState(count) {
+  function applyPatternToggleState(count, errorMessage = "") {
     const toggle = document.getElementById("patterns-filter-toggle");
     const countEl = document.getElementById("patterns-filter-count");
     if (!toggle) return;
+    toggle.classList.remove("is-loading");
     if (count > 0) {
       toggle.disabled = false;
+      toggle.classList.remove("is-unavailable");
+      toggle.title = `Show only ${count} holdings with an active chart setup and a valid target`;
+      toggle.setAttribute("aria-label", `${count} active chart setups; filter is ${patternsOnlyActive ? "on" : "off"}`);
       if (countEl) {
         countEl.textContent = String(count);
         countEl.hidden = false;
       }
     } else {
       toggle.disabled = true;
+      toggle.classList.toggle("is-unavailable", Boolean(errorMessage));
       toggle.setAttribute("aria-pressed", "false");
+      toggle.setAttribute("aria-label", errorMessage || "No active chart setups available");
+      toggle.title = errorMessage || "No active chart setups with a valid target are available";
+      toggle.classList.remove("is-active");
       patternsOnlyActive = false;
       if (countEl) countEl.hidden = true;
     }
+  }
+
+  function applyPatternScanPending() {
+    const toggle = document.getElementById("patterns-filter-toggle");
+    const label = toggle?.querySelector(".patterns-toggle-label");
+    const countEl = document.getElementById("patterns-filter-count");
+    if (!toggle) return;
+    toggle.disabled = true;
+    toggle.classList.add("is-loading");
+    toggle.classList.remove("is-unavailable", "is-active");
+    toggle.setAttribute("aria-pressed", "false");
+    toggle.setAttribute("aria-label", "Chart setups are scanning in the background");
+    toggle.title = "Scanning chart setups in the background — you can keep using the dashboard";
+    if (label) label.textContent = "Scanning setups…";
+    if (countEl) countEl.hidden = true;
+  }
+
+  function restorePatternToggleLabel() {
+    const label = document.querySelector("#patterns-filter-toggle .patterns-toggle-label");
+    if (label) label.textContent = "Active setups";
   }
 
   function initPatternsToggle() {
@@ -2002,13 +2030,32 @@
     });
   }
 
-  async function decorateHoldingsWithPatterns() {
+  async function decorateHoldingsWithPatterns(pollAttempt = 0) {
     const rows = [...document.querySelectorAll(".holding-row")];
     if (!rows.length) return;
     try {
-      const res = await fetch("/api/portfolio/patterns");
-      if (!res.ok) return;
+      const res = await fetch("/api/portfolio/patterns?blocking=false");
+      if (!res.ok) {
+        restorePatternToggleLabel();
+        applyPatternToggleState(0, `Could not load chart setups (${res.status})`);
+        return;
+      }
       const data = await res.json();
+      if (data.status === "scanning") {
+        applyPatternScanPending();
+        if (pollAttempt < 120) {
+          window.setTimeout(() => decorateHoldingsWithPatterns(pollAttempt + 1), 3000);
+        } else {
+          restorePatternToggleLabel();
+          applyPatternToggleState(0, "Chart setup scan is taking longer than expected. Refresh later.");
+        }
+        return;
+      }
+      restorePatternToggleLabel();
+      if (data.status === "error") {
+        applyPatternToggleState(0, data.error || "Could not scan chart setups.");
+        return;
+      }
       const bySymbol = new Map();
       (data.holdings || []).forEach((row) => {
         const primary = actionablePrimaryOf(row);
@@ -2030,7 +2077,8 @@
       });
       applyPatternToggleState(matched);
     } catch {
-      applyPatternToggleState(0);
+      restorePatternToggleLabel();
+      applyPatternToggleState(0, "Could not load chart setups. Refresh and try again.");
     }
   }
 

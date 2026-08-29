@@ -67,7 +67,10 @@
   <td class="col-weight text-right cell-muted">{{ format_na_compact(h.pct_of_portfolio, "%") }}</td>
   <td class="col-qty col-hide-sm text-right">{{ h.quantity | int }}</td>
   <td class="col-avg col-hide-md text-right">{{ format_inr_whole(h.avg_price) }}</td>
-  <td class="col-ltp col-hide-md text-right">{{ format_inr_whole(h.last_price) }}</td>
+  <td
+    class="col-ltp col-hide-md text-right"
+    title="Market mark{% if h.get('market_price_source') %}: {{ h.get('market_price_source') }}{% endif %}{% if h.get('market_price_as_of') %} · {{ h.get('market_price_as_of') }}{% endif %}"
+  >{{ format_inr_whole(h.last_price) }}</td>
   <td class="col-value text-right">{{ format_inr_whole(h.current_value) }}</td>
   <td class="col-pnl text-right {{ pnl_class(h.pnl) }}">
     {{ format_inr_whole(h.pnl) }}

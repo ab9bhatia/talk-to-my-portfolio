@@ -569,12 +569,15 @@ def api_family_portfolio_meta():
 
 
 @router.get("/api/portfolio/patterns")
-def api_portfolio_patterns(refresh: bool = Query(False)):
+def api_portfolio_patterns(
+    refresh: bool = Query(False),
+    blocking: bool = Query(True),
+):
     """
     Scan portfolio equities for chart patterns (cup & handle, inverse H&S, etc.).
     Uses Yahoo daily history; results are cached per symbol (~6h).
     """
-    from modules.portfolio.services.chart_patterns import scan_holdings
+    from modules.portfolio.services.chart_patterns import scan_holdings, scan_holdings_async
     from modules.portfolio.services.holdings_view import all_holdings_from_view, prepare_holdings_view
     from modules.portfolio.services.portfolio import fetch_family_portfolio
 
@@ -582,10 +585,20 @@ def api_portfolio_patterns(refresh: bool = Query(False)):
     raw = [h for p in family.get("portfolios", []) for h in p.get("holdings", [])]
     holdings_view = prepare_holdings_view(raw, aggregate_across_accounts=True)
     holdings = all_holdings_from_view(holdings_view)
-    scanned = scan_holdings(holdings)
+    if blocking:
+        scanned = scan_holdings(holdings)
+        scan_status = "complete"
+        scan_error = None
+    else:
+        scan = scan_holdings_async(holdings, refresh=refresh)
+        scanned = scan.get("results") or []
+        scan_status = str(scan.get("status") or "scanning")
+        scan_error = scan.get("error")
     hits = [row for row in scanned if row.get("patterns")]
     actionable = [row for row in scanned if row.get("actionable_primary")]
     return {
+        "status": scan_status,
+        "error": scan_error,
         "scanned": len(scanned),
         "with_patterns": len(hits),
         "actionable_setups": len(actionable),

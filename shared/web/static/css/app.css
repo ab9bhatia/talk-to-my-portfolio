@@ -6417,11 +6417,26 @@ body.setup-modal-open {
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
+  min-width: max-content;
+  color: var(--text-muted);
   cursor: pointer;
 }
+.filter-chip-patterns:not(:disabled):hover { color: var(--text); }
 .filter-chip-patterns:disabled {
-  opacity: 0.5;
+  color: var(--text-muted);
+  opacity: 0.65;
   cursor: default;
+}
+.filter-chip-patterns.is-unavailable {
+  border-color: rgba(248, 113, 113, 0.35);
+  color: #fca5a5;
+}
+.filter-chip-patterns.is-loading .patterns-toggle-icon {
+  animation: pattern-scan-pulse 1.2s ease-in-out infinite;
+}
+@keyframes pattern-scan-pulse {
+  0%, 100% { opacity: 0.45; transform: scale(0.94); }
+  50% { opacity: 1; transform: scale(1); }
 }
 .filter-chip-patterns.is-active,
 .filter-chip-patterns[aria-pressed="true"] {

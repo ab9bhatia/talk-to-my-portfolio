@@ -3,6 +3,7 @@
   if (!section) return;
 
   const STORAGE_KEY = "portfolio-agent-state:v1";
+  const REQUEST_TIMEOUT_MS = 120000;
 
   const statusPill = document.getElementById("agent-status-pill");
   const hint = document.getElementById("agent-hint");
@@ -411,11 +412,14 @@
         else if (line.startsWith("data:")) data += line.slice(5).trim();
       }
       if (data) {
+        let parsed;
         try {
-          onEvent(event, JSON.parse(data));
+          parsed = JSON.parse(data);
         } catch {
           /* ignore malformed */
+          continue;
         }
+        onEvent(event, parsed);
       }
     }
     return remainder;
@@ -447,8 +451,14 @@
 
     const streamBubble = appendChatBubble("assistant", "…", "is-streaming");
     let streamText = "";
+    let terminalEventReceived = false;
+    let timedOut = false;
 
     abortController = new AbortController();
+    const requestTimer = window.setTimeout(() => {
+      timedOut = true;
+      abortController?.abort();
+    }, REQUEST_TIMEOUT_MS);
 
     const useNewThread = !isFollowUp;
     const payloadThreadId = isFollowUp ? threadId : null;
@@ -474,42 +484,57 @@
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
+      const handleStreamEvent = (event, data) => {
+        if (event === "status") {
+          setBusy(true, data.message || "Working…");
+          if (data.thread_id) threadId = data.thread_id;
+        } else if (event === "token" && data.delta) {
+          streamText += data.delta;
+          const textEl = streamBubble?.querySelector(".agent-chat-text");
+          if (textEl) textEl.textContent = streamText.slice(0, 800) + (streamText.length > 800 ? "…" : "");
+        } else if (event === "done") {
+          terminalEventReceived = true;
+          threadId = data.thread_id || threadId;
+          if (data.recommendations) renderRecommendations(data.recommendations);
+          if (outcomeMeta) outcomeMeta.textContent = " · updated just now";
+          streamBubble?.remove();
+          const summary =
+            (data.recommendations?.answer || "").trim() ||
+            data.recommendations?.stance ||
+            "Response ready — see sections below.";
+          appendChatBubble("assistant", summary);
+          saveState();
+          loadSessions();
+          renderSessionsList();
+        } else if (event === "error") {
+          terminalEventReceived = true;
+          throw new Error(data.message || "Stream error");
+        }
+      };
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
-        buffer = parseSseChunk(buffer, (event, data) => {
-          if (event === "status") {
-            setBusy(true, data.message || "Working…");
-            if (data.thread_id) threadId = data.thread_id;
-          } else if (event === "token" && data.delta) {
-            streamText += data.delta;
-            const textEl = streamBubble?.querySelector(".agent-chat-text");
-            if (textEl) textEl.textContent = streamText.slice(0, 800) + (streamText.length > 800 ? "…" : "");
-          } else if (event === "done") {
-            threadId = data.thread_id || threadId;
-            if (data.recommendations) renderRecommendations(data.recommendations);
-            if (outcomeMeta) outcomeMeta.textContent = " · updated just now";
-            streamBubble?.remove();
-            const summary =
-              (data.recommendations?.answer || "").trim() ||
-              data.recommendations?.stance ||
-              "Response ready — see sections below.";
-            appendChatBubble("assistant", summary);
-            saveState();
-            loadSessions();
-            renderSessionsList();
-          } else if (event === "error") {
-            throw new Error(data.message || "Stream error");
-          }
-        });
+        buffer = parseSseChunk(buffer, handleStreamEvent);
+      }
+      buffer += decoder.decode();
+      if (buffer.trim()) {
+        parseSseChunk(`${buffer}\n\n`, handleStreamEvent);
+      }
+      if (!terminalEventReceived) {
+        throw new Error("Agent stream ended before a response was returned. Please try again.");
       }
     } catch (err) {
-      if (err.name === "AbortError") return;
       streamBubble?.remove();
-      showError(err.message || "Agent request failed.");
+      if (err.name === "AbortError" && !timedOut) return;
+      showError(
+        timedOut
+          ? "Portfolio Agent timed out after 2 minutes. Check the configured provider/model and try again."
+          : err.message || "Agent request failed."
+      );
     } finally {
+      window.clearTimeout(requestTimer);
       setBusy(false);
       abortController = null;
     }

@@ -42,6 +42,7 @@
   ];
 
   let scanData = null;
+  let scanPollTimer = null;
   let sortKey = "lifecycle";
   let sortOrder = "asc";
   let activeFilter = "actionable";
@@ -251,13 +252,31 @@
     });
   }
 
-  async function loadScan() {
-    body.innerHTML = `<div class="patterns-skeleton" aria-label="Scanning chart patterns"><span></span><span></span><span></span></div>`;
+  async function loadScan({ refresh = false, pollAttempt = 0 } = {}) {
+    if (pollAttempt === 0) {
+      body.innerHTML = `<div class="patterns-skeleton" aria-label="Scanning chart patterns"><span></span><span></span><span></span><p>Scanning in the background — keep using the dashboard.</p></div>`;
+    }
     if (refreshBtn) refreshBtn.disabled = true;
     try {
-      const response = await fetch("/api/portfolio/patterns");
+      const query = refresh && pollAttempt === 0
+        ? "?blocking=false&refresh=true"
+        : "?blocking=false";
+      const response = await fetch(`/api/portfolio/patterns${query}`);
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.detail || response.statusText);
+      if (result.status === "scanning") {
+        if (pollAttempt >= 120) {
+          throw new Error("Pattern scan is taking longer than expected. Refresh later.");
+        }
+        scanPollTimer = window.setTimeout(
+          () => loadScan({ pollAttempt: pollAttempt + 1 }),
+          3000
+        );
+        return;
+      }
+      if (result.status === "error") {
+        throw new Error(result.error || "Pattern scan failed");
+      }
       scanData = result;
       render(scanData);
     } catch (error) {
@@ -268,6 +287,10 @@
     }
   }
 
-  refreshBtn?.addEventListener("click", loadScan);
+  refreshBtn?.addEventListener("click", () => {
+    if (scanPollTimer) window.clearTimeout(scanPollTimer);
+    scanData = null;
+    loadScan({ refresh: true });
+  });
   loadScan();
 })();

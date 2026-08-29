@@ -20,6 +20,8 @@ from __future__ import annotations
 import logging
 import math
 import os
+import hashlib
+import json
 import threading
 import time
 from dataclasses import dataclass
@@ -37,6 +39,8 @@ PatternBias = Literal["bullish", "bearish"]
 _CACHE: dict[str, tuple[float, list[dict[str, Any]]]] = {}
 _CACHE_TTL = int(os.getenv("CHART_PATTERNS_CACHE_TTL", str(6 * 60 * 60)))
 _SCAN_LOCK = threading.Lock()
+_ASYNC_SCAN_LOCK = threading.Lock()
+_ASYNC_SCAN_STATE: dict[str, dict[str, Any]] = {}
 
 # Lookback policy (trading days). Fetch ~18 months so the longest cup base
 # (up to ~15 months) plus lead-in fits; detect mostly within the last year.
@@ -799,3 +803,73 @@ def scan_holdings(
     """Scan once per process so overlapping pages do not duplicate Yahoo requests."""
     with _SCAN_LOCK:
         return _scan_holdings_unlocked(holdings, max_workers=max_workers)
+
+
+def _holdings_universe_key(holdings: list[dict[str, Any]]) -> str:
+    identities = sorted(
+        {
+            (
+                str(row.get("symbol") or "").strip().upper(),
+                str(row.get("exchange") or "NSE").strip().upper(),
+            )
+            for row in holdings
+            if row.get("symbol") and row.get("asset_class") != "mf"
+        }
+    )
+    return hashlib.sha256(json.dumps(identities).encode("utf-8")).hexdigest()[:16]
+
+
+def scan_holdings_async(
+    holdings: list[dict[str, Any]],
+    *,
+    refresh: bool = False,
+    max_workers: int = 4,
+) -> dict[str, Any]:
+    """Return immediately while the portfolio-wide history scan runs in a daemon thread."""
+    key = _holdings_universe_key(holdings)
+    now = time.time()
+    with _ASYNC_SCAN_LOCK:
+        state = _ASYNC_SCAN_STATE.get(key)
+        if (
+            state
+            and state.get("status") == "complete"
+            and not refresh
+            and now - float(state.get("completed_at") or 0) < _CACHE_TTL
+        ):
+            return dict(state)
+        if state and state.get("status") == "scanning":
+            return dict(state)
+        state = {
+            "status": "scanning",
+            "universe_key": key,
+            "started_at": now,
+            "completed_at": None,
+            "results": list((state or {}).get("results") or []),
+            "error": None,
+        }
+        _ASYNC_SCAN_STATE[key] = state
+
+    def _run() -> None:
+        try:
+            completed = {
+                **state,
+                "status": "complete",
+                "completed_at": time.time(),
+                "results": scan_holdings(holdings, max_workers=max_workers),
+            }
+        except Exception as exc:
+            completed = {
+                **state,
+                "status": "error",
+                "completed_at": time.time(),
+                "error": str(exc),
+            }
+        with _ASYNC_SCAN_LOCK:
+            _ASYNC_SCAN_STATE[key] = completed
+
+    threading.Thread(
+        target=_run,
+        name=f"portfolio-pattern-scan-{key}",
+        daemon=True,
+    ).start()
+    return dict(state)
