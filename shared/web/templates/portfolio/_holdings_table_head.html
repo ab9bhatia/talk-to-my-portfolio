@@ -9,6 +9,14 @@
         <span class="col-resize-handle" role="separator" title="Drag to resize column" aria-label="Resize Symbol column"></span>
       </div>
     </th>
+    <th class="col-decision sortable" data-col-id="decision">
+      <div class="th-resize-wrap">
+        <a class="sort-link js-show-loader" href="{{ build_sort_url(controls_action, 'decision', holdings_view.sort, holdings_view.order, gb, refresh) }}">
+          Decision <span class="sort-arrow">{{ sort_indicator('decision', holdings_view.sort, holdings_view.order) }}</span>
+        </a>
+        <span class="col-resize-handle" role="separator" aria-label="Resize Decision column"></span>
+      </div>
+    </th>
     {% if show_account %}
     <th class="col-account" data-col-id="account">
       <div class="th-resize-wrap">
@@ -31,30 +39,6 @@
           Sector <span class="sort-arrow">{{ sort_indicator('sector', holdings_view.sort, holdings_view.order) }}</span>
         </a>
         <span class="col-resize-handle" role="separator" aria-label="Resize Sector column"></span>
-      </div>
-    </th>
-    <th class="col-52w text-right sortable" data-col-id="pct52w">
-      <div class="th-resize-wrap">
-        <a class="sort-link js-show-loader" href="{{ build_sort_url(controls_action, 'pct_52w', holdings_view.sort, holdings_view.order, gb, refresh) }}">
-          52W <span class="sort-arrow">{{ sort_indicator('pct_52w', holdings_view.sort, holdings_view.order) }}</span>
-        </a>
-        <span class="col-resize-handle" role="separator" aria-label="Resize 52W column"></span>
-      </div>
-    </th>
-    <th class="col-upside text-right sortable" data-col-id="upside">
-      <div class="th-resize-wrap">
-        <a class="sort-link js-show-loader" href="{{ build_sort_url(controls_action, 'upside', holdings_view.sort, holdings_view.order, gb, refresh) }}">
-          Tgt% <span class="sort-arrow">{{ sort_indicator('upside', holdings_view.sort, holdings_view.order) }}</span>
-        </a>
-        <span class="col-resize-handle" role="separator" aria-label="Resize analyst target upside column"></span>
-      </div>
-    </th>
-    <th class="col-signal sortable" data-col-id="signal">
-      <div class="th-resize-wrap">
-        <a class="sort-link js-show-loader" href="{{ build_sort_url(controls_action, 'signal', holdings_view.sort, holdings_view.order, gb, refresh) }}">
-          Street <span class="sort-arrow">{{ sort_indicator('signal', holdings_view.sort, holdings_view.order) }}</span>
-        </a>
-        <span class="col-resize-handle" role="separator" aria-label="Resize Street view column"></span>
       </div>
     </th>
     <th class="col-weight text-right sortable" data-col-id="weight">

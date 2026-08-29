@@ -21,9 +21,14 @@ from modules.portfolio.services.advisory.models import (
 from modules.portfolio.services.advisory.momentum import analyze_momentum
 from modules.portfolio.services.advisory.overlap import consolidate_family, detect_overlap
 from modules.portfolio.services.advisory.patterns import pattern_evidence_for_holding
+from modules.portfolio.services.advisory.presentation import (
+    conflict_categories,
+    present_decision,
+)
 from modules.portfolio.services.advisory.provenance import as_of_text, evidence_for_holding
 from modules.portfolio.services.advisory.rules import select_action
 from modules.portfolio.services.advisory.tax import assess_tax_and_settlement
+from modules.portfolio.services.analyst_rating import build_external_analyst_view
 
 
 SCHEMA_VERSION = "advisor-v2-v1"
@@ -288,7 +293,16 @@ def _recommendation(
         max_position_pct=max_position_pct,
     )
     positions = _account_positions(holding)
-    return HoldingRecommendation(
+    external_view = build_external_analyst_view(
+        recommendation_key=holding.get("recommendation_key"),
+        recommendation_mean=holding.get("recommendation_mean"),
+        analyst_count=holding.get("analyst_count"),
+        target_price=holding.get("target_price"),
+        last_price=holding.get("last_price"),
+        target_gap_pct=holding.get("external_target_gap_pct") or holding.get("upside_pct"),
+        fetched_at=holding.get("market_data_as_of"),
+    )
+    recommendation = HoldingRecommendation(
         symbol=str(holding.get("symbol") or "UNKNOWN"),
         instrument_id=holding.get("instrument_id"),
         isin=holding.get("isin"),
@@ -334,6 +348,14 @@ def _recommendation(
         rule_trace=decision.rule_trace,
         feature_coverage_pct=assessment.scores.feature_coverage_pct,
         recommendation_as_of=datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        external_analyst_view=external_view,
+    )
+    presentation, signal_stack = present_decision(recommendation)
+    return replace(
+        recommendation,
+        decision_presentation=presentation,
+        signal_stack=signal_stack,
+        conflict_categories=conflict_categories(recommendation),
     )
 
 

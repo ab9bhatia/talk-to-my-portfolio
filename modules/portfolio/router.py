@@ -10,6 +10,7 @@ from fastapi.responses import RedirectResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 
 import json
+import logging
 import os
 
 from modules.portfolio.auth.groww import GrowwError, get_groww_connection_status
@@ -84,6 +85,7 @@ from shared.web.app_urls import app_path
 from shared.web.templates import templates
 
 router = APIRouter(tags=["portfolio"])
+logger = logging.getLogger(__name__)
 API_CONTRACT_VERSION = "2026-05-mobile-mvp-v1"
 
 
@@ -377,8 +379,9 @@ VALID_SORT = {
     "avg",
     "ltp",
     "weight",
+    "decision",
 }
-VALID_GROUP = {"", "cap", "sector", "account", "signal", "asset_class"}
+VALID_GROUP = {"", "decision", "cap", "sector", "account", "signal", "asset_class"}
 
 
 @router.get("/api/portfolio/version")
@@ -1097,13 +1100,17 @@ def api_fund_intelligence_export():
 def _today_brief_payload() -> dict[str, Any]:
     from modules.portfolio.db import market_regime, research
     from modules.portfolio.db import weekly_sync as weekly_sync_store
-    from modules.portfolio.services.advisory.service import build_advisory_payload
+    from modules.portfolio.services.advisory.runtime import build_live_advisory
     from modules.portfolio.services.today_brief import build_today_brief
 
     family = fetch_family_portfolio(refresh=False, stale_ok=True)
     return build_today_brief(
         family=family,
-        advisory=build_advisory_payload(family, goals=profile_goals_store.get_goals()),
+        advisory=build_live_advisory(
+            family=family,
+            refresh=False,
+            include_patterns=False,
+        ),
         sync_status=weekly_sync_store.sync_status(),
         market_regime=market_regime.latest(finalized_only=True),
         events=research.list_events(),
@@ -1387,6 +1394,69 @@ def _family_holdings_view(
     family = fetch_family_portfolio(refresh=refresh, stale_ok=not refresh)
     raw_holdings = [h for p in family["portfolios"] for h in p["holdings"]]
     raw_holdings = filter_holdings_by_account_codes(raw_holdings, account_codes)
+    from modules.portfolio.services.advisory.runtime import build_decision_summary
+
+    try:
+        decision_summary = build_decision_summary(family=family, refresh=refresh)
+        by_instrument = {
+            str(row["instrument_id"]): row
+            for row in decision_summary.get("decisions") or []
+            if row.get("instrument_id")
+        }
+        by_isin = {
+            str(row["isin"]).upper(): row
+            for row in decision_summary.get("decisions") or []
+            if row.get("isin")
+        }
+        reconcile_by_symbol = {
+            str(row.get("symbol") or "").upper(): row
+            for row in decision_summary.get("decisions") or []
+            if row.get("action") == "RECONCILE" and row.get("symbol")
+        }
+        for holding in raw_holdings:
+            decision = by_instrument.get(str(holding.get("instrument_id") or ""))
+            if decision is None and holding.get("isin"):
+                decision = by_isin.get(str(holding["isin"]).upper())
+            if decision is None and not holding.get("instrument_id") and not holding.get("isin"):
+                decision = reconcile_by_symbol.get(str(holding.get("symbol") or "").upper())
+            if decision:
+                holding.update(
+                    {
+                        "advisor_action": decision.get("action"),
+                        "decision_presentation": decision.get("decision_presentation"),
+                        "signal_stack": decision.get("signal_stack"),
+                        "external_analyst_view": decision.get("external_analyst_view"),
+                        "decision_conflicts": decision.get("conflict_categories") or [],
+                    }
+                )
+            else:
+                holding["decision_presentation"] = {
+                    "label": "Decision unavailable",
+                    "short_label": "Unavailable",
+                    "readiness": "DATA_BLOCKED",
+                    "readiness_label": "Open Action Center",
+                    "confidence_band": "LOW",
+                    "confidence_pct": 0,
+                    "do_now": "Open Action Center to inspect the unresolved identity or evidence gap.",
+                    "execution_enabled": False,
+                }
+        family["decision_summary"] = {
+            key: decision_summary.get(key)
+            for key in ("schema_version", "generated_at", "source_portfolio_cached_at", "cache_key")
+        }
+    except Exception as exc:
+        logger.warning("Decision summary unavailable for dashboard: %s", exc)
+        for holding in raw_holdings:
+            holding["decision_presentation"] = {
+                "label": "Decision unavailable",
+                "short_label": "Unavailable",
+                "readiness": "DATA_BLOCKED",
+                "readiness_label": "Open Action Center",
+                "confidence_band": "LOW",
+                "confidence_pct": 0,
+                "do_now": "Open Action Center for the current decision.",
+                "execution_enabled": False,
+            }
     holdings_view = prepare_holdings_view(
         raw_holdings, **view_params, aggregate_across_accounts=True
     )
@@ -2023,6 +2093,14 @@ def api_portfolio_advisory_deadlines(refresh: bool = Query(False)):
         "generated_at": payload["generated_at"],
         "deadlines": payload.get("deadlines") or [],
     }
+
+
+@router.get("/api/portfolio/advisory/decision-summary")
+def api_portfolio_advisory_decision_summary(refresh: bool = Query(False)):
+    """Lightweight dashboard projection; same engine, no patterns and no LLM."""
+    from modules.portfolio.services.advisory.runtime import build_decision_summary
+
+    return build_decision_summary(refresh=refresh)
 
 
 @router.get("/api/portfolio/advisory/evidence/status")

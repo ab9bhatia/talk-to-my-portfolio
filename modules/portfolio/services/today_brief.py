@@ -70,6 +70,18 @@ ISSUE_GROUPS = {
         "required_action": "Validate filings and account constraints, then review a staged allocation—never an automatic order.",
         "destination": "/portfolio/advisor",
     },
+    "RESEARCH_REQUIRED": {
+        "what_wrong": "A screening call is not yet supported by current authoritative research.",
+        "why_wrong": "A target or derived market model can identify a candidate, but it cannot establish the portfolio thesis by itself.",
+        "required_action": "Validate current filings and the business thesis in Research before considering a transaction.",
+        "destination": "/portfolio/research",
+    },
+    "EXTERNAL_DISAGREEMENT": {
+        "what_wrong": "The internal portfolio decision and external analyst sentiment disagree.",
+        "why_wrong": "External consensus is useful challenge evidence, but it has different scope, freshness, and portfolio constraints.",
+        "required_action": "Inspect both sources in Action Center; keep the internal decision primary unless authoritative evidence changes it.",
+        "destination": "/portfolio/advisor",
+    },
     "DEADLINE": {
         "what_wrong": "A dated result, corporate, or ownership event is approaching.",
         "why_wrong": "The event can materially change the thesis or invalidate stale evidence.",
@@ -111,6 +123,8 @@ def _build_issue_groups(grouped_symbols: dict[str, set[str]]) -> list[dict[str, 
         "DEADLINE": 4,
         "REDUCE": 5,
         "ADD": 6,
+        "RESEARCH_REQUIRED": 4,
+        "EXTERNAL_DISAGREEMENT": 4,
     }
     rows = []
     for key, symbols in grouped_symbols.items():
@@ -143,11 +157,31 @@ def build_today_brief(
     blocking = 0
     action_review = 0
     no_action = 0
+    research_required = 0
+    tax_review_required = 0
+    external_disagreement = 0
     for item in recommendations:
         action = str(item.get("action") or "WATCH")
+        presentation = item.get("decision_presentation") or {}
+        conflicts = {str(value) for value in item.get("conflict_categories") or []}
         flags = item.get("data_quality_flags") or []
         blocking_flags = [flag for flag in flags if flag.get("blocking")]
-        if blocking_flags or action == "RECONCILE":
+        readiness = str(presentation.get("readiness") or "")
+        if not readiness:
+            if blocking_flags or action == "RECONCILE":
+                readiness = "DATA_BLOCKED"
+            elif item.get("requires_ca_review"):
+                readiness = "TAX_REVIEW_REQUIRED"
+            elif action in ACTION_REVIEW:
+                readiness = "READY_TO_REVIEW"
+            else:
+                readiness = "MONITOR_ONLY"
+        if "INTERNAL_VS_EXTERNAL" in conflicts:
+            external_disagreement += 1
+            grouped_symbols.setdefault("EXTERNAL_DISAGREEMENT", set()).add(
+                str(item.get("symbol") or "")
+            )
+        if readiness in {"DATA_BLOCKED", "NOT_EXECUTABLE"}:
             blocking += 1
             groups = {
                 _group_for_flag(str(flag.get("code") or "OTHER_DATA"))
@@ -165,7 +199,33 @@ def build_today_brief(
                 }
             )
             continue
-        if action in ACTION_REVIEW:
+        if readiness == "TAX_REVIEW_REQUIRED":
+            tax_review_required += 1
+            grouped_symbols.setdefault("TAX_PROFILE", set()).add(str(item.get("symbol") or ""))
+            issues.append(
+                {
+                    "priority": 2,
+                    "type": "TAX_REVIEW_REQUIRED",
+                    "symbol": item.get("symbol"),
+                    "title": presentation.get("label") or "Tax review required",
+                    "action": action,
+                }
+            )
+        elif readiness == "RESEARCH_REQUIRED":
+            research_required += 1
+            grouped_symbols.setdefault("RESEARCH_REQUIRED", set()).add(
+                str(item.get("symbol") or "")
+            )
+            issues.append(
+                {
+                    "priority": 4,
+                    "type": "RESEARCH_REQUIRED",
+                    "symbol": item.get("symbol"),
+                    "title": presentation.get("label") or "Research required",
+                    "action": action,
+                }
+            )
+        elif readiness == "READY_TO_REVIEW" and action in ACTION_REVIEW:
             action_review += 1
             action_group = "ADD" if action in {"ADD", "STRONG_ADD"} else "REDUCE"
             grouped_symbols.setdefault(action_group, set()).add(str(item.get("symbol") or ""))
@@ -178,7 +238,7 @@ def build_today_brief(
                     "action": action,
                 }
             )
-        elif action in NO_ACTION:
+        elif readiness == "MONITOR_ONLY" or action in NO_ACTION:
             no_action += 1
 
     today = date.today()
@@ -218,6 +278,9 @@ def build_today_brief(
         "market_regime": market_regime,
         "actions_require_review": action_review,
         "blocking_data_issues": blocking,
+        "research_required": research_required,
+        "tax_review_required": tax_review_required,
+        "external_disagreement": external_disagreement,
         "deadlines_30d": deadline_count,
         "no_action_count": no_action,
         "holdings_count": len(recommendations),
@@ -229,6 +292,8 @@ def build_today_brief(
             f"Latest sync: {latest_sync}",
             f"{action_review} actions require review",
             f"{blocking} data issues block advice",
+            f"{research_required} decisions require research",
+            f"{tax_review_required} decisions require tax review",
             f"{deadline_count} deadlines in 30 days",
             f"No action required on {no_action} holdings",
         ],

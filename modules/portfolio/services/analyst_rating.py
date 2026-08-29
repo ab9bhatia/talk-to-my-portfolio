@@ -1,8 +1,16 @@
-"""Map Yahoo analyst data and upside into buy/hold/sell labels."""
+"""Normalize external analyst context without turning targets into advice."""
 
 from __future__ import annotations
 
+import os
+from datetime import UTC, datetime
 from typing import Any
+
+from modules.portfolio.services.advisory.models import (
+    ExternalAnalystSentiment,
+    ExternalAnalystStatus,
+    ExternalAnalystView,
+)
 
 _RATING_LABELS: dict[str, str] = {
     "strong_buy": "Strong buy",
@@ -49,18 +57,6 @@ def _from_mean(mean: float) -> str:
     return "Strong sell"
 
 
-def _from_upside(upside_pct: float) -> str:
-    if upside_pct >= 20:
-        return "Strong buy"
-    if upside_pct >= 10:
-        return "Buy"
-    if upside_pct >= -5:
-        return "Hold"
-    if upside_pct >= -15:
-        return "Sell"
-    return "Strong sell"
-
-
 def _format_recommendation_key(key: str | None) -> str | None:
     if not key:
         return None
@@ -92,23 +88,12 @@ def _build_reasons(
             f"Mapped to “{rating.get('label')}” using standard score bands.",
         ]
 
-    if source == "upside" and upside_pct is not None:
-        reasons = [
-            f"No published analyst consensus; signal derived from target-price upside ({upside_pct:+.1f}%).",
-        ]
-        if target_price is not None and last_price is not None:
-            reasons.append(
-                f"Analyst mean target ₹{target_price:,.2f} vs your LTP ₹{last_price:,.2f}."
-            )
-        reasons.append(
-            "Bands: ≥20% Strong buy · ≥10% Buy · ≥−5% Hold · ≥−15% Sell · below Strong sell."
-        )
-        return reasons
-
     if not rating.get("label"):
-        return [
-            "No Yahoo analyst consensus, mean score, or analyst target available for this symbol.",
-        ]
+        if upside_pct is not None:
+            return [
+                f"Published target is {upside_pct:+.1f}% from the current price; this is external context, not a buy/sell rating.",
+            ]
+        return ["No covered external analyst consensus is available for this symbol."]
 
     return []
 
@@ -138,16 +123,8 @@ def resolve_analyst_rating(
         except (TypeError, ValueError):
             pass
 
-    if not label and upside_pct is not None:
-        try:
-            upside = float(upside_pct)
-            if upside == upside:
-                label = _from_upside(upside)
-                source = "upside"
-        except (TypeError, ValueError):
-            pass
-
     if not label:
+        source = "target_only" if upside_pct is not None else source
         return {"label": None, "slug": None, "source": source, "reasons": []}
 
     return {
@@ -185,3 +162,128 @@ def compute_rating(
     )
     return rating
 
+
+def _safe_float(value: Any) -> float | None:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed == parsed else None
+
+
+def _env_float(name: str, default: float) -> float:
+    parsed = _safe_float(os.getenv(name))
+    return parsed if parsed is not None else default
+
+
+def _safe_int(value: Any) -> int | None:
+    parsed = _safe_float(value)
+    return int(parsed) if parsed is not None else None
+
+
+def _sentiment(label: str | None) -> ExternalAnalystSentiment:
+    if label in {"Strong buy", "Buy"}:
+        return ExternalAnalystSentiment.POSITIVE
+    if label == "Hold":
+        return ExternalAnalystSentiment.NEUTRAL
+    if label in {"Sell", "Strong sell"}:
+        return ExternalAnalystSentiment.NEGATIVE
+    return ExternalAnalystSentiment.UNKNOWN
+
+
+def _freshness(as_of: str | None) -> str:
+    if not as_of:
+        return "Publication date unavailable"
+    try:
+        observed = datetime.fromisoformat(as_of.replace("Z", "+00:00"))
+        if observed.tzinfo is None:
+            observed = observed.replace(tzinfo=UTC)
+        age = (datetime.now(UTC) - observed).days
+    except (TypeError, ValueError):
+        return "Publication date unavailable"
+    stale_days = int(_env_float("EXTERNAL_ANALYST_STALE_DAYS", 120))
+    return f"Stale ({age} days old)" if age > stale_days else f"Current ({age} days old)"
+
+
+def build_external_analyst_view(
+    *,
+    recommendation_key: str | None = None,
+    recommendation_mean: float | None = None,
+    analyst_count: int | None = None,
+    target_price: float | None = None,
+    last_price: float | None = None,
+    target_gap_pct: float | None = None,
+    as_of: str | None = None,
+    fetched_at: str | None = None,
+    source: str = "Yahoo Finance",
+) -> ExternalAnalystView:
+    """Build non-actionable external context with coverage/outlier disclosure."""
+    rating = resolve_analyst_rating(
+        recommendation_key=recommendation_key,
+        recommendation_mean=recommendation_mean,
+    )
+    label = rating.get("label")
+    sentiment = _sentiment(label)
+    gap = _safe_float(target_gap_pct)
+    if gap is None:
+        price = _safe_float(last_price)
+        target = _safe_float(target_price)
+        gap = round(((target - price) / price) * 100, 2) if price and target else None
+    descriptor = (
+        "above market"
+        if gap is not None and gap > 5
+        else "below market"
+        if gap is not None and gap < -5
+        else "near market"
+        if gap is not None
+        else "unavailable"
+    )
+    count = _safe_int(analyst_count)
+    min_count = int(_env_float("EXTERNAL_ANALYST_MIN_COVERAGE", 3))
+    low_coverage = count is not None and count < min_count
+    outlier_high = _env_float("EXTERNAL_ANALYST_TARGET_OUTLIER_HIGH_PCT", 100)
+    outlier_low = _env_float("EXTERNAL_ANALYST_TARGET_OUTLIER_LOW_PCT", -50)
+    outlier = gap is not None and (gap > outlier_high or gap < outlier_low)
+    conflicted = bool(
+        gap is not None
+        and (
+            (sentiment is ExternalAnalystSentiment.POSITIVE and gap < -5)
+            or (sentiment is ExternalAnalystSentiment.NEGATIVE and gap > 5)
+        )
+    )
+    available = bool(label or gap is not None)
+    status = (
+        ExternalAnalystStatus.UNAVAILABLE
+        if not available
+        else ExternalAnalystStatus.OUTLIER
+        if outlier
+        else ExternalAnalystStatus.CONFLICTED
+        if conflicted
+        else ExternalAnalystStatus.LOW_COVERAGE
+        if low_coverage
+        else ExternalAnalystStatus.AVAILABLE
+    )
+    coverage = (
+        "Coverage unavailable"
+        if count is None
+        else f"Low coverage ({count} analyst{'s' if count != 1 else ''})"
+        if low_coverage
+        else f"{count} analysts"
+    )
+    return ExternalAnalystView(
+        status=status,
+        sentiment=sentiment,
+        consensus_label=label,
+        recommendation_key=recommendation_key,
+        recommendation_mean=_safe_float(recommendation_mean),
+        analyst_count=count,
+        target_price=_safe_float(target_price),
+        target_gap_pct=round(gap, 2) if gap is not None else None,
+        target_descriptor=descriptor,
+        coverage_label=coverage,
+        freshness_label=_freshness(as_of),
+        as_of=as_of,
+        fetched_at=fetched_at,
+        source=source,
+        actionable=False,
+    )

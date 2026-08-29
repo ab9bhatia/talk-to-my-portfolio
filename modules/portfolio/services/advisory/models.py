@@ -44,6 +44,101 @@ class InstrumentType(StrEnum):
     CASH = "cash"
 
 
+class SignalAuthority(StrEnum):
+    INTERNAL_DECISION = "INTERNAL_DECISION"
+    EXTERNAL_ANALYST_CONTEXT = "EXTERNAL_ANALYST_CONTEXT"
+    TECHNICAL_TIMING = "TECHNICAL_TIMING"
+    EXECUTION_READINESS = "EXECUTION_READINESS"
+
+
+class DecisionReadiness(StrEnum):
+    READY_TO_REVIEW = "READY_TO_REVIEW"
+    RESEARCH_REQUIRED = "RESEARCH_REQUIRED"
+    DATA_BLOCKED = "DATA_BLOCKED"
+    TAX_REVIEW_REQUIRED = "TAX_REVIEW_REQUIRED"
+    NOT_EXECUTABLE = "NOT_EXECUTABLE"
+    MONITOR_ONLY = "MONITOR_ONLY"
+
+
+class ConfidenceBand(StrEnum):
+    HIGH = "HIGH"
+    MEDIUM = "MEDIUM"
+    LOW = "LOW"
+
+
+class ConflictCategory(StrEnum):
+    DATA_QUALITY = "DATA_QUALITY"
+    FUNDAMENTAL_VS_TECHNICAL = "FUNDAMENTAL_VS_TECHNICAL"
+    INTERNAL_VS_EXTERNAL = "INTERNAL_VS_EXTERNAL"
+    TAX_OR_SETTLEMENT = "TAX_OR_SETTLEMENT"
+
+
+class ExternalAnalystStatus(StrEnum):
+    AVAILABLE = "AVAILABLE"
+    UNAVAILABLE = "UNAVAILABLE"
+    LOW_COVERAGE = "LOW_COVERAGE"
+    OUTLIER = "OUTLIER"
+    CONFLICTED = "CONFLICTED"
+
+
+class ExternalAnalystSentiment(StrEnum):
+    POSITIVE = "POSITIVE"
+    NEUTRAL = "NEUTRAL"
+    NEGATIVE = "NEGATIVE"
+    UNKNOWN = "UNKNOWN"
+
+
+@dataclass(frozen=True)
+class ExternalAnalystView:
+    status: ExternalAnalystStatus
+    sentiment: ExternalAnalystSentiment
+    consensus_label: str | None
+    recommendation_key: str | None
+    recommendation_mean: float | None
+    analyst_count: int | None
+    target_price: float | None
+    target_gap_pct: float | None
+    target_descriptor: str
+    coverage_label: str
+    freshness_label: str
+    as_of: str | None
+    fetched_at: str | None
+    source: str
+    actionable: bool = False
+
+
+@dataclass(frozen=True)
+class SignalLayer:
+    authority: SignalAuthority
+    label: str
+    state: str
+    summary: str
+    actionable: bool
+
+
+@dataclass(frozen=True)
+class DecisionPresentation:
+    internal_action: Action
+    label: str
+    short_label: str
+    readiness: DecisionReadiness
+    readiness_label: str
+    confidence_band: ConfidenceBand
+    confidence_pct: int
+    do_now: str
+    change_instruction: str
+    review_trigger: str
+    why: str
+    source_label: str
+    execution_enabled: bool = False
+
+
+@dataclass(frozen=True)
+class SignalStack:
+    primary: SignalAuthority
+    layers: list[SignalLayer]
+
+
 @dataclass(frozen=True)
 class Evidence:
     claim: str
@@ -196,6 +291,10 @@ class HoldingRecommendation:
     rule_trace: list[dict[str, Any]]
     feature_coverage_pct: float
     recommendation_as_of: str
+    decision_presentation: DecisionPresentation | None = None
+    signal_stack: SignalStack | None = None
+    external_analyst_view: ExternalAnalystView | None = None
+    conflict_categories: list[ConflictCategory] = field(default_factory=list)
 
 
 @dataclass(frozen=True)

@@ -8,14 +8,14 @@
 <div class="os-page page-brief">
   <header class="os-hero brief-hero" data-status="{{ brief.portfolio_status }}">
     <div><p class="dash-eyebrow">Material changes only</p><h1>Your portfolio is<br><em>{{ brief.portfolio_status | lower }}.</em></h1><p>Reconciliation and hard risk first; unchanged holdings stay quiet. Every scenario below is read-only and execution remains disabled.</p></div>
-    <div class="brief-status"><span>Review queue</span><strong>{{ brief.review_queue | length }}</strong><small>{{ brief.blocking_data_issues }} blocking · {{ brief.actions_require_review }} actions</small></div>
+    <div class="brief-status"><span>Review queue</span><strong>{{ brief.review_queue | length }}</strong><small>{{ brief.blocking_data_issues }} data blocked · {{ brief.tax_review_required }} tax · {{ brief.research_required }} research · {{ brief.actions_require_review }} ready</small></div>
   </header>
 
   <section class="os-stat-grid">
     <article><span>Data reconciled</span><strong>{{ brief.data_reconciled_pct }}%</strong></article>
     <article><span>Latest sync</span><strong>{{ brief.latest_sync }}</strong></article>
-    <article><span>30-day deadlines</span><strong>{{ brief.deadlines_30d }}</strong></article>
-    <article><span>No action</span><strong>{{ brief.no_action_count }}</strong><small>of {{ brief.holdings_count }} holdings</small></article>
+    <article><span>Ready to review</span><strong>{{ brief.actions_require_review }}</strong><small>transactions remain disabled</small></article>
+    <article><span>Monitor only</span><strong>{{ brief.no_action_count }}</strong><small>of {{ brief.holdings_count }} holdings</small></article>
   </section>
 
   <section class="os-panel brief-focus-panel">

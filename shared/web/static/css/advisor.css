@@ -185,6 +185,12 @@
 .advisor-badge--add, .advisor-badge--strong-add, .advisor-badge--bullish, .advisor-badge--active { border-color: rgba(45, 212, 191, .2); background: rgba(20, 184, 166, .09); color: #99f6e4; }
 .advisor-badge--watch, .advisor-badge--hold-no-add, .advisor-badge--warning, .advisor-badge--building { border-color: rgba(245, 158, 11, .2); background: rgba(245, 158, 11, .08); color: #fde68a; }
 .advisor-badge--needs-data { border-color: rgba(251, 191, 36, .26); background: rgba(120, 53, 15, .22); color: #fcd34d; }
+.advisor-badge--ready-to-review { border-color: rgba(45, 212, 191, .25); background: rgba(13, 148, 136, .13); color: #99f6e4; }
+.advisor-badge--research-required,
+.advisor-badge--tax-review-required { border-color: rgba(251, 191, 36, .26); background: rgba(120, 53, 15, .22); color: #fcd34d; }
+.advisor-badge--data-blocked,
+.advisor-badge--not-executable { border-color: rgba(251, 113, 133, .25); background: rgba(190, 24, 93, .12); color: #fda4af; }
+.advisor-badge--monitor-only { border-color: rgba(96, 165, 250, .24); background: rgba(37, 99, 235, .12); color: #bfdbfe; }
 .advisor-badge--screening-model { margin-top: .35rem; border-color: rgba(56, 189, 248, .22); background: rgba(14, 116, 144, .13); color: #7dd3fc; }
 .advisor-badge--documented-model { margin-top: .35rem; border-color: rgba(45, 212, 191, .22); background: rgba(13, 148, 136, .12); color: #99f6e4; }
 .advisor-badge--sell-type, .advisor-badge--completed { border-color: rgba(167, 139, 250, .2); background: rgba(139, 92, 246, .09); color: #c4b5fd; }

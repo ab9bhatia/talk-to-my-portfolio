@@ -30,6 +30,7 @@ SORT_FIELDS: dict[str, str] = {
     "ltp": "last_price",
     "avg": "avg_price",
     "weight": "pct_of_portfolio",
+    "decision": "decision_rank",
 }
 
 HOLDINGS_PAGE_SIZE = 50
@@ -37,8 +38,34 @@ HOLDINGS_PAGE_SIZE = 50
 CAP_GROUP_ORDER = ("Large", "Mid", "Small", "Multi-cap", "ETF", "Unclassified")
 CAP_RANK = {label: index for index, label in enumerate(CAP_GROUP_ORDER)}
 
-SIGNAL_GROUP_ORDER = ("B+", "B", "H", "S", "S+", "Unrated")
+SIGNAL_GROUP_ORDER = (
+    "External: strong buy",
+    "External: buy",
+    "External: hold",
+    "External: sell",
+    "External: strong sell",
+    "External view unavailable",
+)
 SIGNAL_GROUP_RANK = {label: index for index, label in enumerate(SIGNAL_GROUP_ORDER)}
+
+DECISION_GROUP_ORDER = (
+    "Fix data first",
+    "Not currently executable",
+    "Tax review first",
+    "Research before exiting",
+    "Review for a possible trim",
+    "Research before adding",
+    "Exit",
+    "Trim gradually",
+    "Add more",
+    "Add gradually",
+    "Hold — no new money",
+    "Hold — position full",
+    "Hold",
+    "Wait for evidence",
+    "Decision unavailable",
+)
+DECISION_GROUP_RANK = {label: index for index, label in enumerate(DECISION_GROUP_ORDER)}
 
 ASSET_CLASS_GROUP_ORDER = ("Equity", "US stocks", "Metals", "Crypto", "Mutual funds")
 ASSET_CLASS_GROUP_RANK = {label: index for index, label in enumerate(ASSET_CLASS_GROUP_ORDER)}
@@ -309,16 +336,21 @@ def aggregate_holdings_across_accounts(holdings: list[dict[str, Any]]) -> list[d
 
 
 def _signal_group_label(holding: dict[str, Any]) -> str:
-    """One group per signal code: B+, B, H, S, S+, or Unrated."""
+    """Neutral external-consensus buckets; never portfolio actions."""
     label = holding.get("rating_label")
     mapping = {
-        "Strong buy": "B+",
-        "Buy": "B",
-        "Hold": "H",
-        "Sell": "S",
-        "Strong sell": "S+",
+        "Strong buy": "External: strong buy",
+        "Buy": "External: buy",
+        "Hold": "External: hold",
+        "Sell": "External: sell",
+        "Strong sell": "External: strong sell",
     }
-    return mapping.get(label, "Unrated")
+    return mapping.get(label, "External view unavailable")
+
+
+def _decision_group_label(holding: dict[str, Any]) -> str:
+    presentation = holding.get("decision_presentation") or {}
+    return str(presentation.get("label") or "Decision unavailable")
 
 
 def _asset_class_group_label(holding: dict[str, Any]) -> str:
@@ -386,6 +418,8 @@ def _has_sort_value(holding: dict[str, Any], field: str) -> bool:
         return True
     if field == "rating_rank":
         return holding.get("rating_label") is not None
+    if field == "decision_rank":
+        return bool((holding.get("decision_presentation") or {}).get("label"))
     return holding.get(field) is not None
 
 
@@ -407,6 +441,11 @@ def _sort_value(holding: dict[str, Any], field: str, *, order: str = "desc") -> 
             # asc: Strong sell first, then lower upside within the same signal
             upside_key = upside if upside is not None else float("inf")
         return (-rank, upside_key)
+
+    if field == "decision_rank":
+        label = _decision_group_label(holding)
+        rank = DECISION_GROUP_RANK.get(label, len(DECISION_GROUP_RANK))
+        return -rank if reverse else rank
 
     value = holding.get(field)
     if isinstance(value, str):
@@ -484,8 +523,10 @@ def group_holdings(
     sort: str = "value",
     order: str = "desc",
 ) -> list[dict[str, Any]]:
-    """Group holdings by cap, sector, account, signal bucket, or asset class."""
-    if group_by == "cap":
+    """Group holdings by decision, cap, sector, account, external view, or class."""
+    if group_by == "decision":
+        field = "decision_group"
+    elif group_by == "cap":
         field = "market_cap"
     elif group_by == "sector":
         field = "sector"
@@ -502,7 +543,9 @@ def group_holdings(
 
     buckets: dict[str, list[dict[str, Any]]] = {}
     for holding in source:
-        if field == "market_cap":
+        if field == "decision_group":
+            label = _decision_group_label(holding)
+        elif field == "market_cap":
             label = _cap_group_label(holding)
         elif field == "account_label":
             label = holding.get("account_label") or holding.get("account_code") or "?"
@@ -515,6 +558,8 @@ def group_holdings(
         buckets.setdefault(label, []).append(holding)
 
     def group_rank(label: str) -> tuple:
+        if field == "decision_group":
+            return (DECISION_GROUP_RANK.get(label, len(DECISION_GROUP_RANK)), label.lower())
         if field == "market_cap":
             return (CAP_RANK.get(label, len(CAP_RANK)), label.lower())
         if field == "account_label":
@@ -539,7 +584,11 @@ def group_holdings(
                 "summary": _group_summary(items),
             }
         )
-    if field == "signal_group":
+    if field == "decision_group":
+        groups.sort(
+            key=lambda group: DECISION_GROUP_RANK.get(group["label"], len(DECISION_GROUP_RANK)),
+        )
+    elif field == "signal_group":
         groups.sort(
             key=lambda group: SIGNAL_GROUP_RANK.get(group["label"], len(SIGNAL_GROUP_RANK)),
         )
@@ -574,7 +623,7 @@ def prepare_holdings_view(
     sorted_holdings = sort_holdings(holdings, sort=sort, order=order)
     total_count = len(sorted_holdings)
 
-    if group_by in ("cap", "sector", "account", "signal", "asset_class"):
+    if group_by in ("decision", "cap", "sector", "account", "signal", "asset_class"):
         groups = group_holdings(sorted_holdings, group_by=group_by, sort=sort, order=order)
         portfolio_total_value = sum(h.get("current_value") or 0 for h in sorted_holdings)
         for group in groups:
@@ -645,12 +694,20 @@ EXPORT_COLUMN_HEADERS: dict[str, str] = {
     "session_date": "Market session",
     "reconciliation_delta": "Reconciliation Δ",
     "reconciliation_state": "Data-quality state",
+    "decision": "Portfolio decision",
+    "readiness": "Decision readiness",
+    "decision_confidence": "Decision confidence band",
+    "decision_review_trigger": "Decision review trigger",
+    "external_consensus": "External analyst consensus (context only)",
+    "external_target_gap": "External target gap % (context only)",
 }
 
 EXPORT_COLUMN_ORDER: tuple[str, ...] = tuple(EXPORT_COLUMN_HEADERS.keys())
 
 
 def _export_cell(col_id: str, holding: dict[str, Any]) -> Any:
+    presentation = holding.get("decision_presentation") or {}
+    external = holding.get("external_analyst_view") or {}
     if col_id == "instrument_id":
         return holding.get("instrument_id")
     if col_id == "isin":
@@ -707,6 +764,18 @@ def _export_cell(col_id: str, holding: dict[str, Any]) -> Any:
         return holding.get("reconciliation_delta")
     if col_id == "reconciliation_state":
         return holding.get("reconciliation_state")
+    if col_id == "decision":
+        return presentation.get("label")
+    if col_id == "readiness":
+        return presentation.get("readiness_label")
+    if col_id == "decision_confidence":
+        return presentation.get("confidence_band")
+    if col_id == "decision_review_trigger":
+        return presentation.get("review_trigger")
+    if col_id == "external_consensus":
+        return external.get("consensus_label")
+    if col_id == "external_target_gap":
+        return external.get("target_gap_pct")
     return None
 
 

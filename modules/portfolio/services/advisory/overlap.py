@@ -79,6 +79,14 @@ _MERGED_FIELDS = (
     "is_cyclical",
     "chart_patterns",
     "evidence_records",
+    "target_price",
+    "upside_pct",
+    "external_target_gap_pct",
+    "recommendation_key",
+    "recommendation_mean",
+    "analyst_count",
+    "market_data_as_of",
+    "external_analyst_view",
 )
 
 _ANY_TRUE_FIELDS = (

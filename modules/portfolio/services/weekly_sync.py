@@ -480,9 +480,6 @@ def _advisory_summary(family: dict[str, Any], generated_at: str) -> dict[str, An
             or symbol
         )
         flags = item.get("data_quality_flags") or []
-        flag_codes = {
-            str(flag.get("code") or "DATA_QUALITY_WARNING") for flag in flags
-        }
         blocking = [
             str(flag.get("code") or "BLOCKING_DATA_QUALITY")
             for flag in flags
@@ -490,6 +487,7 @@ def _advisory_summary(family: dict[str, Any], generated_at: str) -> dict[str, An
         ]
         expected = item.get("expected_3y_irr") or {}
         pattern = item.get("chart_pattern") or {}
+        presentation = item.get("decision_presentation") or {}
         review_trigger = {
             "hold_until": item.get("hold_until") or {},
             "add_conditions": item.get("add_conditions") or [],
@@ -499,6 +497,8 @@ def _advisory_summary(family: dict[str, Any], generated_at: str) -> dict[str, An
             "identity": identity,
             "symbol": symbol,
             "action": item.get("action"),
+            "decision_label": presentation.get("label"),
+            "decision_readiness": presentation.get("readiness"),
             "sell_type": item.get("sell_type"),
             "sell_pct": item.get("sell_pct"),
             "target_weight_pct": item.get("target_weight_pct"),
@@ -515,20 +515,27 @@ def _advisory_summary(family: dict[str, Any], generated_at: str) -> dict[str, An
         material[identity] = row
 
         action = str(item.get("action") or "WATCH")
-        execution_blocked = bool(
-            blocking
-            or item.get("requires_ca_review")
-            or item.get("evidence_state") == "NEEDS_DATA"
-            or bool(
-                flag_codes.intersection(
-                    {"STALE_EXTERNAL_EVIDENCE", "STALE_PORTFOLIO_SNAPSHOT"}
-                )
-            )
-            or action == "RECONCILE"
-        )
-        if blocking or action == "RECONCILE":
+        readiness = str(presentation.get("readiness") or "")
+        if not readiness:
+            flag_codes = {
+                str(flag.get("code") or "DATA_QUALITY_WARNING") for flag in flags
+            }
+            if blocking or action == "RECONCILE":
+                readiness = "DATA_BLOCKED"
+            elif item.get("requires_ca_review"):
+                readiness = "TAX_REVIEW_REQUIRED"
+            elif item.get("evidence_state") != "DOCUMENTED_MODEL" or flag_codes.intersection(
+                {"STALE_EXTERNAL_EVIDENCE", "STALE_PORTFOLIO_SNAPSHOT"}
+            ):
+                readiness = "RESEARCH_REQUIRED"
+            elif action in priority:
+                readiness = "READY_TO_REVIEW"
+            else:
+                readiness = "MONITOR_ONLY"
+        execution_blocked = readiness != "READY_TO_REVIEW"
+        if readiness in {"DATA_BLOCKED", "NOT_EXECUTABLE"}:
             urgent.append({**row, "reason": ", ".join(blocking) or "RECONCILE"})
-        if item.get("requires_ca_review"):
+        if readiness == "TAX_REVIEW_REQUIRED":
             tax_review.append(row)
         if action in priority and not execution_blocked:
             execution_ready.append(row)
@@ -555,6 +562,8 @@ def _advisory_summary(family: dict[str, Any], generated_at: str) -> dict[str, An
             {
                 "symbol": item.get("symbol"),
                 "action": item.get("action"),
+                "decision_label": item.get("decision_label"),
+                "decision_readiness": item.get("decision_readiness"),
                 "confidence": item.get("confidence"),
                 "review_trigger": item.get("review_trigger"),
             }
@@ -567,6 +576,13 @@ def _advisory_summary(family: dict[str, Any], generated_at: str) -> dict[str, An
         "by_security": material,
         "by_symbol": {
             str(item.get("symbol")): str(item.get("action")) for item in recommendations
+        },
+        "decision_by_symbol": {
+            str(item.get("symbol")): {
+                "label": (item.get("decision_presentation") or {}).get("label"),
+                "readiness": (item.get("decision_presentation") or {}).get("readiness"),
+            }
+            for item in recommendations
         },
         "evidence_status": payload.get("evidence_status") or {},
     }

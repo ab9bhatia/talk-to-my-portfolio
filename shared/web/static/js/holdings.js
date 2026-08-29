@@ -95,10 +95,11 @@
 
   const GROUP_BY_MESSAGES = {
     "": "Loading flat holdings…",
+    decision: "Grouping by portfolio decision…",
     cap: "Grouping by market cap…",
     sector: "Grouping by sector…",
     account: "Grouping by account…",
-    signal: "Grouping by external Street view…",
+    signal: "Grouping by external analyst context…",
     asset_class: "Grouping by asset class…",
   };
 
@@ -315,7 +316,14 @@
     return `${sign}${value.toFixed(1)}%`;
   }
 
-  const SIGNAL_GROUP_ORDER = ["B+", "B", "H", "S", "S+", "Unrated"];
+  const SIGNAL_GROUP_ORDER = [
+    "External: strong buy",
+    "External: buy",
+    "External: hold",
+    "External: sell",
+    "External: strong sell",
+    "External view unavailable",
+  ];
 
   function parseAccountBreakdown(row) {
     return rowMetadata(row).accountBreakdown;
@@ -1029,36 +1037,19 @@
       .replace(/"/g, "&quot;");
   }
 
-  const SIGNAL_SHORT = {
-    "Strong buy": "B+",
-    Buy: "B",
-    Hold: "H",
-    Sell: "S",
-    "Strong sell": "S+",
-  };
-
-  function signalShortLabel(label) {
-    return SIGNAL_SHORT[label] || (label ? label.slice(0, 2) : "");
-  }
-
-  function signalDisplayFull(label) {
-    const short = signalShortLabel(label);
-    return short ? `${label} (${short})` : label;
-  }
-
   function renderRatingBadge(rating, { full = false, pattern = null } = {}) {
     if (!rating?.label) {
-      return '<span class="rating-badge rating-badge-compact rating-hold">—</span>';
+      return full ? '<span class="detail-sub">External analyst view unavailable</span>' : "";
     }
     const slug = rating.slug || "hold";
-    const text = full ? signalDisplayFull(rating.label) : signalShortLabel(rating.label);
+    const text = `External: ${rating.label}`;
     const compactClass = full ? "" : " rating-badge-compact";
     const conflict = streetLabelConflictsWithPattern(rating.label, pattern);
     const conflictClass = conflict ? " rating-conflict" : "";
     const suffix = conflict ? '<span aria-hidden="true">!</span>' : "";
     const title = conflict
-      ? `CONFLICT: external Street view is ${rating.label}, while ${pattern.label} shows ${patternRemainingMove(pattern).toFixed(1)}% ${pattern.bias === "bearish" ? "downside risk" : "upside potential"}. Not a unified recommendation.`
-      : `External Street view: ${rating.label}. Not the portfolio advisor decision.`;
+      ? `CONFLICT: external analyst context is ${rating.label}, while ${pattern.label} shows ${patternRemainingMove(pattern).toFixed(1)}% ${pattern.bias === "bearish" ? "downside risk" : "upside potential"}. The portfolio decision remains separate.`
+      : `External analyst context: ${rating.label}. Not the portfolio advisor decision.`;
     return `<span class="rating-badge${compactClass} rating-${slug}${conflictClass}" title="${escapeHtml(title)}">${escapeHtml(text)}${suffix}</span>`;
   }
 
@@ -1128,7 +1119,7 @@
       <section class="signal-context-panel rating-reasons-section">
         <div class="signal-context-grid">
           <div class="signal-context-col signal-context-col-reasons">
-            <h5 class="signal-col-title">Why this Street view?</h5>
+            <h5 class="signal-col-title">External analyst context</h5>
             <div class="signal-col-scroll">
               ${hasSignal ? `${reasons}${eventsHtml}` : '<p class="detail-empty">No analyst rationale available.</p>'}
             </div>
@@ -1323,7 +1314,7 @@
 
   function renderForecast(forecast) {
     if (!forecast || !forecast.projected_value_1y) {
-      return '<p class="detail-empty">1Y forecast unavailable — no analyst target or price history.</p>';
+      return '<p class="detail-empty">External target context unavailable — no covered analyst target.</p>';
     }
 
     const upsideClass =
@@ -1335,15 +1326,15 @@
         <div class="forecast-value">${formatInr(forecast.current_value)}</div>
       </div>
       <div class="forecast-card highlight">
-        <div class="forecast-label">Projected value (1Y)</div>
+        <div class="forecast-label">Value at external target</div>
         <div class="forecast-value">${formatInr(forecast.projected_value_1y)}</div>
       </div>
       <div class="forecast-card">
-        <div class="forecast-label">Target price</div>
+        <div class="forecast-label">External target price</div>
         <div class="forecast-value">${formatInr(forecast.target_price)}</div>
       </div>
       <div class="forecast-card">
-        <div class="forecast-label">Analyst target upside</div>
+        <div class="forecast-label">External target gap</div>
         <div class="forecast-value ${upsideClass}">${formatPct(forecast.upside_pct)}</div>
       </div>
     </div>
@@ -1613,7 +1604,7 @@
             ${renderResultsTable(data.results)}
           </section>
           <section class="detail-section detail-section-half">
-            <h5>1Y analyst target (your holding)</h5>
+            <h5>External analyst target context</h5>
             ${renderForecast(data.forecast)}
           </section>
           <section class="detail-section detail-section-full">
@@ -1839,7 +1830,7 @@
   function reconcileStreetViewWithPattern(row, primary) {
     const label = row.dataset.ratingLabel || "";
     const source = row.dataset.ratingSource || "unavailable";
-    if (!label || !["analyst", "analyst_mean", "upside"].includes(source)) return;
+    if (!label || !["analyst", "analyst_mean"].includes(source)) return;
     if (!streetLabelConflictsWithPattern(label, primary)) return;
 
     const cell = row.querySelector(".col-signal");

@@ -1,6 +1,9 @@
 {# Grouped view: one overview allocation chart + accordion groups (no per-group pies). #}
 {% set gb = holdings_view.group_by %}
-{% if gb == 'cap' %}
+{% if gb == 'decision' %}
+  {% set gb_title = 'Decision' %}
+  {% set gb_hint = 'The shared portfolio decision, grouped by the same label used in Action Center and Today Brief.' %}
+{% elif gb == 'cap' %}
   {% set gb_title = 'Market cap' %}
   {% set gb_hint = 'AMFI Large / Mid / Small, Multi-cap ETFs, MF by scheme type, debt MF unclassified.' %}
 {% elif gb == 'sector' %}
@@ -10,8 +13,8 @@
   {% set gb_title = 'Account' %}
   {% set gb_hint = 'Each connected family account is shown as its own slice of the visible portfolio.' %}
 {% elif gb == 'signal' %}
-  {% set gb_title = 'Street view' %}
-  {% set gb_hint = 'External Yahoo analyst consensus/target groups; this is not the portfolio advisor decision.' %}
+  {% set gb_title = 'External analyst context' %}
+  {% set gb_hint = 'Covered Yahoo analyst consensus only; published target gaps remain context and never become a portfolio action.' %}
 {% elif gb == 'asset_class' %}
   {% set gb_title = 'Asset class' %}
   {% set gb_hint = 'Indian equity, US stocks (SW), metals, crypto, and mutual funds in demat.' %}
@@ -95,10 +98,8 @@
           <div class="group-card-title-row">
             {% if gb == 'cap' and group.label in ['Large', 'Mid', 'Small', 'Multi-cap', 'Unclassified', 'ETF'] %}
             <span class="cap-badge {{ cap_badge_class(group.label) }}">{{ group.label }}</span>
-            {% elif gb == 'signal' %}
-            <h3 class="group-card-title">
-              <span class="rating-badge rating-badge-compact rating-{{ signal_group_slug(group.label) }}">{{ group.label }}</span>
-            </h3>
+            {% elif gb == 'decision' %}
+            <h3 class="group-card-title"><span class="decision-group-label">{{ group.label }}</span></h3>
             {% elif gb == 'asset_class' %}
             <h3 class="group-card-title">{{ group.label }}</h3>
             {% else %}

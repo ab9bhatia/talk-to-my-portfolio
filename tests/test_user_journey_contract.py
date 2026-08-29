@@ -33,11 +33,15 @@ def test_growth_single_snapshot_is_guided_instead_of_charting_one_point():
     assert 'id="growth-comparison-panel"' in template
 
 
-def test_holding_target_shows_native_price_and_setup_stays_in_symbol_column():
+def test_dashboard_leads_with_shared_decision_and_setup_stays_in_symbol_column():
     row = _read("shared/web/templates/portfolio/_holding_row.html")
+    head = _read("shared/web/templates/portfolio/_holdings_table_head.html")
     script = _read("shared/web/static/js/holdings.js")
     styles = _read("shared/web/static/css/app.css")
-    assert "format_quote_price_whole(h.get('target_price'), h.exchange)" in row
+    assert "decision_presentation" in row
+    assert "Decision <span" in head
+    assert "Tgt%" not in head
+    assert "Street <span" not in head
     assert "const compactMove" in script
     assert ".pattern-pill-wrap {\n  display: block;\n  max-width: 100%;" in styles
     assert ".pattern-pill-text {\n  min-width: 0;\n  overflow: hidden;" in styles

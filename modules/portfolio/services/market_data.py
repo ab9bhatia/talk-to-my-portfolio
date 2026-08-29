@@ -17,7 +17,11 @@ from zoneinfo import ZoneInfo
 import yfinance as yf
 
 from modules.portfolio.db import portfolio_cache as disk_cache
-from modules.portfolio.services.analyst_rating import compute_rating
+from modules.portfolio.services.advisory.models import to_primitive
+from modules.portfolio.services.analyst_rating import (
+    build_external_analyst_view,
+    compute_rating,
+)
 
 # Suppress yfinance 404 spam for illiquid / unmapped Indian tickers.
 logging.getLogger("yfinance").setLevel(logging.CRITICAL)
@@ -864,6 +868,19 @@ def get_stock_metrics(
     metrics["rating_source"] = rating.get("source")
     metrics["rating_reasons"] = rating.get("reasons", [])
     metrics["rating_rank"] = rating.get("rank")
+    metrics["external_analyst_view"] = to_primitive(
+        build_external_analyst_view(
+            recommendation_key=metrics.get("recommendation_key"),
+            recommendation_mean=metrics.get("recommendation_mean"),
+            analyst_count=metrics.get("analyst_count"),
+            target_price=metrics.get("target_price"),
+            last_price=last_price,
+            target_gap_pct=metrics.get("upside_pct"),
+            fetched_at=metrics.get("market_data_as_of"),
+        )
+    )
+    metrics["external_target_gap_pct"] = metrics.get("upside_pct")
+    metrics["rating_semantics"] = "external_context_only"
     if technical if technical is not None else _technical_on_load():
         _attach_technical_metrics(metrics, symbol, exchange, last_price)
     _apply_price_context(metrics, last_price=last_price, exchange=exchange)
@@ -882,8 +899,22 @@ def enforce_rating_semantics(metrics: dict[str, Any]) -> None:
     """
     source = str(metrics.get("rating_source") or "").strip().lower()
     non_analyst_sources = {"price_52w", "nav_52w", "52w", "price_momentum"}
-    inconsistent_target_rating = source == "upside" and metrics.get("target_price") is None
-    if source not in non_analyst_sources and not inconsistent_target_rating:
+    target_only_rating = source == "upside"
+    inconsistent_target_rating = target_only_rating and metrics.get("target_price") is None
+    metrics["external_analyst_view"] = to_primitive(
+        build_external_analyst_view(
+            recommendation_key=metrics.get("recommendation_key"),
+            recommendation_mean=metrics.get("recommendation_mean"),
+            analyst_count=metrics.get("analyst_count"),
+            target_price=metrics.get("target_price"),
+            last_price=metrics.get("last_price") or metrics.get("market_price"),
+            target_gap_pct=metrics.get("upside_pct"),
+            fetched_at=metrics.get("market_data_as_of"),
+        )
+    )
+    metrics["external_target_gap_pct"] = metrics.get("upside_pct")
+    metrics["rating_semantics"] = "external_context_only"
+    if source not in non_analyst_sources and not target_only_rating and not inconsistent_target_rating:
         return
 
     recovery = metrics.get("recovery_to_52w_high_pct")
@@ -892,14 +923,18 @@ def enforce_rating_semantics(metrics: dict[str, Any]) -> None:
     if recovery is None:
         recovery = _recovery_upside(metrics.get("pct_from_52w_high"))
     metrics["recovery_to_52w_high_pct"] = _safe_round(recovery)
-    metrics["upside_pct"] = None
+    if source in non_analyst_sources:
+        metrics["upside_pct"] = None
+        metrics["external_target_gap_pct"] = None
     metrics["rating_label"] = None
     metrics["rating_slug"] = None
     metrics["rating_rank"] = None
-    metrics["rating_source"] = "unavailable"
+    metrics["rating_source"] = "target_only" if target_only_rating else "unavailable"
     metrics["buy_thesis"] = None
     metrics["rating_reasons"] = [
-        "Distance from the 52-week high is recovery context, not an analyst rating or buy signal."
+        "A published target is external context, not a portfolio action."
+        if target_only_rating
+        else "Distance from the 52-week high is recovery context, not an analyst rating or buy signal."
     ]
 
 

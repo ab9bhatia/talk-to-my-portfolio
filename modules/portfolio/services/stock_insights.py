@@ -8,7 +8,8 @@ from typing import Any
 
 import yfinance as yf
 
-from modules.portfolio.services.analyst_rating import compute_rating
+from modules.portfolio.services.advisory.models import to_primitive
+from modules.portfolio.services.analyst_rating import build_external_analyst_view, compute_rating
 from modules.portfolio.services.chart_patterns import detect_patterns_for_symbol
 from modules.portfolio.services.market_data import _quiet_yfinance, resolve_yahoo_ticker
 
@@ -430,6 +431,14 @@ def _forecast(
         last_price=current_price,
         analyst_count=info.get("numberOfAnalystOpinions"),
     )
+    external_analyst_view = build_external_analyst_view(
+        recommendation_key=info.get("recommendationKey"),
+        recommendation_mean=_safe_float(info.get("recommendationMean")),
+        analyst_count=info.get("numberOfAnalystOpinions"),
+        target_price=target_price,
+        last_price=current_price,
+        target_gap_pct=price_upside_pct,
+    )
 
     return {
         "target_price": target_price,
@@ -441,6 +450,7 @@ def _forecast(
         "analyst_count": info.get("numberOfAnalystOpinions"),
         "recommendation": info.get("recommendationKey"),
         "rating": rating,
+        "external_analyst_view": to_primitive(external_analyst_view),
         "method": method,
         "note": note,
     }

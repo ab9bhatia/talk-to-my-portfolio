@@ -486,6 +486,45 @@ a:hover {
   white-space: nowrap;
 }
 
+.holdings-table .col-decision {
+  width: 11rem;
+  min-width: 9rem;
+  text-align: left;
+}
+
+.decision-cell {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+  padding-left: 0.55rem;
+  border-left: 3px solid #64748b;
+}
+
+.decision-cell strong {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 0.72rem;
+  text-overflow: ellipsis;
+}
+
+.decision-cell .cell-sub {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.decision-ready-to-review { border-color: #34d399; }
+.decision-research-required,
+.decision-tax-review-required { border-color: #fbbf24; }
+.decision-data-blocked,
+.decision-not-executable { border-color: #fb7185; }
+.decision-monitor-only { border-color: #60a5fa; }
+
+.decision-group-label {
+  color: var(--text);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
 .holdings-table .col-account {
   width: 3.25rem;
   max-width: 4rem;
@@ -611,6 +650,7 @@ body.col-resize-active {
 .holdings-table col.col-52w { width: 3.25rem; }
 .holdings-table col.col-upside { width: 4rem; }
 .holdings-table col.col-signal { width: 2.35rem; }
+.holdings-table col.col-decision { width: 11rem; }
 .holdings-table col.col-weight { width: 3rem; }
 .holdings-table col.col-qty { width: 3rem; }
 .holdings-table col.col-avg { width: 4rem; }

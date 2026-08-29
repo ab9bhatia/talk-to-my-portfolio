@@ -6,6 +6,7 @@ import copy
 import hashlib
 import json
 import os
+import threading
 from typing import Any, Callable
 
 from modules.portfolio.config import get_account_profile
@@ -19,6 +20,9 @@ from modules.portfolio.services.portfolio import fetch_family_portfolio
 
 
 PatternScanner = Callable[[list[dict[str, Any]]], list[dict[str, Any]]]
+DECISION_SUMMARY_SCHEMA_VERSION = "decision-presentation-v1"
+_DECISION_SUMMARY_CACHE: dict[str, dict[str, Any]] = {}
+_DECISION_SUMMARY_LOCK = threading.Lock()
 
 
 def _attach_local_profiles(family: dict[str, Any]) -> None:
@@ -140,6 +144,80 @@ def build_live_advisory(
     }
     payload["fingerprint"] = _fingerprint(payload)
     return payload
+
+
+def _decision_summary_key(family: dict[str, Any], goals: dict[str, Any]) -> str:
+    from modules.portfolio.services.advisory.providers import evidence_status
+
+    evidence = evidence_status()
+    material = {
+        "schema": DECISION_SUMMARY_SCHEMA_VERSION,
+        "portfolio_cached_at": family.get("cached_at"),
+        "goals_updated_at": goals.get("updated_at"),
+        "evidence_last_fetched_at": evidence.get("last_fetched_at"),
+        "holdings": sorted(
+            (
+                str(row.get("instrument_id") or row.get("isin") or ""),
+                str(row.get("symbol") or ""),
+                float(row.get("quantity") or 0),
+                float(row.get("current_value") or 0),
+                str(row.get("reconciliation_state") or ""),
+            )
+            for block in family.get("portfolios") or []
+            for row in block.get("holdings") or []
+        ),
+    }
+    encoded = json.dumps(material, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(encoded.encode()).hexdigest()
+
+
+def build_decision_summary(
+    *,
+    family: dict[str, Any] | None = None,
+    refresh: bool = False,
+) -> dict[str, Any]:
+    """Return the dashboard projection of the same advisory engine, without pattern/LLM work."""
+    source_family = family or fetch_family_portfolio(refresh=refresh, stale_ok=not refresh)
+    goals = profile_goals.get_goals()
+    cache_key = _decision_summary_key(source_family, goals)
+    with _DECISION_SUMMARY_LOCK:
+        cached = _DECISION_SUMMARY_CACHE.get(cache_key)
+        if cached is not None and not refresh:
+            return copy.deepcopy(cached)
+
+    advisory = build_live_advisory(
+        refresh=refresh,
+        include_patterns=False,
+        family=source_family,
+    )
+    decisions = []
+    for item in advisory.get("recommendations") or []:
+        decisions.append(
+            {
+                "instrument_id": item.get("instrument_id"),
+                "isin": item.get("isin"),
+                "symbol": item.get("symbol"),
+                "action": item.get("action"),
+                "decision_presentation": item.get("decision_presentation"),
+                "signal_stack": item.get("signal_stack"),
+                "external_analyst_view": item.get("external_analyst_view"),
+                "conflict_categories": item.get("conflict_categories") or [],
+            }
+        )
+    summary = {
+        "schema_version": DECISION_SUMMARY_SCHEMA_VERSION,
+        "advisory_schema_version": advisory.get("schema_version"),
+        "generated_at": advisory.get("generated_at"),
+        "source_portfolio_cached_at": advisory.get("source_portfolio_cached_at"),
+        "cache_key": cache_key,
+        "patterns_evaluated": False,
+        "llm_used": False,
+        "decisions": decisions,
+    }
+    with _DECISION_SUMMARY_LOCK:
+        _DECISION_SUMMARY_CACHE.clear()
+        _DECISION_SUMMARY_CACHE[cache_key] = copy.deepcopy(summary)
+    return summary
 
 
 def advisory_for_llm(payload: dict[str, Any]) -> dict[str, Any]:

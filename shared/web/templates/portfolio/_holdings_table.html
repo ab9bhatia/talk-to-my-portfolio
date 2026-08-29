@@ -1,5 +1,5 @@
 {# Shared holdings table. Set show_account=True on family dashboard. #}
-{% set table_col_count = 13 if show_account else 12 %}
+{% set table_col_count = 12 if show_account else 11 %}
 {% set page_size = holdings_view.page_size | default(50) %}
 {% set gb = holdings_view.group_by %}
 
@@ -46,8 +46,7 @@
 <p class="table-footnote">
   <strong>Cap (India):</strong> AMFI/SEBI ranks (top 100 Large · 101–250 Mid · 251+ Small); live mcap vs AMFI cutoffs when not on list; thematic ETFs = Multi-cap.
   <strong>MF cap:</strong> from scheme category (Large / Mid / Small / Multi-cap); debt funds ungrouped.
-  <strong>52W:</strong> distance from the high is price context only. <strong>Tgt%:</strong> upside/downside to a published Yahoo analyst target only.
-  <strong>Street:</strong> external analyst consensus or target-derived view—not the portfolio advisor decision. A dash means no analyst coverage. ETFs and mutual funds never receive a rating from distance-to-high.
+  <strong>Decision:</strong> the deterministic portfolio action plus readiness gate. External analyst targets and chart patterns remain evidence in the expanded row; neither becomes the portfolio action.
   % of total = portfolio weight. Sort via headers ▲▼.
   <span class="table-footnote-resize">Drag the <strong>⋮⋮</strong> grip on the right edge of any column header to resize; <button type="button" class="btn-link" id="reset-col-widths">reset widths</button>.</span>
 </p>
@@ -65,4 +64,4 @@
 </div>
 {% endif %}
 
-<script src="{{ app_path('/static/js/holdings.js') }}?v=20260829-grouping-performance"></script>
+<script src="{{ app_path('/static/js/holdings.js') }}?v=20260829-decision-contract"></script>
