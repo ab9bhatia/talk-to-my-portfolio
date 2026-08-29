@@ -498,12 +498,30 @@ def zerodha_callback(
     ref = code or account_id or "AB"
 
     try:
+        account_id = resolve_account_ref(ref)
         complete_oauth(request_token=request_token, ref=ref)
-        invalidate_portfolio_cache()
+        # Keep the last trusted snapshot available while the slow live refresh
+        # runs outside this OAuth navigation request.
+        invalidate_portfolio_cache(preserve_disk=True)
+        from modules.portfolio.services.sync_jobs import submit_weekly_sync
+
+        job = submit_weekly_sync(
+            mode="auto",
+            dry_run=False,
+            requested_by="zerodha_oauth",
+            force=True,
+        )
     except (KeyError, OAuthError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    return RedirectResponse(url=get_hub_url("/portfolio"), status_code=302)
+    query = urlencode(
+        {
+            "broker_connected": "zerodha",
+            "account": get_account_code(account_id),
+            "sync_run_id": job["run_id"],
+        }
+    )
+    return RedirectResponse(url=get_hub_url(f"/portfolio/setup?{query}"), status_code=302)
 
 
 @router.get("/zerodha/auth/redirect")
@@ -1116,6 +1134,32 @@ def api_run_weekly_sync(payload: WeeklySyncPayload):
         dry_run=payload.dry_run,
         requested_by="setup_ui",
     )
+
+
+@router.post("/api/portfolio/sync/weekly/async", status_code=202)
+def api_queue_weekly_sync(payload: WeeklySyncPayload):
+    """Queue the Setup sync without holding the browser request open."""
+    from modules.portfolio.services.sync_jobs import submit_weekly_sync
+
+    job = submit_weekly_sync(
+        mode=payload.mode,
+        dry_run=payload.dry_run,
+        requested_by="setup_ui",
+    )
+    return {
+        **job,
+        "status_url": app_path(f"/api/portfolio/sync/jobs/{job['run_id']}"),
+    }
+
+
+@router.get("/api/portfolio/sync/jobs/{run_id}")
+def api_sync_job(run_id: str):
+    from modules.portfolio.services.sync_jobs import get_sync_job
+
+    job = get_sync_job(run_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Portfolio sync job not found")
+    return job
 
 
 @router.get("/api/portfolio/weekly/history")

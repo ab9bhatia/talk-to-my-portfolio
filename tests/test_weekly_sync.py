@@ -157,6 +157,23 @@ def test_auto_run_degrades_honestly_writes_digest_and_is_idempotent(tmp_path: Pa
     assert {item["account_code"] for item in duplicate["accounts"]} == {"I1", "G1"}
     assert calls == ["weekly", "daily"]
 
+    forced = run_weekly_sync(
+        mode="auto",
+        force=True,
+        now=saturday,
+        account_specs=SPECS,
+        family_fetcher=lambda _mode: _family(degraded=True),
+        weekly_writer=weekly,
+        daily_writer=daily,
+        advisory_builder=_advisory,
+        digest_dir=tmp_path / "digests",
+        lock_path=tmp_path / "weekly.lock",
+        sleeper=lambda _seconds: None,
+    )
+    assert forced["status"] == "COMPLETED_WITH_WARNINGS"
+    assert forced["run_id"] != result["run_id"]
+    assert calls == ["weekly", "daily", "weekly", "daily"]
+
 
 def test_dry_run_does_not_write_snapshots_or_digest(tmp_path: Path):
     calls: list[str] = []

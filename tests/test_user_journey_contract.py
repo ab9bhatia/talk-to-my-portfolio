@@ -81,5 +81,7 @@ def test_weekly_sync_setup_flow_is_root_aware_and_explicitly_non_trading():
     assert 'id="weekly-sync-run"' in template
     assert "It never places orders." in template
     assert 'window.appUrl ? window.appUrl(path) : path' in script
-    assert 'endpoint("/api/portfolio/sync/weekly")' in script
+    assert 'endpoint("/api/portfolio/sync/weekly/async")' in script
+    assert 'endpoint(`/api/portfolio/sync/jobs/${runId}`)' in script
+    assert "You can keep using the app." in script
     assert 'dry_run: dryRunInput.checked' in script

@@ -67,10 +67,16 @@ def _apply_llm_sector_cache(payload: dict) -> dict:
     return payload
 
 
-def invalidate_portfolio_cache(account_id: str | None = None) -> None:
-    """Clear cached portfolio data after login or manual refresh."""
+def invalidate_portfolio_cache(
+    account_id: str | None = None,
+    *,
+    preserve_disk: bool = False,
+) -> None:
+    """Clear hot data, optionally retaining the last trusted durable snapshot."""
     if account_id is None:
         _PORTFOLIO_CACHE.clear()
+        if preserve_disk:
+            return
         for key in ("family:metrics=True", "family:metrics=False"):
             disk_cache.delete_snapshot(key)
         try:
@@ -86,6 +92,8 @@ def invalidate_portfolio_cache(account_id: str | None = None) -> None:
     for key in list(_PORTFOLIO_CACHE):
         if key.startswith(f"account:{account_id}:") or key.startswith("family:"):
             _PORTFOLIO_CACHE.pop(key, None)
+    if preserve_disk:
+        return
     disk_cache.delete_snapshot(_cache_key(account_id, True))
     disk_cache.delete_snapshot(_cache_key(account_id, False))
     disk_cache.delete_snapshot(_cache_key(None, True))

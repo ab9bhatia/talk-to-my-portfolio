@@ -511,9 +511,11 @@ def _write_digest(
     }
 def run_weekly_sync(
     *,
+    run_id: str | None = None,
     mode: str = "auto",
     dry_run: bool = False,
     requested_by: str = "cli",
+    force: bool = False,
     now: datetime | None = None,
     cancel_event: threading.Event | None = None,
     account_specs: list[dict[str, str]] | None = None,
@@ -543,9 +545,9 @@ def run_weekly_sync(
     specs = account_specs if account_specs is not None else _enabled_account_specs()
     account_hash = _account_set_hash(specs)
     idempotency_key = f"{iso_week}:{mode}:{account_hash}"
-    run_id = uuid.uuid4().hex
+    run_id = run_id or uuid.uuid4().hex
 
-    if not dry_run:
+    if not dry_run and not force:
         prior = sync_store.find_completed_run(idempotency_key)
         if prior:
             sync_store.create_run(
