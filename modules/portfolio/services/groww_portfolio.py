@@ -121,6 +121,7 @@ def _normalize_groww_holding(
         last_price = avg_price
         price_source = "cost_basis_fallback"
 
+    cost_basis_only = price_source == "cost_basis_fallback"
     invested = quantity * avg_price
     current_value = quantity * last_price
     pnl = current_value - invested
@@ -132,11 +133,19 @@ def _normalize_groww_holding(
         "quantity": quantity,
         "avg_price": round(avg_price, 2),
         "last_price": round(last_price, 2),
-        "broker_reported_price": round(last_price, 2),
+        # Average buy price is cost-basis evidence, not a broker market quote.
+        "broker_reported_price": None if cost_basis_only else round(last_price, 2),
+        "broker_reported_value": None if cost_basis_only else round(current_value, 2),
+        "broker_reported_pnl": None if cost_basis_only else round(pnl, 2),
         "broker_price_source": price_source,
-        "market_price": None if price_source == "cost_basis_fallback" else round(last_price, 2),
-        "market_price_source": None if price_source == "cost_basis_fallback" else price_source,
-        "market_price_unavailable": price_source == "cost_basis_fallback",
+        "broker_value_source": "unavailable" if cost_basis_only else price_source,
+        "broker_price_unavailable": cost_basis_only,
+        "broker_value_unavailable": cost_basis_only,
+        "cost_basis_price": round(avg_price, 2),
+        "cost_basis_value": round(invested, 2),
+        "market_price": None if cost_basis_only else round(last_price, 2),
+        "market_price_source": None if cost_basis_only else price_source,
+        "market_price_unavailable": cost_basis_only,
         "invested": round(invested, 2),
         "current_value": round(current_value, 2),
         "pnl": round(pnl, 2),

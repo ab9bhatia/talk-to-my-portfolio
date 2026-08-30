@@ -46,9 +46,16 @@
           <tr>
             <td><strong>{{ row.display_name or row.symbol }}</strong><small>{{ row.exchange }}</small></td>
             <td><code>{{ row.instrument_id or 'UNRESOLVED' }}</code>{% if row.isin %}<small>{{ row.isin }}</small>{% endif %}</td>
-            <td>₹{{ '{:,.0f}'.format(row.broker_reported_value or 0) }}<small>{{ row.broker_value_sources | join(', ') or 'Broker/import source' }}</small></td>
+            <td>
+              {% if row.broker_reported_value is not none %}
+              ₹{{ '{:,.0f}'.format(row.broker_reported_value) }}
+              {% else %}
+              <span class="text-muted">Not supplied</span>
+              {% endif %}
+              <small>{{ row.broker_value_sources | join(', ') or 'Broker/import source' }}</small>
+            </td>
             <td>₹{{ '{:,.0f}'.format(row.marked_value or 0) }}<small>{{ row.market_price_sources | join(', ') or 'Market source unavailable' }}</small></td>
-            <td class="{% if row.reconciliation_delta and row.reconciliation_delta|abs > 50 %}text-negative{% endif %}">₹{{ '{:,.0f}'.format(row.reconciliation_delta or 0) }}</td>
+            <td class="{% if row.reconciliation_delta and row.reconciliation_delta|abs > 50 %}text-negative{% endif %}">{% if row.reconciliation_delta is not none %}₹{{ '{:,.0f}'.format(row.reconciliation_delta) }}{% else %}<span class="text-muted">Not comparable</span>{% endif %}</td>
             <td><span class="os-state os-state-{{ row.state | lower }}">{{ row.state | replace('_', ' ') }}</span></td>
             <td>{{ row.accounts | join(', ') }}</td>
             <td>

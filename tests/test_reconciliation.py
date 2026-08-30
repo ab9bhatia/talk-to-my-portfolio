@@ -132,8 +132,11 @@ def test_groww_missing_ltp_is_explicitly_cost_basis_not_market_price(monkeypatch
         ltp_map={},
     )
     assert row is not None
-    assert row["broker_reported_price"] == 984.74
+    assert row["broker_reported_price"] is None
+    assert row["broker_reported_value"] is None
     assert row["broker_price_source"] == "cost_basis_fallback"
+    assert row["cost_basis_price"] == 984.74
+    assert row["cost_basis_value"] == 410 * 984.74
     assert row["market_price"] is None
     assert row["market_price_unavailable"] is True
 
@@ -188,11 +191,19 @@ def test_family_quote_consensus_replaces_groww_cost_basis_fallback():
         for row in block["holdings"]
     ]
     assert {row["market_price"] for row in rows} == {1707.5}
-    assert next(row for row in rows if row["account_code"] == "HB")["broker_reported_price"] == 984.74
+    hb = next(row for row in rows if row["account_code"] == "HB")
+    assert hb["broker_reported_price"] is None
+    assert hb["broker_reported_value"] is None
+    assert hb["reconciliation_state"] == "WARNING"
+    assert hb["reconciliation_blocking"] is False
     merged = aggregate_holdings_across_accounts(rows)
     assert len(merged) == 1
     assert merged[0]["last_price"] == 1707.5
     assert merged[0]["current_value"] == round(870 * 1707.5, 2)
+    security = reconciled["reconciliation"]["by_security"][0]
+    assert security["broker_reported_value"] is None
+    assert security["reconciliation_delta"] is None
+    assert security["blocking"] is False
 
 
 def test_epoch_cache_timestamp_is_exposed_as_iso_quote_provenance():

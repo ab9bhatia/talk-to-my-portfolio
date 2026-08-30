@@ -174,9 +174,24 @@ def _align_family_market_prices(
             original_value = _number(row.get("current_value"))
             original_price = _number(row.get("last_price"))
             original_pnl = _number(row.get("pnl"))
-            row.setdefault("broker_reported_price", original_price)
-            row.setdefault("broker_reported_value", original_value)
-            row.setdefault("broker_reported_pnl", original_pnl)
+            cost_basis_only = bool(
+                row.get("broker_value_unavailable")
+                or str(row.get("broker_price_source") or "").lower()
+                == "cost_basis_fallback"
+            )
+            if cost_basis_only:
+                row["cost_basis_price"] = _number(row.get("avg_price"))
+                row["cost_basis_value"] = invested
+                row["broker_reported_price"] = None
+                row["broker_reported_value"] = None
+                row["broker_reported_pnl"] = None
+                row["broker_value_source"] = "unavailable"
+                row["broker_price_unavailable"] = True
+                row["broker_value_unavailable"] = True
+            else:
+                row.setdefault("broker_reported_price", original_price)
+                row.setdefault("broker_reported_value", original_value)
+                row.setdefault("broker_reported_pnl", original_pnl)
             row.setdefault("broker_price_source", row.get("broker") or "broker_snapshot")
             row["market_price"] = round(canonical_price, 4)
             row["market_price_source"] = "family_quote_consensus"
@@ -217,7 +232,7 @@ def _price_provenance(holding: dict[str, Any], *, family: dict[str, Any]) -> dic
         or str(_timestamp(family, "cached_at") or "")[:10]
         or None
     )
-    broker_price = _number(
+    broker_price = None if holding.get("broker_price_unavailable") else _number(
         holding.get("broker_reported_price")
         if holding.get("broker_reported_price") is not None
         else holding.get("last_price")
@@ -227,7 +242,7 @@ def _price_provenance(holding: dict[str, Any], *, family: dict[str, Any]) -> dic
         if holding.get("market_price") is not None
         else holding.get("last_price")
     )
-    broker_value = _number(
+    broker_value = None if holding.get("broker_value_unavailable") else _number(
         holding.get("broker_reported_value")
         if holding.get("broker_reported_value") is not None
         else holding.get("current_value")
@@ -332,11 +347,18 @@ def reconcile_holding(
         blocking = True
         reasons.append("A corporate action or cost-basis transition requires review.")
         repair_action = "Attach the exchange/broker corporate-action notice and approve a lineage override."
-    elif market_price is None or broker_value is None:
+    elif market_price is None:
         state = "WARNING"
         blocking = True
-        reasons.append("Broker value or authoritative market price is unavailable.")
-        repair_action = "Refresh the quote or import a broker statement with value provenance."
+        reasons.append("Authoritative market price is unavailable.")
+        repair_action = "Refresh the quote before using valuation-dependent advice."
+    elif broker_value is None:
+        state = "WARNING"
+        blocking = False
+        reasons.append(
+            "Broker market value is unavailable; valuation uses reconciled quantity × independent market mark."
+        )
+        repair_action = "Refresh the broker snapshot when available; no manual override is required."
     elif delta_abs is not None and delta_abs <= ABSOLUTE_TOLERANCE_INR:
         state = "RECONCILED"
         blocking = False
@@ -481,14 +503,22 @@ def reconcile_family(family: dict[str, Any]) -> dict[str, Any]:
         ]
         for item in holdings:
             identities_by_account[(account_code, str(item.get("instrument_id") or item.get("symbol")))] += 1
-        account_broker = sum(float(item.get("broker_reported_value") or 0) for item in holdings)
+        account_broker_values = [
+            float(item["broker_reported_value"])
+            for item in holdings
+            if item.get("broker_reported_value") is not None
+        ]
+        account_broker_complete = len(account_broker_values) == len(holdings)
+        account_broker_covered = sum(account_broker_values)
         account_marked = sum(float(item.get("marked_value") or 0) for item in holdings)
-        account_delta = account_broker - account_marked
+        account_delta = account_broker_covered - account_marked if account_broker_complete else None
         by_account[account_code] = {
             "account_code": account_code,
-            "broker_reported_value": round(account_broker, 2),
+            "broker_reported_value": round(account_broker_covered, 2) if account_broker_complete else None,
+            "broker_reported_value_covered": round(account_broker_covered, 2),
+            "broker_value_complete": account_broker_complete,
             "marked_value": round(account_marked, 2),
-            "reconciliation_delta": round(account_delta, 2),
+            "reconciliation_delta": round(account_delta, 2) if account_delta is not None else None,
             "blocking_positions": sum(bool(item.get("reconciliation_blocking")) for item in holdings),
         }
         account_invested = sum(float(item.get("invested") or 0) for item in holdings)
@@ -532,6 +562,8 @@ def reconcile_family(family: dict[str, Any]) -> dict[str, Any]:
                 "display_name": row.get("canonical_display_name") or row.get("symbol"),
                 "exchange": row.get("canonical_exchange") or row.get("exchange"),
                 "broker_reported_value": 0.0,
+                "broker_reported_value_covered": 0.0,
+                "broker_value_complete": True,
                 "marked_value": 0.0,
                 "reconciliation_delta": 0.0,
                 "states": [],
@@ -545,7 +577,11 @@ def reconcile_family(family: dict[str, Any]) -> dict[str, Any]:
                 "repair_actions": [],
             },
         )
-        item["broker_reported_value"] += float(row.get("broker_reported_value") or 0)
+        if row.get("broker_reported_value") is None:
+            item["broker_value_complete"] = False
+        else:
+            item["broker_reported_value"] += float(row["broker_reported_value"])
+            item["broker_reported_value_covered"] += float(row["broker_reported_value"])
         item["marked_value"] += float(row.get("marked_value") or 0)
         item["reconciliation_delta"] += float(row.get("reconciliation_delta") or 0)
         item["states"].append(row.get("reconciliation_state"))
@@ -570,9 +606,20 @@ def reconcile_family(family: dict[str, Any]) -> dict[str, Any]:
             "RECONCILED": 0,
         }
         item["state"] = max(item.pop("states"), key=lambda value: state_order.get(str(value), 2))
-        item["broker_reported_value"] = round(item["broker_reported_value"], 2)
+        item["broker_reported_value_covered"] = round(
+            item["broker_reported_value_covered"], 2
+        )
+        item["broker_reported_value"] = (
+            round(item["broker_reported_value"], 2)
+            if item["broker_value_complete"]
+            else None
+        )
         item["marked_value"] = round(item["marked_value"], 2)
-        item["reconciliation_delta"] = round(item["reconciliation_delta"], 2)
+        item["reconciliation_delta"] = (
+            round(item["reconciliation_delta"], 2)
+            if item["broker_value_complete"]
+            else None
+        )
         item["accounts"] = sorted({str(code) for code in item["accounts"] if code})
         for field in (
             "broker_value_sources",
@@ -601,10 +648,28 @@ def reconcile_family(family: dict[str, Any]) -> dict[str, Any]:
         float(item.get("marked_value") or 0) for item in security_rows if not item.get("blocking")
     )
     resolved_count = sum(bool(item.get("instrument_id")) for item in security_rows)
+    family_broker_complete = all(
+        bool(item.get("broker_value_complete")) for item in security_rows
+    )
+    family_broker_covered = sum(
+        float(item.get("broker_reported_value_covered") or 0)
+        for item in security_rows
+    )
     summary = {
-        "family_broker_reported_value": round(sum(float(item.get("broker_reported_value") or 0) for item in security_rows), 2),
+        "family_broker_reported_value": (
+            round(family_broker_covered, 2) if family_broker_complete else None
+        ),
+        "family_broker_reported_value_covered": round(family_broker_covered, 2),
+        "broker_value_complete": family_broker_complete,
         "family_marked_value": round(total_marked, 2),
-        "family_reconciliation_delta": round(sum(float(item.get("reconciliation_delta") or 0) for item in security_rows), 2),
+        "family_reconciliation_delta": (
+            round(
+                sum(float(item.get("reconciliation_delta") or 0) for item in security_rows),
+                2,
+            )
+            if family_broker_complete
+            else None
+        ),
         "family_value_reconciled_pct": round((resolved_value / total_marked * 100) if total_marked else 100.0, 2),
         "securities_resolved_pct": round((resolved_count / len(security_rows) * 100) if security_rows else 100.0, 2),
         "value_weighted_quote_coverage_pct": round(

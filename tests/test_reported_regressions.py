@@ -56,8 +56,10 @@ def test_groww_cost_basis_is_not_presented_as_market_price(monkeypatch):
         ltp_map={},
     )
     assert row is not None
-    assert row["broker_reported_price"] == 984.74
+    assert row["broker_reported_price"] is None
+    assert row["broker_reported_value"] is None
     assert row["broker_price_source"] == "cost_basis_fallback"
+    assert row["cost_basis_price"] == 984.74
     assert row["market_price"] is None
     assert row["market_price_unavailable"] is True
 
@@ -100,7 +102,9 @@ def test_family_quote_consensus_corrects_the_adaniports_weighted_ltp_bug():
     ]
     assert {row["last_price"] for row in corrected} == {1707.5}
     hb = next(row for row in corrected if row["account_code"] == "HB")
-    assert hb["broker_reported_price"] == 984.74
+    assert hb["broker_reported_price"] is None
+    assert hb["broker_reported_value"] is None
+    assert hb["cost_basis_value"] == 410 * 984.74
     assert hb["market_price_source"] == "family_quote_consensus"
     assert hb["market_price_as_of"] == "2026-08-29T09:00:00Z"
     assert reconciled["summary"]["total_current_value"] == 870 * 1707.5

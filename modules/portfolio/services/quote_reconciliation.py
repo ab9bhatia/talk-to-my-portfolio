@@ -86,9 +86,20 @@ def _apply_mark(row: dict[str, Any], price: float, *, accounts: list[str], as_of
     original_price = _number(row.get("last_price"))
     original_value = _number(row.get("current_value"))
     original_pnl = _number(row.get("pnl"))
-    row.setdefault("broker_reported_price", original_price)
-    row.setdefault("broker_reported_value", original_value)
-    row.setdefault("broker_reported_pnl", original_pnl)
+    cost_basis_only = _is_cost_basis_fallback(row, original_price or 0.0)
+    if cost_basis_only:
+        row["cost_basis_price"] = _number(row.get("avg_price"))
+        row["cost_basis_value"] = invested
+        row["broker_reported_price"] = None
+        row["broker_reported_value"] = None
+        row["broker_reported_pnl"] = None
+        row["broker_value_source"] = "unavailable"
+        row["broker_price_unavailable"] = True
+        row["broker_value_unavailable"] = True
+    else:
+        row.setdefault("broker_reported_price", original_price)
+        row.setdefault("broker_reported_value", original_value)
+        row.setdefault("broker_reported_pnl", original_pnl)
     row["market_price"] = round(price, 4)
     row["market_price_source"] = "family_quote_consensus"
     row["market_price_as_of"] = as_of
@@ -122,9 +133,14 @@ def apply_family_quote_consensus(payload: dict[str, Any]) -> dict[str, Any]:
             for row in rows:
                 price = _number(row.get("last_price")) or 0.0
                 if price and _is_cost_basis_fallback(row, price):
-                    row["broker_reported_price"] = price
-                    row["broker_reported_value"] = row.get("current_value")
-                    row["broker_reported_pnl"] = row.get("pnl")
+                    row["cost_basis_price"] = _number(row.get("avg_price"))
+                    row["cost_basis_value"] = _number(row.get("invested"))
+                    row["broker_reported_price"] = None
+                    row["broker_reported_value"] = None
+                    row["broker_reported_pnl"] = None
+                    row["broker_value_source"] = "unavailable"
+                    row["broker_price_unavailable"] = True
+                    row["broker_value_unavailable"] = True
                     row["last_price"] = None
                     row["market_price"] = None
                     row["market_price_source"] = "unavailable"
