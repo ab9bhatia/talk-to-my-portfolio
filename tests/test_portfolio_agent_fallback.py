@@ -21,6 +21,11 @@ def test_provider_fallback_preserves_deterministic_actions():
                     "family_weight_pct": 1.0,
                     "why_now": "Base scenario clears the add band.",
                     "data_quality_flags": [],
+                    "decision_presentation": {
+                        "label": "Add gradually",
+                        "readiness": "READY_TO_REVIEW",
+                        "do_now": "Review a staged add.",
+                    },
                 },
                 {
                     "symbol": "TRIMME",
@@ -29,6 +34,11 @@ def test_provider_fallback_preserves_deterministic_actions():
                     "family_weight_pct": 3.0,
                     "why_now": "Expected return is below the hold hurdle.",
                     "data_quality_flags": [],
+                    "decision_presentation": {
+                        "label": "Trim gradually",
+                        "readiness": "READY_TO_REVIEW",
+                        "do_now": "Review a staged trim.",
+                    },
                 },
             ]
         }
@@ -44,3 +54,33 @@ def test_provider_fallback_preserves_deterministic_actions():
     assert result["buy"][0]["symbol"] == "ADDME"
     assert result["sell_or_trim"][0]["symbol"] == "TRIMME"
     assert {row["deterministic_action"] for row in result["symbols"]} == {"ADD", "REDUCE"}
+
+
+def test_provider_fallback_never_places_blocked_decision_in_legacy_trade_arrays():
+    context = {
+        "advisory": {
+            "recommendations": [
+                {
+                    "symbol": "WAITADD",
+                    "action": "ADD",
+                    "sell_type": "NONE",
+                    "family_weight_pct": 1.0,
+                    "data_quality_flags": [{"message": "Research required."}],
+                    "decision_presentation": {
+                        "label": "Research before adding",
+                        "readiness": "RESEARCH_REQUIRED",
+                        "do_now": "Validate current filings first.",
+                    },
+                }
+            ]
+        }
+    }
+    result = _deterministic_provider_fallback(
+        context=context,
+        question="What should I add?",
+        provider="openai",
+        status_code=429,
+    )
+    assert result["symbols"][0]["decision_label"] == "Research before adding"
+    assert result["buy"] == []
+    assert result["sell_or_trim"] == []

@@ -393,40 +393,15 @@ def select_action(
                 "reduction rather than a fundamental exit."
             )
 
-    if pattern and pattern.active and pattern.bias == "bullish":
-        original_action = action
-        original_sell_pct = sell_pct
-        if sell_type is SellType.PORTFOLIO_CONSOLIDATION:
-            action = Action.REDUCE
-            sell_pct = min(25.0, sell_pct)
-        else:
-            sell_pct = max(10.0, sell_pct * 0.5)
-        target = weight * (1 - sell_pct / 100)
-        why = (
-            f"{why} A dated bullish {pattern.label} setup conflicts with immediate execution, "
-            "so the exit is staged; the underlying return or portfolio-fit decision is unchanged."
-        )
+    if pattern and pattern.active:
         trace.append(
             {
-                "rule": "BULLISH_PATTERN_STAGES_OPTIONAL_EXIT",
+                "rule": "CHART_PATTERN_TIMING_ONLY",
                 "matched": True,
-                "original_action": original_action.value,
-                "original_sell_pct": round(original_sell_pct, 2),
-                "selected_action": action.value,
-                "selected_sell_pct": round(sell_pct, 2),
-            }
-        )
-    elif pattern and pattern.active and pattern.bias == "bearish":
-        original_sell_pct = sell_pct
-        sell_pct = min(100.0, max(sell_pct, sell_pct * 1.25))
-        target = weight * (1 - sell_pct / 100)
-        why = f"{why} A dated bearish {pattern.label} setup supports earlier staged execution."
-        trace.append(
-            {
-                "rule": "BEARISH_PATTERN_ACCELERATES_SUPPORTED_EXIT",
-                "matched": True,
-                "original_sell_pct": round(original_sell_pct, 2),
-                "selected_sell_pct": round(sell_pct, 2),
+                "bias": pattern.bias,
+                "action_unchanged": action.value,
+                "sell_pct_unchanged": round(sell_pct, 2),
+                "effect": "execution_timing_only",
             }
         )
 

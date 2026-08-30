@@ -1,20 +1,22 @@
 # Signal hierarchy and decision UX
 
-Milestone 12 establishes one semantic contract for Dashboard, Action Center, Today Brief, and weekly output. The system has four signal authorities, in this order:
+Milestone 12 establishes one semantic contract for Dashboard, Action Center, Today Brief, Portfolio Agent, and weekly output. The system has four signal authorities, in this order:
 
-1. `INTERNAL_DECISION` — deterministic portfolio action from sourced fundamentals, expected return, account constraints, and portfolio fit.
-2. `EXTERNAL_ANALYST_CONTEXT` — covered analyst consensus and published target context. It is always `actionable=false`.
-3. `TECHNICAL_TIMING` — chart-pattern timing evidence. It may stage timing but never creates or reverses the internal decision.
-4. `EXECUTION_READINESS` — data, research, tax, settlement, and tradability gates. It can block presentation of an otherwise valid action.
+1. `BLOCKER` — data, research, tax, settlement, and tradability gates; blocks execution but does not rewrite the underlying action.
+2. `PRIMARY_DECISION` — deterministic portfolio action from sourced fundamentals, expected return, account constraints, and portfolio fit.
+3. `EXECUTION_TIMING` — chart-pattern and momentum timing evidence; never changes action, sell type, target weight, or sell percentage.
+4. `CONTEXT_ONLY` — external analyst consensus and published target context; always `actionable=false`.
+
+The older authority values remain accepted for compatibility but are not emitted by new recommendations.
 
 ## Shared presentation contract
 
 Every advisory recommendation now includes additive fields:
 
-- `decision_presentation`: the only user-facing action label, readiness, confidence band, immediate instruction, reason, and review trigger;
+- `decision_presentation`: the only user-facing action label, action code, readiness, confidence band, immediate instruction, size change, execution timing, reason, and review trigger;
 - `signal_stack`: the four signal layers with explicit authority and actionability;
 - `external_analyst_view`: consensus, coverage, target gap, freshness, and anomaly status;
-- `conflict_categories`: typed disagreements such as `FUNDAMENTAL_VS_TECHNICAL` or `INTERNAL_VS_EXTERNAL`.
+- `conflict_categories`: `TIMING_VS_DECISION`, `EXTERNAL_CONTEXT_DIFFERS`, `DATA_BLOCKS_DECISION`, or `TAX_BLOCKS_EXECUTION`.
 
 Internal enum values remain backward-compatible. Examples of the shared presentation mapping:
 
@@ -54,6 +56,15 @@ Coverage, freshness, and outliers are explicit:
 
 The Dashboard Decision column and Decision grouping consume this projection. Action Center, Today Brief, and weekly output read the same `decision_presentation.readiness`; they do not maintain separate label maps.
 
-## Safety boundary
+## Expanded holding and execution gate
 
-Milestone 12A/12B does not add order preparation or placement. Dashboard row expansion routes to Action Center and explicitly keeps order controls gated. The payload continues to expose `execution_enabled=false`.
+Expanded holdings follow one hierarchy: **Your decision → Do now → Why → How much → Review when → How to execute**. External analyst context is collapsed and visually neutral. Raw metrics, account breakdowns, charts, and audit evidence follow the decision.
+
+An order-preparation control is rendered only when all of these are true:
+
+- `decision_presentation.readiness == READY_TO_REVIEW`;
+- the action is `ADD`, `STRONG_ADD`, `REDUCE`, or `SELL`;
+- live trading is explicitly enabled; and
+- a supported Zerodha/Groww Indian delivery account is available.
+
+The control is contextual: **Prepare staged add**, **Prepare trim**, or **Prepare exit**. All other readiness states expose review/evidence navigation only. The existing broker confirmation dialog remains the final safety boundary; the deterministic engine never places an order while rendering a recommendation.

@@ -327,6 +327,13 @@ a:hover {
   letter-spacing: 0;
 }
 
+.rating-badge.rating-context {
+  color: #cbd5e1;
+  border-color: rgba(148, 163, 184, 0.32);
+  background: rgba(51, 65, 85, 0.42);
+  text-transform: none;
+}
+
 .detail-header-row {
   display: flex;
   align-items: center;
@@ -1722,6 +1729,124 @@ button.filter-chip-all:hover {
   overflow: visible;
   box-sizing: border-box;
 }
+
+.holding-decision-card {
+  margin-bottom: 0.85rem;
+  padding: 1rem;
+  border: 1px solid rgba(96, 165, 250, 0.2);
+  border-radius: 14px;
+  background:
+    radial-gradient(circle at 96% 0%, rgba(45, 212, 191, 0.08), transparent 28%),
+    linear-gradient(145deg, rgba(15, 23, 42, 0.92), rgba(8, 17, 31, 0.95));
+}
+
+.holding-decision-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-bottom: 0.8rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.13);
+}
+
+.holding-decision-head h4 {
+  margin: 0.18rem 0 0;
+  color: #f8fafc;
+  font-size: 1.18rem;
+  letter-spacing: -0.02em;
+}
+
+.decision-section-kicker,
+.holding-decision-grid article > span,
+.external-context-grid span {
+  display: block;
+  color: #6ee7f9;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.decision-status-stack {
+  display: grid;
+  justify-items: end;
+  gap: 0.3rem;
+  color: #8290a6;
+  font-size: 0.68rem;
+}
+
+.decision-status {
+  padding: 0.22rem 0.5rem;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 999px;
+  color: #cbd5e1;
+  background: rgba(51, 65, 85, 0.35);
+  font-weight: 750;
+}
+
+.decision-status-ready-to-review { color: #99f6e4; border-color: rgba(45, 212, 191, 0.3); background: rgba(13, 148, 136, 0.13); }
+.decision-status-data-blocked,
+.decision-status-not-executable { color: #fda4af; border-color: rgba(251, 113, 133, 0.28); background: rgba(190, 24, 93, 0.12); }
+.decision-status-research-required,
+.decision-status-tax-review-required { color: #fde68a; border-color: rgba(251, 191, 36, 0.28); background: rgba(120, 53, 15, 0.18); }
+
+.holding-decision-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.65rem;
+  padding: 0.8rem 0;
+}
+
+.holding-decision-grid article {
+  min-width: 0;
+  padding: 0.7rem;
+  border: 1px solid rgba(148, 163, 184, 0.1);
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.45);
+}
+
+.holding-decision-grid p,
+.holding-execution-card p,
+.external-context-drawer p {
+  margin: 0.35rem 0 0;
+  color: #cbd5e1;
+  font-size: 0.76rem;
+  line-height: 1.55;
+}
+
+.holding-execution-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem;
+  border-left: 3px solid rgba(45, 212, 191, 0.55);
+  border-radius: 8px;
+  background: rgba(13, 148, 136, 0.07);
+}
+
+.holding-execution-card strong { display: block; margin-top: 0.2rem; color: #e2e8f0; }
+
+.external-context-drawer {
+  margin-top: 0.7rem;
+  border-top: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.external-context-drawer > summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.7rem 0.1rem 0;
+  color: #a8b8cc;
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.external-context-drawer > summary span { color: #64748b; font-weight: 500; }
+.external-context-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.55rem; margin-top: 0.65rem; }
+.external-context-grid div { padding: 0.55rem; border-radius: 8px; background: rgba(51, 65, 85, 0.22); }
+.external-context-grid strong { display: block; margin-top: 0.2rem; color: #cbd5e1; font-size: 0.74rem; }
 
 .detail-metrics-stacked {
   display: flex;
@@ -3121,9 +3246,29 @@ body.month-drill-open { overflow: hidden; }
   align-items: center;
   gap: 0.5rem;
   flex-wrap: wrap;
-  margin: 0.75rem 0 0.5rem;
-  padding: 0.5rem 0;
-  border-top: 1px solid var(--border);
+  justify-content: flex-end;
+  margin: 0;
+  padding: 0;
+  border-top: 0;
+}
+
+@media (max-width: 980px) {
+  .holding-decision-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .external-context-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 640px) {
+  .portfolio-toolbar { max-width: 100%; overflow-x: auto; overscroll-behavior-inline: contain; }
+  .holdings-table .holding-detail-row > td { position: sticky; left: 0; }
+  .holding-detail-panel { width: calc(100vw - 4.5rem); max-width: calc(100vw - 4.5rem); }
+  .holding-decision-card { padding: 0.75rem; }
+  .holding-decision-head,
+  .holding-execution-card { align-items: stretch; flex-direction: column; }
+  .decision-status-stack { justify-items: start; }
+  .holding-decision-grid,
+  .external-context-grid { grid-template-columns: 1fr; }
+  .holding-trade-actions { justify-content: flex-start; }
+  .external-context-drawer > summary { display: grid; }
 }
 
 .holding-trade-label {

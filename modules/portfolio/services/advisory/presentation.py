@@ -99,14 +99,68 @@ def _display_label(item: Any, readiness: DecisionReadiness) -> tuple[str, str, s
     return label, short, instruction
 
 
+def _change_instruction(item: Any, readiness: DecisionReadiness) -> str:
+    current = float(item.family_weight_pct or 0)
+    target = float(item.target_weight_pct or current)
+    delta = target - current
+    if readiness is not DecisionReadiness.READY_TO_REVIEW:
+        return "0% change until the readiness gate is cleared."
+    if item.action in {Action.ADD, Action.STRONG_ADD}:
+        return f"Increase from {current:.1f}% to {target:.1f}% ({delta:+.1f} pp), staged."
+    if item.action is Action.REDUCE:
+        return f"Trim about {item.sell_pct:.0f}%; target {target:.1f}% of the family portfolio."
+    if item.action is Action.SELL:
+        return "Exit 100%; target 0% of the family portfolio."
+    return "0% change; keep the current family weight."
+
+
+def _execution_instruction(item: Any, readiness: DecisionReadiness) -> tuple[str, str]:
+    pattern = item.chart_pattern
+    if readiness is not DecisionReadiness.READY_TO_REVIEW:
+        return (
+            f"Clear the {READINESS_LABELS[readiness].lower()} gate before preparing an order.",
+            "Execution gated",
+        )
+    if not pattern or not pattern.active:
+        if item.action in {Action.ADD, Action.STRONG_ADD}:
+            return "Use a staged entry within the configured position limit; do not chase.", "No active setup"
+        if item.action is Action.REDUCE:
+            return "Stage the supported trim across liquid sessions.", "No active setup"
+        if item.action is Action.SELL:
+            return "Stage the supported exit after account-level checks.", "No active setup"
+        return "No order is required; monitor the review trigger.", "No active setup"
+
+    label = pattern.label
+    if pattern.bias == "bullish" and item.action in {Action.REDUCE, Action.SELL}:
+        qualifier = (
+            "the fundamental exit remains unchanged"
+            if item.sell_type.value == "FUNDAMENTAL_SELL"
+            else "stage the supported trim or exit without reversing it"
+        )
+        return (
+            f"{label} is bullish timing context only; {qualifier}.",
+            "Timing differs — decision unchanged",
+        )
+    if pattern.bias == "bearish" and item.action in {Action.ADD, Action.STRONG_ADD}:
+        return (
+            f"{label} is bearish timing context: wait for stabilization and use staged entry; the add decision is unchanged.",
+            "Timing differs — decision unchanged",
+        )
+    if pattern.bias == "bullish" and item.action in {Action.ADD, Action.STRONG_ADD}:
+        return f"Use the {label} setup for entry timing; stage the add and do not chase.", "Timing supports decision"
+    if pattern.bias == "bearish" and item.action in {Action.REDUCE, Action.SELL}:
+        return f"{label} supports earlier staged execution of the existing decision.", "Timing supports decision"
+    return f"Use {label} as timing context only; it does not change the decision.", "Timing context only"
+
+
 def conflict_categories(item: Any) -> list[ConflictCategory]:
     categories: list[ConflictCategory] = []
     if any(flag.blocking or flag.severity == "error" for flag in item.data_quality_flags):
-        categories.append(ConflictCategory.DATA_QUALITY)
+        categories.append(ConflictCategory.DATA_BLOCKS_DECISION)
     if item.decision_conflicts:
-        categories.append(ConflictCategory.FUNDAMENTAL_VS_TECHNICAL)
-    if item.requires_ca_review:
-        categories.append(ConflictCategory.TAX_OR_SETTLEMENT)
+        categories.append(ConflictCategory.TIMING_VS_DECISION)
+    if item.requires_ca_review and item.action in {Action.REDUCE, Action.SELL}:
+        categories.append(ConflictCategory.TAX_BLOCKS_EXECUTION)
     external = item.external_analyst_view
     if external and external.sentiment is not ExternalAnalystSentiment.UNKNOWN:
         adding = item.action in {Action.ADD, Action.STRONG_ADD}
@@ -114,19 +168,21 @@ def conflict_categories(item: Any) -> list[ConflictCategory]:
         if (adding and external.sentiment is ExternalAnalystSentiment.NEGATIVE) or (
             reducing and external.sentiment is ExternalAnalystSentiment.POSITIVE
         ):
-            categories.append(ConflictCategory.INTERNAL_VS_EXTERNAL)
+            categories.append(ConflictCategory.EXTERNAL_CONTEXT_DIFFERS)
     return categories
 
 
 def present_decision(item: Any) -> tuple[DecisionPresentation, SignalStack]:
     readiness = _readiness(item)
     label, short, instruction = _display_label(item, readiness)
+    change_instruction = _change_instruction(item, readiness)
+    execution_instruction, timing_label = _execution_instruction(item, readiness)
     external = item.external_analyst_view
     external_summary = "No covered external analyst view."
     external_state = "UNAVAILABLE"
     if external:
         external_state = external.status.value
-        pieces = [external.consensus_label or external.sentiment.value.title()]
+        pieces = [external.sentiment.value.replace("_", " ").title()]
         if external.target_price is not None:
             pieces.append(f"target {external.target_descriptor}")
         external_summary = " · ".join(pieces)
@@ -145,7 +201,7 @@ def present_decision(item: Any) -> tuple[DecisionPresentation, SignalStack]:
         confidence_band=_confidence_band(item.action_confidence),
         confidence_pct=item.action_confidence,
         do_now=instruction,
-        change_instruction=instruction,
+        change_instruction=change_instruction,
         review_trigger=_review_trigger(item),
         why=item.why_now,
         source_label=(
@@ -156,33 +212,48 @@ def present_decision(item: Any) -> tuple[DecisionPresentation, SignalStack]:
             else "Insufficient evidence"
         ),
         execution_enabled=False,
+        authority=SignalAuthority.PRIMARY_DECISION,
+        action_code=item.action,
+        headline=f"{label}: {change_instruction}",
+        current_weight_pct=round(float(item.family_weight_pct or 0), 2),
+        target_weight_pct=round(float(item.target_weight_pct or 0), 2),
+        change_pct_points=round(
+            float(item.target_weight_pct or 0) - float(item.family_weight_pct or 0), 2
+        ),
+        sell_pct=round(float(item.sell_pct or 0), 2),
+        execution_instruction=execution_instruction,
+        timing_label=timing_label,
     )
     stack = SignalStack(
-        primary=SignalAuthority.INTERNAL_DECISION,
+        primary=SignalAuthority.PRIMARY_DECISION,
         layers=[
             SignalLayer(
-                authority=SignalAuthority.INTERNAL_DECISION,
+                authority=SignalAuthority.PRIMARY_DECISION,
                 label="Portfolio decision",
                 state=item.action.value,
                 summary=item.why_now,
                 actionable=True,
             ),
             SignalLayer(
-                authority=SignalAuthority.EXTERNAL_ANALYST_CONTEXT,
+                authority=SignalAuthority.CONTEXT_ONLY,
                 label="External analyst view",
                 state=external_state,
                 summary=external_summary,
                 actionable=False,
             ),
             SignalLayer(
-                authority=SignalAuthority.TECHNICAL_TIMING,
+                authority=SignalAuthority.EXECUTION_TIMING,
                 label="Technical timing",
                 state=technical_state,
                 summary=technical_summary,
                 actionable=False,
             ),
             SignalLayer(
-                authority=SignalAuthority.EXECUTION_READINESS,
+                authority=(
+                    SignalAuthority.BLOCKER
+                    if readiness is not DecisionReadiness.READY_TO_REVIEW
+                    else SignalAuthority.PRIMARY_DECISION
+                ),
                 label="Readiness",
                 state=readiness.value,
                 summary=READINESS_LABELS[readiness],

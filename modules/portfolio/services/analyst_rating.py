@@ -188,7 +188,7 @@ def _sentiment(label: str | None) -> ExternalAnalystSentiment:
         return ExternalAnalystSentiment.NEUTRAL
     if label in {"Sell", "Strong sell"}:
         return ExternalAnalystSentiment.NEGATIVE
-    return ExternalAnalystSentiment.UNKNOWN
+    return ExternalAnalystSentiment.UNAVAILABLE
 
 
 def _freshness(as_of: str | None) -> str:
@@ -263,6 +263,8 @@ def build_external_analyst_view(
         if low_coverage
         else ExternalAnalystStatus.AVAILABLE
     )
+    if conflicted:
+        sentiment = ExternalAnalystSentiment.MIXED
     coverage = (
         "Coverage unavailable"
         if count is None

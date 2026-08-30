@@ -145,3 +145,9 @@ State-changing Basic Auth requests require same-origin evidence or `X-Portfolio-
 - Additive changes only within this version.
 - No field removals/renames in listed endpoints.
 - Breaking changes require a new contract version string.
+
+### Milestone 12 additive decision contract
+
+`GET /api/portfolio/advisory`, `GET /api/portfolio/advisory/{symbol}`, and `GET /api/portfolio/advisory/decision-summary` expose the shared `decision_presentation`, `signal_stack`, `external_analyst_view`, and typed `conflict_categories` fields. `decision_presentation` is authoritative for user-facing labels and includes `action_code`, `do_now`, `why`, `change_instruction`, `review_trigger`, `readiness`, `execution_instruction`, and `timing_label`.
+
+Legacy `rating_label`, `rating_slug`, `rating_source`, and `upside_pct` fields remain available for compatible consumers but are deprecated as decision inputs. Excel exports identify them as deprecated and add explicit external sentiment, status, coverage, freshness, and target-gap columns. New clients must never translate those legacy fields into portfolio actions.

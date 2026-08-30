@@ -1,8 +1,9 @@
-{% if h.get('rating_label') %}
+{% set external = h.get('external_analyst_view') or {} %}
+{% if external.get('sentiment') and external.get('sentiment') not in ['UNAVAILABLE', 'UNKNOWN'] %}
 <span
-  class="rating-badge rating-{{ h.get('rating_slug') or 'unknown' }}"
-  title="Covered external analyst consensus; context only, not the portfolio advisor decision."
->External: {{ h.get('rating_label') }}</span>
+  class="rating-badge rating-context"
+  title="External analyst context only; it does not change the portfolio decision."
+>External {{ external.get('sentiment') | lower }}</span>
 {% else %}
 <span class="cell-muted">—</span>
 {% endif %}

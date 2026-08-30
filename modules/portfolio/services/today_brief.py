@@ -176,7 +176,7 @@ def build_today_brief(
                 readiness = "READY_TO_REVIEW"
             else:
                 readiness = "MONITOR_ONLY"
-        if "INTERNAL_VS_EXTERNAL" in conflicts:
+        if "EXTERNAL_CONTEXT_DIFFERS" in conflicts or "INTERNAL_VS_EXTERNAL" in conflicts:
             external_disagreement += 1
             grouped_symbols.setdefault("EXTERNAL_DISAGREEMENT", set()).add(
                 str(item.get("symbol") or "")

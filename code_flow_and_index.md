@@ -313,6 +313,15 @@ flowchart TB
 5. Completed or expired targets remain visible for audit and cannot create a trade,
    cancel a fundamental sell, or delay a planned reduction.
 
+### 5B. Shared decision presentation — Milestone 12
+
+1. `advisory/rules.py` selects the immutable action, sell type, target weight, and sell percentage from deterministic evidence.
+2. `advisory/presentation.py` is the only action-label mapper. It adds readiness, Do now, How much, review trigger, and timing-only execution language.
+3. `advisory/runtime.build_decision_summary` caches the pattern-free, LLM-free Dashboard projection; canonical instrument ID and ISIN drive the join.
+4. Dashboard, Action Center, Today Brief, weekly output, and Portfolio Agent consume `decision_presentation` rather than translating raw actions independently.
+5. `external_analyst_view` is neutral context. `chart_pattern` is execution timing. Neither can alter the action selected in step 1.
+6. A Dashboard Prepare control exists only for a `READY_TO_REVIEW` add/trim/exit with trading enabled and a supported delivery account. Rendering never calls the order endpoint.
+
 ### 6. Excel export — `POST /api/portfolio/export`
 
 1. Body: selected columns + account codes
@@ -365,6 +374,8 @@ Full mobile contract: [docs/api-contract-v1.md](docs/api-contract-v1.md).
 | GET | `/portfolio/setup` | Setup HTML |
 | GET | `/api/portfolio` | Family JSON |
 | GET | `/api/portfolio/meta` | Cache freshness |
+| GET | `/api/portfolio/advisory/decision-summary` | Cached Dashboard decision projection; no patterns or LLM |
+| GET | `/api/portfolio/advisory` | Full deterministic recommendations with optional timing overlay |
 | POST | `/api/portfolio/export` | Excel download |
 | GET/PUT | `/api/portfolio/profile/goals` | Goals & guardrails |
 | GET | `/api/portfolio/data-quality` | Import audit |

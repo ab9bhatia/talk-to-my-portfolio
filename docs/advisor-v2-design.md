@@ -361,3 +361,11 @@ Stage 6A deliberately does not add OHLCV confirmation, ATR, invalidation math,
 retests, relative strength, a separate technical-overlay matrix, persistence, or
 calibrated probabilities. Those remain Stages 6B, 6C, and 6E respectively. See
 `docs/pattern-execution-overlay.md` for the contract and transition policy.
+
+## Milestone 12C/12D — decision-first interaction and cleanup
+
+Dashboard row expansion and Action Center now render the same `decision_presentation` hierarchy: decision, immediate step, rationale, size change, review trigger, readiness/confidence, and execution timing. Chart patterns are immutable timing evidence: they cannot change `action`, `sell_type`, `sell_pct`, or `target_weight_pct`.
+
+External analyst views are collapsed, neutral context with explicit coverage, freshness, target descriptor, and the statement that they do not change the decision. Typed conflicts explain whether timing differs, external context differs, data blocks a decision, or tax blocks execution. Portfolio Agent and degraded provider fallbacks lead with the same display label; legacy buy/sell arrays contain only `READY_TO_REVIEW` decisions.
+
+Milestone 12D retains the API v1 legacy fields with deprecation labels, removes the duplicate browser-side external-signal ordering and pattern-vs-analyst conflict mapper, and keeps the dashboard decision-summary path pattern-free and LLM-free for fast first render.

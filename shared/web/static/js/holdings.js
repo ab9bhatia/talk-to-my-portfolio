@@ -316,15 +316,6 @@
     return `${sign}${value.toFixed(1)}%`;
   }
 
-  const SIGNAL_GROUP_ORDER = [
-    "External: strong buy",
-    "External: buy",
-    "External: hold",
-    "External: sell",
-    "External: strong sell",
-    "External view unavailable",
-  ];
-
   function parseAccountBreakdown(row) {
     return rowMetadata(row).accountBreakdown;
   }
@@ -425,12 +416,7 @@
   }
 
   function sortGroupTotalsForChart(totals, groupBy) {
-    if (groupBy === "signal") {
-      return [...totals].sort(
-        (a, b) =>
-          SIGNAL_GROUP_ORDER.indexOf(a.label) - SIGNAL_GROUP_ORDER.indexOf(b.label)
-      );
-    }
+    if (["signal", "decision"].includes(groupBy)) return [...totals];
     return [...totals].sort((a, b) => b.value - a.value);
   }
 
@@ -1037,20 +1023,15 @@
       .replace(/"/g, "&quot;");
   }
 
-  function renderRatingBadge(rating, { full = false, pattern = null } = {}) {
-    if (!rating?.label) {
+  function renderRatingBadge(externalView, { full = false } = {}) {
+    const sentiment = String(externalView?.sentiment || "UNAVAILABLE").toLowerCase();
+    if (["unavailable", "unknown"].includes(sentiment)) {
       return full ? '<span class="detail-sub">External analyst view unavailable</span>' : "";
     }
-    const slug = rating.slug || "hold";
-    const text = `External: ${rating.label}`;
+    const text = `External ${sentiment}`;
     const compactClass = full ? "" : " rating-badge-compact";
-    const conflict = streetLabelConflictsWithPattern(rating.label, pattern);
-    const conflictClass = conflict ? " rating-conflict" : "";
-    const suffix = conflict ? '<span aria-hidden="true">!</span>' : "";
-    const title = conflict
-      ? `CONFLICT: external analyst context is ${rating.label}, while ${pattern.label} shows ${patternRemainingMove(pattern).toFixed(1)}% ${pattern.bias === "bearish" ? "downside risk" : "upside potential"}. The portfolio decision remains separate.`
-      : `External analyst context: ${rating.label}. Not the portfolio advisor decision.`;
-    return `<span class="rating-badge${compactClass} rating-${slug}${conflictClass}" title="${escapeHtml(title)}">${escapeHtml(text)}${suffix}</span>`;
+    const title = `${externalView.coverage_label || "Coverage unavailable"} · ${externalView.freshness_label || "Publication date unavailable"}. Context only; this does not change the portfolio decision.`;
+    return `<span class="rating-badge${compactClass} rating-context" title="${escapeHtml(title)}">${escapeHtml(text)}</span>`;
   }
 
   function renderRatingReasons(rating) {
@@ -1119,10 +1100,12 @@
       <section class="signal-context-panel rating-reasons-section">
         <div class="signal-context-grid">
           <div class="signal-context-col signal-context-col-reasons">
-            <h5 class="signal-col-title">External analyst context</h5>
-            <div class="signal-col-scroll">
-              ${hasSignal ? `${reasons}${eventsHtml}` : '<p class="detail-empty">No analyst rationale available.</p>'}
-            </div>
+            <details class="external-context-drawer external-context-drawer--async">
+              <summary>External analyst rationale <span>Context only · no action change</span></summary>
+              <div class="signal-col-scroll">
+                ${hasSignal ? `${reasons}${eventsHtml}` : '<p class="detail-empty">No analyst rationale available.</p>'}
+              </div>
+            </details>
           </div>
           <div class="signal-context-col signal-context-col-news">
             <h5 class="signal-col-title">Recent news</h5>
@@ -1571,6 +1554,7 @@
       }
 
       const rating = data.forecast?.rating;
+      const externalView = data.forecast?.external_analyst_view;
       const primaryPattern =
         data.pattern_actionable_primary ||
         (data.patterns || []).find(isActionablePattern) ||
@@ -1587,7 +1571,7 @@
             <h4>${data.name || symbol}</h4>
             <span class="detail-sub">${data.yahoo_ticker || ""}</span>
           </div>
-          ${renderRatingBadge(rating, { full: true, pattern: primaryPattern })}
+          ${renderRatingBadge(externalView, { full: true })}
         </div>
         <div class="detail-grid detail-grid-insights">
           <section class="detail-section chart-section detail-section-full" data-chart-canvas="${canvasId}">
@@ -1817,36 +1801,6 @@
     return (scanRow?.actionable_patterns || scanRow?.patterns || []).find(isActionablePattern) || null;
   }
 
-  function streetLabelConflictsWithPattern(label, primary) {
-    if (!label || !isActionablePattern(primary)) return false;
-    const streetBullish = ["Strong buy", "Buy"].includes(label);
-    const streetBearish = ["Sell", "Strong sell"].includes(label);
-    return (
-      (primary.bias === "bearish" && streetBullish) ||
-      (primary.bias === "bullish" && streetBearish)
-    );
-  }
-
-  function reconcileStreetViewWithPattern(row, primary) {
-    const label = row.dataset.ratingLabel || "";
-    const source = row.dataset.ratingSource || "unavailable";
-    if (!label || !["analyst", "analyst_mean"].includes(source)) return;
-    if (!streetLabelConflictsWithPattern(label, primary)) return;
-
-    const cell = row.querySelector(".col-signal");
-    const badge = cell?.querySelector(".rating-badge");
-    if (!cell || !badge) return;
-    const direction = primary.bias === "bearish" ? "downside risk" : "upside setup";
-    const remaining = patternRemainingMove(primary).toFixed(1);
-    cell.classList.add("street-pattern-conflict");
-    badge.classList.add("rating-conflict");
-    badge.innerHTML = `${escapeHtml(badge.textContent.trim())}<span aria-hidden="true">!</span>`;
-    badge.title =
-      `CONFLICT: external Street view is ${label}, while the active ${primary.label} ` +
-      `shows ${remaining}% ${direction}. This is not a unified buy/sell recommendation.`;
-    row.dataset.signalConflict = "1";
-  }
-
   function patternPillMarkup(primary) {
     const bias = primary.bias === "bearish" ? "bear" : "bull";
     const arrow = primary.bias === "bearish" ? "▼" : "▲";
@@ -2000,7 +1954,6 @@
         if (!primary) return;
         row.dataset.hasPattern = "1";
         attachPatternPill(row, primary);
-        reconcileStreetViewWithPattern(row, primary);
         matched += 1;
       });
       applyPatternToggleState(matched);

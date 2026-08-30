@@ -94,7 +94,9 @@ def test_authoritative_positive_model_is_ready_and_uses_shared_add_label():
     assert item["action"] == "STRONG_ADD"
     assert item["decision_presentation"]["label"] == "Add more"
     assert item["decision_presentation"]["readiness"] == "READY_TO_REVIEW"
-    assert item["signal_stack"]["primary"] == "INTERNAL_DECISION"
+    assert item["signal_stack"]["primary"] == "PRIMARY_DECISION"
+    assert item["decision_presentation"]["action_code"] == "STRONG_ADD"
+    assert item["decision_presentation"]["change_instruction"].startswith("Increase from")
 
 
 def test_screening_positive_model_requires_research_before_adding():

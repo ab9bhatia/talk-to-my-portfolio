@@ -128,7 +128,7 @@ def test_bullish_pattern_never_overrides_sourced_fundamental_sell():
     assert "BULLISH_PATTERN_FUNDAMENTAL_SELL_PRESERVED" in rec["decision_conflicts"]
 
 
-def test_bullish_pattern_stages_tactical_and_consolidation_exit():
+def test_bullish_pattern_changes_timing_only_not_action_or_size():
     tactical = _holding(
         "TACTICAL",
         chart_patterns=_pattern(),
@@ -137,7 +137,10 @@ def test_bullish_pattern_stages_tactical_and_consolidation_exit():
     tactical_rec = _rec(_advisory([tactical]), "TACTICAL")
     assert tactical_rec["action"] == "REDUCE"
     assert tactical_rec["sell_type"] == "TACTICAL_REDUCE"
-    assert tactical_rec["sell_pct"] == 12.5
+    assert tactical_rec["sell_pct"] == 25
+    assert "CHART_PATTERN_TIMING_ONLY" in {
+        row["rule"] for row in tactical_rec["rule_trace"]
+    }
 
     tiny = _holding(
         "TINY",
@@ -145,9 +148,10 @@ def test_bullish_pattern_stages_tactical_and_consolidation_exit():
         expected_return_inputs=_expected_inputs(5),
     )
     tiny_rec = _rec(_advisory([tiny], total=50_000), "TINY")
-    assert tiny_rec["action"] == "REDUCE"
+    assert tiny_rec["action"] == "SELL"
     assert tiny_rec["sell_type"] == "PORTFOLIO_CONSOLIDATION"
-    assert tiny_rec["sell_pct"] == 25
+    assert tiny_rec["sell_pct"] == 100
+    assert "TIMING_VS_DECISION" in tiny_rec["conflict_categories"]
 
 
 def test_pattern_alone_cannot_create_buy_or_sell():

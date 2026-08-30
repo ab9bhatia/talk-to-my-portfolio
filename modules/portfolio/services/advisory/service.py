@@ -264,7 +264,7 @@ def _recommendation(
             SellType.TACTICAL_REDUCE,
             SellType.PORTFOLIO_CONSOLIDATION,
         }:
-            decision_conflicts.append("BULLISH_PATTERN_STAGED_EXIT")
+            decision_conflicts.append("BULLISH_PATTERN_VS_SELL_DECISION")
         elif chart_pattern.bias == "bullish" and not expected.available:
             decision_conflicts.append("BULLISH_PATTERN_WITHOUT_RETURN_EVIDENCE")
         elif chart_pattern.bias == "bearish" and decision.action in {
@@ -277,7 +277,7 @@ def _recommendation(
             _flag(
                 "SIGNAL_CONFLICT",
                 "warning",
-                "Chart timing and deterministic business/return evidence disagree; the rule trace records which signal dominates.",
+                "Chart timing and deterministic business/return evidence differ; timing cannot change the primary decision or size.",
             )
         )
     tax = assess_tax_and_settlement(holding, action=decision.action)

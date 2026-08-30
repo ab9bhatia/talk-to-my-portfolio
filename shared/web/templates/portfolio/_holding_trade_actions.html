@@ -1,6 +1,64 @@
 {% set decision = h.get('decision_presentation') or {} %}
-<div class="holding-trade-actions decision-readiness-gate">
-  <span class="holding-trade-label">{{ decision.get('readiness_label') or 'Decision unavailable' }}</span>
-  <a class="btn btn-sm btn-ghost" href="{{ app_path('/portfolio/advisor') }}">Review decision</a>
-  <span class="cell-muted">Orders stay disabled until the decision and account checks are reviewed.</span>
-</div>
+{% set external = h.get('external_analyst_view') or {} %}
+<section class="holding-decision-card" aria-labelledby="decision-{{ h.holding_key | replace(':', '-') }}">
+  <header class="holding-decision-head">
+    <div>
+      <span class="decision-section-kicker">Your decision</span>
+      <h4 id="decision-{{ h.holding_key | replace(':', '-') }}">{{ decision.get('label') or 'Decision unavailable' }}</h4>
+    </div>
+    <div class="decision-status-stack">
+      <span class="decision-status decision-status-{{ (decision.get('readiness') or 'DATA_BLOCKED') | lower | replace('_', '-') }}">{{ decision.get('readiness_label') or 'Data blocked' }}</span>
+      <span>{{ (decision.get('confidence_band') or 'LOW') | title }} confidence · {{ decision.get('confidence_pct') or 0 }}%</span>
+    </div>
+  </header>
+
+  <div class="holding-decision-grid">
+    <article>
+      <span>Do now</span>
+      <p>{{ decision.get('do_now') or 'Review the current evidence in Action Center.' }}</p>
+    </article>
+    <article>
+      <span>Why</span>
+      <p>{{ decision.get('why') or 'The deterministic evidence is not complete enough to explain this decision.' }}</p>
+    </article>
+    <article>
+      <span>How much</span>
+      <p>{{ decision.get('change_instruction') or 'No size change is ready.' }}</p>
+    </article>
+    <article>
+      <span>Review when</span>
+      <p>{{ decision.get('review_trigger') or 'Refresh after the next material result or thesis change.' }}</p>
+    </article>
+  </div>
+
+  <div class="holding-execution-card">
+    <div>
+      <span class="decision-section-kicker">How to execute</span>
+      <strong>{{ decision.get('timing_label') or 'Execution gated' }}</strong>
+      <p>{{ decision.get('execution_instruction') or 'Chart patterns are timing context only and never change the primary decision.' }}</p>
+    </div>
+    <div class="holding-trade-actions decision-readiness-gate" data-trade-accounts='{{ h.get("trade_accounts", []) | tojson }}'>
+      <a class="btn btn-sm btn-ghost" href="{{ app_path('/portfolio/advisor') }}?symbol={{ h.symbol }}">Review evidence</a>
+      {% if trading_enabled and decision.get('readiness') == 'READY_TO_REVIEW' and h.get('trade_accounts') %}
+        {% if decision.get('action_code') in ['ADD', 'STRONG_ADD'] %}
+        <button type="button" class="btn btn-sm btn-primary js-trade-open" data-symbol="{{ h.symbol }}" data-side="BUY" data-trade-accounts='{{ h.get("trade_accounts") | tojson }}'>Prepare staged add</button>
+        {% elif decision.get('action_code') == 'REDUCE' %}
+        <button type="button" class="btn btn-sm btn-primary js-trade-open" data-symbol="{{ h.symbol }}" data-side="SELL" data-trade-accounts='{{ h.get("trade_accounts") | tojson }}'>Prepare trim</button>
+        {% elif decision.get('action_code') == 'SELL' %}
+        <button type="button" class="btn btn-sm btn-primary js-trade-open" data-symbol="{{ h.symbol }}" data-side="SELL" data-trade-accounts='{{ h.get("trade_accounts") | tojson }}'>Prepare exit</button>
+        {% endif %}
+      {% endif %}
+    </div>
+  </div>
+
+  <details class="external-context-drawer">
+    <summary>External analyst context <span>Context only · does not change this decision</span></summary>
+    <div class="external-context-grid">
+      <div><span>Sentiment</span><strong>{{ (external.get('sentiment') or 'UNAVAILABLE') | replace('_', ' ') | title }}</strong></div>
+      <div><span>Coverage</span><strong>{{ external.get('coverage_label') or 'Coverage unavailable' }}</strong></div>
+      <div><span>Target context</span><strong>{{ external.get('target_descriptor') or 'Unavailable' }}{% if external.get('target_gap_pct') is not none %} · {{ format_pct(external.get('target_gap_pct')) }}{% endif %}</strong></div>
+      <div><span>Freshness</span><strong>{{ external.get('freshness_label') or 'Publication date unavailable' }}</strong></div>
+    </div>
+    <p>{{ decision.get('external_context_disclaimer') or 'External analyst context does not change the portfolio decision.' }}</p>
+  </details>
+</section>

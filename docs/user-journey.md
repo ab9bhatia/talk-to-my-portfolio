@@ -211,8 +211,21 @@ Then test at both `1280 × 720` and `390 × 844`:
 3. Click a connected-account chip and confirm Setup loads and the page loader clears.
 4. With one growth day, confirm the best-day card shows the two-snapshot explanation.
 5. Confirm Action Center rows appear before pattern timing completes.
-6. Click Ask with an empty question and confirm visible validation; do not submit real holdings to an external LLM during a smoke test.
+6. Expand a holding and confirm the first content is Your decision, Do now, Why, How much, Review when, and How to execute.
+7. Confirm external analyst context is collapsed and neutral; opening it must state that it does not change the decision.
+8. Confirm only `READY_TO_REVIEW` add/trim/exit decisions can expose a contextual Prepare control when live trading is enabled.
+9. Click Ask with an empty question and confirm visible validation; do not submit real holdings to an external LLM during a smoke test.
 
 ## Trust boundary
 
-Broker credentials, normalized holdings, deterministic evidence, and rule evaluation stay in the local application. Yahoo Finance receives instrument symbols when chart screening runs. The LLM receives only a user-submitted question and the redacted context defined by the portfolio-agent privacy policy. Live order placement is outside this journey and remains disabled by default.
+Broker credentials, normalized holdings, deterministic evidence, and rule evaluation stay in the local application. Yahoo Finance receives instrument symbols when chart screening runs. The LLM receives only a user-submitted question and the redacted context defined by the portfolio-agent privacy policy. Live trading remains disabled by default. When explicitly enabled, only a `READY_TO_REVIEW` decision can expose one contextual Prepare control, and the existing broker confirmation remains mandatory.
+
+## Milestone 12 daily decision journey
+
+1. Open Dashboard and scan the Decision column; do not infer an action from external consensus or a chart pill.
+2. Expand one holding. Read the primary decision and readiness before account or market metrics.
+3. If blocked, use Review evidence to resolve data, research, tax, settlement, or tradability. No order control is shown.
+4. If ready, review How much and How to execute. Technical timing may stage the transaction but cannot reverse it.
+5. Open the collapsed external drawer only for comparison. A disagreement is context, not a combined signal.
+6. Continue to Action Center with the symbol deep link for full evidence and the deterministic trace.
+7. Ask Portfolio Agent for an explanation if useful; its first label and readiness must match Dashboard and Action Center exactly. Provider errors fall back to those same local decisions.

@@ -125,6 +125,20 @@
     return item.decision_presentation?.do_now || "Decision unavailable — inspect the evidence before acting.";
   }
 
+  const CONFLICT_COPY = {
+    TIMING_VS_DECISION: "Timing differs — primary decision unchanged.",
+    EXTERNAL_CONTEXT_DIFFERS: "External view differs — no action change.",
+    DATA_BLOCKS_DECISION: "Data blocks execution.",
+    TAX_BLOCKS_EXECUTION: "Tax or settlement review blocks execution.",
+  };
+
+  function conflictSummary(categories) {
+    return (categories || [])
+      .map((category) => CONFLICT_COPY[category] || String(category).replaceAll("_", " "))
+      .map((copy) => `<div class="advisor-conflict">${esc(copy)}</div>`)
+      .join("");
+  }
+
   function filteredRows() {
     const momentumOrder = { STRONG: 5, POSITIVE: 4, NEUTRAL: 3, WEAK: 2, BROKEN: 1 };
     const search = searchEl.value.trim().toLowerCase();
@@ -167,9 +181,7 @@
     resultCount.textContent = `Showing ${visible.length} of ${rows.length} decisions`;
     showMore.hidden = visible.length >= rows.length;
     rowsEl.innerHTML = visible.map((item) => {
-      const conflict = item.conflict_categories?.length
-        ? `<div class="advisor-conflict">Signal conflict · ${esc(item.conflict_categories.join(", ").replaceAll("_", " "))}</div>`
-        : "";
+      const conflict = conflictSummary(item.conflict_categories);
       const meterWidth = Math.max(2, Math.min(100, Number(item.family_weight_pct || 0) * 5));
       const decision = item.decision_presentation || {};
       const visibleAction = decision.label || "Decision unavailable";
@@ -179,17 +191,21 @@
         : item.evidence_state === "DOCUMENTED_MODEL"
           ? badge("DOCUMENTED", "documented-model")
           : badge("RESEARCH REQUIRED", "needs-data");
+      const weightContext = decision.readiness === "READY_TO_REVIEW"
+        ? `${pct(item.family_weight_pct)} → ${pct(item.target_weight_pct)} family weight`
+        : `${pct(item.family_weight_pct)} current · target is not executable`;
       return `<article class="advisor-decision-card">
         <header class="advisor-decision-card__head">
           <div><strong class="advisor-symbol">${esc(item.symbol)}</strong><small>${esc(item.instrument_type)} · ${money(item.consolidated_value)} · ${pct(item.family_weight_pct)} of family</small></div>
           <div>${badge(visibleAction, actionKind)}${badge(decision.readiness_label || "Open Action Center", decision.readiness || "DATA_BLOCKED")}</div>
         </header>
         <div class="advisor-decision-card__body">
-          <section><span>Why</span><p>${esc(decision.why || item.why_now)}</p></section>
           <section class="advisor-required-action"><span>Do now</span><p>${esc(requiredAction(item))}</p><small>Review when: ${esc(decision.review_trigger || "next material update")}</small></section>
-          <section class="advisor-decision-metrics"><span>Decision context</span><div><b>${esc(decision.confidence_band || "LOW")}</b><small>${item.action_confidence}% confidence</small></div><div><b>${pct(item.expected_3y_irr?.base_pct)}</b><small>base 3Y scenario</small></div><div><b>${pct(item.family_weight_pct)} → ${pct(item.target_weight_pct)}</b><small>portfolio weight</small></div><div class="advisor-weight-meter"><i style="width:${meterWidth}%"></i></div>${modelTier}</section>
+          <section><span>Why</span><p>${esc(decision.why || item.why_now)}</p></section>
+          <section><span>How much</span><p>${esc(decision.change_instruction || "No size change is ready.")}</p><small>${esc(weightContext)}</small></section>
+          <section class="advisor-decision-metrics"><span>Readiness</span><div><b>${esc(decision.readiness_label || "Data blocked")}</b><small>${esc(decision.confidence_band || "LOW")} · ${item.action_confidence}% confidence</small></div><div class="advisor-weight-meter"><i style="width:${meterWidth}%"></i></div>${modelTier}</section>
         </div>
-        <div class="advisor-decision-timing"><span>Timing</span>${badge(item.momentum_regime || "UNKNOWN", "momentum")}${patternSummary(item.chart_pattern)}</div>
+        <div class="advisor-decision-timing"><span>How to execute</span><p>${esc(decision.execution_instruction || "Technical setups are timing context only.")}</p>${badge(item.momentum_regime || "UNKNOWN", "momentum")}${patternSummary(item.chart_pattern)}</div>
         ${conflict}${evidenceDrawer(item)}
       </article>`;
     }).join("") || '<div class="advisor-empty-row">No recommendations match these filters.</div>';
@@ -323,5 +339,10 @@
   });
   showMore.addEventListener("click", () => { visibleLimit += 24; renderRows(); });
   document.getElementById("advisor-refresh").addEventListener("click", () => load(true));
+  const requestedSymbol = new URLSearchParams(window.location.search).get("symbol");
+  if (requestedSymbol) {
+    searchEl.value = requestedSymbol;
+    focusFilter.value = "ALL";
+  }
   load(false);
 })();

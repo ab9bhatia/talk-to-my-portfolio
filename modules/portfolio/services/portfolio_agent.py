@@ -63,6 +63,12 @@ Explanation rules:
 - Governance/sector risks: say "unknown" if not in context — do not fabricate.
 - You may choose which deterministic recommendations are relevant to the question, but you may
   only copy their action and sell_type. Do not independently select or alter an action.
+- Lead every symbol explanation with decision_presentation.label, then its readiness and do_now.
+- Treat decision_presentation as the shared presentation contract used by Dashboard, Action Center,
+  Today Brief, and this agent. Never translate raw action codes into different user-facing labels.
+- External analyst views are context only. Never use them to create, reverse, or strengthen an action.
+- Legacy buy/sell arrays may include only READY_TO_REVIEW decisions. Blocked, research, tax-review,
+  monitor-only, and not-executable items stay in symbols with their gate clearly stated.
 
 Reply with JSON only matching this schema:
 {
@@ -71,6 +77,8 @@ Reply with JSON only matching this schema:
     "symbol": "...",
     "deterministic_action": "copy exactly from context.advisory",
     "sell_type": "copy exactly from context.advisory",
+    "decision_label": "copy decision_presentation.label",
+    "readiness": "copy decision_presentation.readiness",
     "explanation": "concise explanation grounded in the recommendation",
     "uncertainty": "UNKNOWN or the relevant data-quality limitation"
   }],
@@ -185,12 +193,18 @@ def _deterministic_provider_fallback(
     symbols = []
     for row in selected:
         flags = row.get("data_quality_flags") or []
+        presentation = row.get("decision_presentation") or {}
+        label = str(presentation.get("label") or row.get("action") or "Decision unavailable")
+        readiness = str(presentation.get("readiness") or "DATA_BLOCKED")
+        do_now = str(presentation.get("do_now") or row.get("why_now") or "")
         symbols.append(
             {
                 "symbol": str(row.get("symbol") or ""),
                 "deterministic_action": str(row.get("action") or "WATCH"),
                 "sell_type": str(row.get("sell_type") or "NONE"),
-                "explanation": str(row.get("why_now") or ""),
+                "decision_label": label,
+                "readiness": readiness,
+                "explanation": f"{label}. {do_now}",
                 "uncertainty": str(
                     (flags[0].get("message") if flags else None)
                     or "Review the dated evidence before acting."
@@ -222,7 +236,8 @@ def _deterministic_provider_fallback(
                 "horizon": "3y+",
             }
             for row in symbols
-            if row["deterministic_action"] in {"ADD", "STRONG_ADD"}
+            if row["readiness"] == "READY_TO_REVIEW"
+            and row["deterministic_action"] in {"ADD", "STRONG_ADD"}
         ],
         "sell_or_trim": [
             {
@@ -231,7 +246,8 @@ def _deterministic_provider_fallback(
                 "rationale": row["explanation"],
             }
             for row in symbols
-            if row["deterministic_action"] in {"SELL", "REDUCE"}
+            if row["readiness"] == "READY_TO_REVIEW"
+            and row["deterministic_action"] in {"SELL", "REDUCE"}
         ],
         "rebalance": [],
         "red_flags": [warning],
@@ -307,6 +323,9 @@ def _validate_agent_response(
                 f"Corrected {symbol} action from {supplied_action} to deterministic {actual_action}."
             )
         flags = recommendation.get("data_quality_flags") or []
+        presentation = recommendation.get("decision_presentation") or {}
+        label = str(presentation.get("label") or actual_action)
+        readiness = str(presentation.get("readiness") or "DATA_BLOCKED")
         uncertainty = str(row.get("uncertainty") or "").strip()
         if not uncertainty and flags:
             uncertainty = str(flags[0].get("message") or flags[0].get("code") or "UNKNOWN")
@@ -315,7 +334,12 @@ def _validate_agent_response(
                 "symbol": symbol,
                 "deterministic_action": actual_action,
                 "sell_type": str(recommendation.get("sell_type") or "NONE"),
-                "explanation": str(row.get("explanation") or recommendation.get("why_now") or ""),
+                "decision_label": label,
+                "readiness": readiness,
+                "explanation": (
+                    f"{label}. "
+                    f"{str(row.get('explanation') or presentation.get('do_now') or recommendation.get('why_now') or '')}"
+                ),
                 "uncertainty": uncertainty or "No additional uncertainty supplied.",
             }
         )
@@ -328,7 +352,8 @@ def _validate_agent_response(
             "horizon": "3y+",
         }
         for row in symbols
-        if row["deterministic_action"] in {"ADD", "STRONG_ADD"}
+        if row["readiness"] == "READY_TO_REVIEW"
+        and row["deterministic_action"] in {"ADD", "STRONG_ADD"}
     ]
     sell = [
         {
@@ -337,7 +362,8 @@ def _validate_agent_response(
             "rationale": row["explanation"],
         }
         for row in symbols
-        if row["deterministic_action"] in {"REDUCE", "SELL"}
+        if row["readiness"] == "READY_TO_REVIEW"
+        and row["deterministic_action"] in {"REDUCE", "SELL"}
     ]
     if parsed.get("rebalance"):
         warnings.append(
@@ -380,6 +406,19 @@ def _malformed_json_fallback(
     context: dict[str, Any],
 ) -> dict[str, Any]:
     """Keep deterministic advice available when an LLM violates its JSON contract."""
+    recommendations = list((context.get("advisory") or {}).get("recommendations") or [])
+    decisions = []
+    for item in recommendations[:5]:
+        presentation = item.get("decision_presentation") or {}
+        decisions.append(
+            f"{item.get('symbol')}: {presentation.get('label') or 'Decision unavailable'} "
+            f"({presentation.get('readiness_label') or 'data blocked'})"
+        )
+    answer = (
+        "The narrative response was malformed. Current deterministic decisions: "
+        + ("; ".join(decisions) if decisions else "none available")
+        + ". Open Action Center for the evidence and gates."
+    )
     return {
         "schema_version": "advisor-conversation-v2",
         "symbols": [],
@@ -394,7 +433,8 @@ def _malformed_json_fallback(
         "red_flags": ["LLM response was malformed; deterministic advisory remains authoritative."],
         "theme_opportunities": [],
         "macro_view": "",
-        "answer": content,
+        "answer": answer,
+        "provider_output_redacted": bool(content),
         "deterministic_advisory": context.get("advisory"),
     }
 

@@ -45,6 +45,11 @@ class InstrumentType(StrEnum):
 
 
 class SignalAuthority(StrEnum):
+    BLOCKER = "BLOCKER"
+    PRIMARY_DECISION = "PRIMARY_DECISION"
+    EXECUTION_TIMING = "EXECUTION_TIMING"
+    CONTEXT_ONLY = "CONTEXT_ONLY"
+    # Deprecated compatibility values. New payloads use the four authorities above.
     INTERNAL_DECISION = "INTERNAL_DECISION"
     EXTERNAL_ANALYST_CONTEXT = "EXTERNAL_ANALYST_CONTEXT"
     TECHNICAL_TIMING = "TECHNICAL_TIMING"
@@ -67,6 +72,11 @@ class ConfidenceBand(StrEnum):
 
 
 class ConflictCategory(StrEnum):
+    TIMING_VS_DECISION = "TIMING_VS_DECISION"
+    EXTERNAL_CONTEXT_DIFFERS = "EXTERNAL_CONTEXT_DIFFERS"
+    DATA_BLOCKS_DECISION = "DATA_BLOCKS_DECISION"
+    TAX_BLOCKS_EXECUTION = "TAX_BLOCKS_EXECUTION"
+    # Deprecated compatibility values. New payloads use the typed conflicts above.
     DATA_QUALITY = "DATA_QUALITY"
     FUNDAMENTAL_VS_TECHNICAL = "FUNDAMENTAL_VS_TECHNICAL"
     INTERNAL_VS_EXTERNAL = "INTERNAL_VS_EXTERNAL"
@@ -83,8 +93,11 @@ class ExternalAnalystStatus(StrEnum):
 
 class ExternalAnalystSentiment(StrEnum):
     POSITIVE = "POSITIVE"
+    MIXED = "MIXED"
     NEUTRAL = "NEUTRAL"
     NEGATIVE = "NEGATIVE"
+    UNAVAILABLE = "UNAVAILABLE"
+    # Deprecated compatibility value.
     UNKNOWN = "UNKNOWN"
 
 
@@ -131,6 +144,18 @@ class DecisionPresentation:
     why: str
     source_label: str
     execution_enabled: bool = False
+    authority: SignalAuthority = SignalAuthority.PRIMARY_DECISION
+    action_code: Action | None = None
+    headline: str = ""
+    current_weight_pct: float = 0.0
+    target_weight_pct: float = 0.0
+    change_pct_points: float = 0.0
+    sell_pct: float = 0.0
+    execution_instruction: str = ""
+    timing_label: str = "No active timing setup"
+    external_context_disclaimer: str = (
+        "External analyst context does not change the portfolio decision."
+    )
 
 
 @dataclass(frozen=True)

@@ -39,11 +39,10 @@ CAP_GROUP_ORDER = ("Large", "Mid", "Small", "Multi-cap", "ETF", "Unclassified")
 CAP_RANK = {label: index for index, label in enumerate(CAP_GROUP_ORDER)}
 
 SIGNAL_GROUP_ORDER = (
-    "External: strong buy",
-    "External: buy",
-    "External: hold",
-    "External: sell",
-    "External: strong sell",
+    "External positive",
+    "External mixed",
+    "External neutral",
+    "External negative",
     "External view unavailable",
 )
 SIGNAL_GROUP_RANK = {label: index for index, label in enumerate(SIGNAL_GROUP_ORDER)}
@@ -320,6 +319,38 @@ def _attach_account_codes(holdings: list[dict[str, Any]]) -> None:
                 holding["account_codes"] = str(code)
 
 
+def _annotate_trade_accounts(holdings: list[dict[str, Any]]) -> None:
+    """Expose only delivery-capable Indian broker positions to the review control."""
+    for holding in holdings:
+        parts = holding.get("account_breakdown") or [
+            {
+                "account_id": holding.get("account_id"),
+                "abbrev": holding.get("account_code") or holding.get("account_label"),
+                "broker": holding.get("broker"),
+                "exchange": holding.get("exchange"),
+                "symbol": holding.get("symbol"),
+                "quantity": holding.get("quantity"),
+            }
+        ]
+        options = []
+        for part in parts:
+            broker = str(part.get("broker") or "").lower()
+            exchange = str(part.get("exchange") or "").upper()
+            if broker not in {"zerodha", "groww"} or exchange not in _INDIAN_EXCHANGES:
+                continue
+            options.append(
+                {
+                    "account_id": part.get("account_id"),
+                    "code": part.get("abbrev") or "?",
+                    "broker": broker,
+                    "exchange": exchange,
+                    "symbol": part.get("symbol") or holding.get("symbol"),
+                    "quantity": float(part.get("quantity") or 0),
+                }
+            )
+        holding["trade_accounts"] = options
+
+
 def aggregate_holdings_across_accounts(holdings: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """One row per symbol (NSE+BSE merged); Account shows AB (n) + HB (m)."""
     buckets: dict[str, list[dict[str, Any]]] = {}
@@ -337,15 +368,14 @@ def aggregate_holdings_across_accounts(holdings: list[dict[str, Any]]) -> list[d
 
 def _signal_group_label(holding: dict[str, Any]) -> str:
     """Neutral external-consensus buckets; never portfolio actions."""
-    label = holding.get("rating_label")
+    sentiment = str((holding.get("external_analyst_view") or {}).get("sentiment") or "")
     mapping = {
-        "Strong buy": "External: strong buy",
-        "Buy": "External: buy",
-        "Hold": "External: hold",
-        "Sell": "External: sell",
-        "Strong sell": "External: strong sell",
+        "POSITIVE": "External positive",
+        "MIXED": "External mixed",
+        "NEUTRAL": "External neutral",
+        "NEGATIVE": "External negative",
     }
-    return mapping.get(label, "External view unavailable")
+    return mapping.get(sentiment, "External view unavailable")
 
 
 def _decision_group_label(holding: dict[str, Any]) -> str:
@@ -620,6 +650,7 @@ def prepare_holdings_view(
     _annotate_portfolio_weights(holdings)
     _annotate_asset_class_groups(holdings)
     _attach_account_codes(holdings)
+    _annotate_trade_accounts(holdings)
     sorted_holdings = sort_holdings(holdings, sort=sort, order=order)
     total_count = len(sorted_holdings)
 
@@ -675,8 +706,8 @@ EXPORT_COLUMN_HEADERS: dict[str, str] = {
     "pe": "P/E",
     "sector": "Sector",
     "pct52w": "52W Δ %",
-    "upside": "Upside %",
-    "signal": "Signal",
+    "upside": "Legacy target gap % (deprecated)",
+    "signal": "Legacy analyst label (deprecated)",
     "weight": "% of total",
     "qty": "Qty",
     "avg": "Avg price",
@@ -699,6 +730,10 @@ EXPORT_COLUMN_HEADERS: dict[str, str] = {
     "decision_confidence": "Decision confidence band",
     "decision_review_trigger": "Decision review trigger",
     "external_consensus": "External analyst consensus (context only)",
+    "external_sentiment": "External analyst sentiment (context only)",
+    "external_status": "External analyst status (context only)",
+    "external_coverage": "External analyst coverage (context only)",
+    "external_freshness": "External analyst freshness (context only)",
     "external_target_gap": "External target gap % (context only)",
 }
 
@@ -774,6 +809,14 @@ def _export_cell(col_id: str, holding: dict[str, Any]) -> Any:
         return presentation.get("review_trigger")
     if col_id == "external_consensus":
         return external.get("consensus_label")
+    if col_id == "external_sentiment":
+        return external.get("sentiment")
+    if col_id == "external_status":
+        return external.get("status")
+    if col_id == "external_coverage":
+        return external.get("coverage_label")
+    if col_id == "external_freshness":
+        return external.get("freshness_label")
     if col_id == "external_target_gap":
         return external.get("target_gap_pct")
     return None

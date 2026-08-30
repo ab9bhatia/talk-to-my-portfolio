@@ -163,7 +163,7 @@ flowchart LR
 
 ## Domain notes (equity markets)
 
-- **Signals (B+/B/H/S)** derive from analyst consensus / upside where Yahoo provides data — aids scan, not a buy list.  
+- **Decision** is the deterministic portfolio recommendation. External analyst sentiment is shown separately as positive, mixed, neutral, negative, or unavailable and never acts as a buy/sell label.
 - **Sector labels** prefer Yahoo industry data; ticker substrings are never used to infer theme (e.g. infrastructure vs “data center” false positives).  
 - **INR family view** may mix USD (Sarwa) after FX conversion — agent context includes account labels.  
 - **Historical sheet points** may be monthly/irregular; Growth charts combine sheet history with live daily snapshots — use indexed view for shape, absolute for level.
@@ -179,6 +179,7 @@ flowchart LR
 | [broker-api-keys.md](broker-api-keys.md) | Broker credentials |
 | [security.md](security.md) | Threat model |
 | [api-contract-v1.md](api-contract-v1.md) | Building a mobile/API client |
+| [signal-hierarchy-and-decision-ux.md](signal-hierarchy-and-decision-ux.md) | Decision authority, readiness, timing, and external context |
 | [weekly-sync-operations.md](weekly-sync-operations.md) | Running, scheduling, and recovering the weekly job |
 | [reconciliation.md](reconciliation.md) | Identity, price/value provenance, reconciliation, and repair |
 | [performance-ledger.md](performance-ledger.md) | Transaction ledger, FIFO lots, true returns, and audit export |

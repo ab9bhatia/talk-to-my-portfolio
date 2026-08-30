@@ -139,3 +139,12 @@ The format is inspired by Keep a Changelog and semantic versioning.
 - Added schema metadata/integrity refusal for every local SQLite store and transactional backup-before-migrate behavior.
 - Added encrypted checksummed backup, selective staged restore, dry-run validation, redacted diagnostics/support bundle, provider latency/failure metadata, System Health UI, recovery CLI, and incident playbook.
 - Pinned dependencies and expanded CI with vulnerability, secret, Bandit, coverage, static, syntax, and deterministic test gates.
+
+### Milestone 12C/12D — decision execution UX and semantic cleanup
+
+- Added the decision-first expanded holding hierarchy: Your decision, Do now, Why, How much, Review when, How to execute, then collapsed external context and raw evidence.
+- Made chart patterns strictly timing-only; they no longer change the deterministic action, sell type, target weight, or sell percentage.
+- Added typed conflicts for timing, external context, data blockers, and tax blockers, with plain-language copy in Action Center and symbol deep links from Dashboard.
+- Added a single readiness-gated contextual Prepare control for ready add/trim/exit decisions; blocked, research, tax-review, monitor, and not-executable states expose no order control.
+- Aligned Portfolio Agent and provider fallbacks to the shared decision label/readiness contract; legacy buy/sell arrays now contain only ready decisions.
+- Replaced default strong-buy/sell presentation with neutral external sentiment, removed duplicate browser-side signal ordering/conflict logic, and documented legacy API/export deprecations.

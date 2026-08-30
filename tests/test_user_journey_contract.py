@@ -47,6 +47,41 @@ def test_dashboard_leads_with_shared_decision_and_setup_stays_in_symbol_column()
     assert ".pattern-pill-text {\n  min-width: 0;\n  overflow: hidden;" in styles
 
 
+def test_expanded_holding_uses_decision_hierarchy_and_contextual_order_gate():
+    row = _read("shared/web/templates/portfolio/_holding_row.html")
+    detail = _read("shared/web/templates/portfolio/_holding_trade_actions.html")
+    assert row.index('_holding_trade_actions.html') < row.index('_holding_account_breakdown.html')
+    assert "Your decision" in detail
+    assert "Do now" in detail
+    assert "Why" in detail
+    assert "How much" in detail
+    assert "How to execute" in detail
+    assert "Context only · does not change this decision" in detail
+    assert "decision.get('readiness') == 'READY_TO_REVIEW'" in detail
+    assert "Prepare staged add" in detail
+    assert "Prepare trim" in detail
+    assert "Prepare exit" in detail
+
+
+def test_external_context_is_neutral_and_no_longer_competes_with_patterns():
+    script = _read("shared/web/static/js/holdings.js")
+    view = _read("modules/portfolio/services/holdings_view.py")
+    rating = _read("shared/web/templates/portfolio/_rating_cell_detail.html")
+    assert "External positive" in view
+    assert "External mixed" in view
+    assert "External: strong buy" not in view
+    assert "streetLabelConflictsWithPattern" not in script
+    assert "reconcileStreetViewWithPattern" not in script
+    assert "rating-context" in rating
+
+
+def test_action_center_uses_typed_conflict_copy_and_dashboard_deep_link():
+    script = _read("shared/web/static/js/portfolio-advisor.js")
+    assert "Timing differs — primary decision unchanged." in script
+    assert "External view differs — no action change." in script
+    assert 'new URLSearchParams(window.location.search).get("symbol")' in script
+
+
 def test_target_price_uses_native_quote_currency():
     assert format_quote_price_whole(2037.4, "NSE") == "₹2,037"
     assert format_quote_price_whole(187.6, "US") == "$188"

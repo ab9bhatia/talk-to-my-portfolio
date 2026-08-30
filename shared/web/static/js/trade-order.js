@@ -23,6 +23,10 @@
     accounts: [],
   };
 
+  function apiPath(path) {
+    return typeof window.appUrl === "function" ? window.appUrl(path) : path;
+  }
+
   function showError(msg) {
     if (!errorEl) return;
     errorEl.textContent = msg || "";
@@ -75,7 +79,7 @@
   async function refreshSessionHint() {
     if (!sessionHint) return;
     try {
-      const res = await fetch("/api/portfolio/trading/status");
+      const res = await fetch(apiPath("/api/portfolio/trading/status"));
       const data = await res.json();
       const session = data.nse_session;
       if (!session) {
@@ -206,7 +210,7 @@
     };
 
     try {
-      const res = await fetch("/api/portfolio/orders/place", {
+      const res = await fetch(apiPath("/api/portfolio/orders/place"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
